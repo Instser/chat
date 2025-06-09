@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.instser.chat.dao.AiModelDao">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="BaseResultMap" type="com.instser.chat.entity.AiModel">
+        <id column="id" property="id" />
+        <result column="model_code" property="modelCode" />
+        <result column="model_name" property="modelName" />
+        <result column="description" property="description" />
+        <result column="provider" property="provider" />
+        <result column="version" property="version" />
+        <result column="token_limit" property="tokenLimit" />
+        <result column="price_per_1k_tokens" property="pricePer1kTokens" />
+        <result column="is_available" property="isAvailable" />
+        <result column="base_url" property="baseUrl" />
+        <result column="api_key" property="apiKey" />
+        <result column="create_time" property="createTime" />
+        <result column="update_time" property="updateTime" />
+        <result column="deleted" property="deleted" />
+    </resultMap>
+
+    <!-- 通用查询结果列 -->
+    <sql id="Base_Column_List">
+        id, model_code, model_name, description, provider, version, token_limit, price_per_1k_tokens, is_available, base_url, api_key, create_time, update_time, deleted
+    </sql>
+
+    <!-- 根据模型代码查询模型 -->
+    <select id="selectByModelCode" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List" />
+        FROM t_ai_model
+        WHERE model_code = #{modelCode}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <!-- 查询可用的模型列表 -->
+    <select id="selectAvailableModels" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List" />
+        FROM t_ai_model
+        WHERE is_available = 1
+          AND deleted = 0
+        ORDER BY create_time ASC
+    </select>
+
+</mapper>

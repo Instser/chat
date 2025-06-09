@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.instser.chat.dao.PackageDao">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="BaseResultMap" type="com.instser.chat.entity.Package">
+        <id column="id" property="id" />
+        <result column="package_name" property="packageName" />
+        <result column="description" property="description" />
+        <result column="package_type" property="packageType" />
+        <result column="price_usd" property="priceUsd" />
+        <result column="price_cny" property="priceCny" />
+        <result column="validity_days" property="validityDays" />
+        <result column="chat_count" property="chatCount" />
+        <result column="model_permissions" property="modelPermissions" />
+        <result column="is_enabled" property="isEnabled" />
+        <result column="sort_order" property="sortOrder" />
+        <result column="create_time" property="createTime" />
+        <result column="update_time" property="updateTime" />
+        <result column="deleted" property="deleted" />
+    </resultMap>
+
+    <!-- 通用查询结果列 -->
+    <sql id="Base_Column_List">
+        id, package_name, description, package_type, price_usd, price_cny, validity_days, 
+        chat_count, model_permissions, is_enabled, sort_order, create_time, update_time, deleted
+    </sql>
+
+</mapper>

@@ -1,0 +1,154 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+
+spring:
+  application:
+    name: jinyu-chat
+  main:
+    allow-bean-definition-overriding: true
+  autoconfigure:
+    exclude:
+      - com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration$DdlApplicationRunner
+
+  # 数据源配置
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://203.0.113.13:3306/chat?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=GMT%2B8
+    username: chat
+    password: ct5YKxGLPra7mT62
+
+    # Druid 连接池配置
+    druid:
+      # 初始连接数
+      initial-size: 5
+      # 最小连接池数量
+      min-idle: 10
+      # 最大连接池数量
+      max-active: 20
+      # 配置获取连接等待超时的时间
+      max-wait: 60000
+      # 配置间隔多久才进行一次检测，检测需要关闭的空闲连接，单位是毫秒
+      time-between-eviction-runs-millis: 60000
+      # 配置一个连接在池中最小生存的时间，单位是毫秒
+      min-evictable-idle-time-millis: 300000
+      # 配置一个连接在池中最大生存的时间，单位是毫秒
+      max-evictable-idle-time-millis: 900000
+      # 配置检测连接是否有效
+      validation-query: SELECT 1 FROM DUAL
+      test-while-idle: true
+      test-on-borrow: false
+      test-on-return: false
+      # 打开PSCache，并且指定每个连接上PSCache的大小
+      pool-prepared-statements: true
+      max-pool-prepared-statement-per-connection-size: 20
+      # 配置监控统计拦截的filters，去掉后监控界面sql无法统计，'wall'用于防火墙
+      filters: stat,wall,slf4j
+      # 通过connectProperties属性来打开mergeSql功能；慢SQL记录
+      connection-properties: druid.stat.mergeSql\=true;druid.stat.slowSqlMillis\=5000
+      # 配置DruidStatFilter
+      web-stat-filter:
+        enabled: true
+        url-pattern: "/*"
+        exclusions: "*.js,*.gif,*.jpg,*.bmp,*.png,*.css,*.ico,/druid/*"
+      # 配置DruidStatViewServlet
+      stat-view-servlet:
+        enabled: true
+        url-pattern: "/druid/*"
+        # IP白名单(没有配置或者为空，则允许所有访问)
+        allow: 127.0.0.1,192.168.163.1
+        # IP黑名单 (存在共同时，deny优先于allow)
+        deny: 192.168.1.73
+        # 禁用HTML页面上的"Reset All"功能
+        reset-enable: false
+        # 登录名
+        login-username: admin
+        # 登录密码
+        login-password: 123456
+
+  # Jackson配置
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+
+# MyBatis-Plus配置
+mybatis-plus:
+  # 配置扫描通用枚举
+  type-enums-package: com.instser.chat.common.enums
+  configuration:
+    # 是否开启自动驼峰命名规则映射
+    map-underscore-to-camel-case: true
+    # 开启Mybatis二级缓存，默认为 true
+    cache-enabled: false
+    # 当查询数据为空时字段返回为null，不加这个查询数据为空时，字段将被隐藏
+    call-setters-on-nulls: true
+    # 这个配置会将执行的sql打印出来，在开发或测试的时候可以用
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    # 关闭MyBatis-Plus的banner和ddl runner
+    banner: false
+    enable-sql-runner: false
+    # 禁用DDL自动执行
+    ddl-auto: none
+    db-config:
+      # 主键类型
+      id-type: ASSIGN_ID
+      # 逻辑删除配置
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+      # 数据库表前缀
+      table-prefix: t_
+  # mapper xml文件路径
+  mapper-locations: classpath*:/mapper/**/*.xml
+
+# 支付宝配置
+alipay:
+  # 应用ID（客户端ID）- 需要在支付宝开放平台申请
+  client-id: ${ALIPAY_CLIENT_ID:}
+  # 商户私钥 - 需要生成RSA密钥对
+  private-key: ${ALIPAY_PRIVATE_KEY:}
+  # 支付宝公钥 - 从支付宝开放平台获取
+  public-key: ${ALIPAY_PUBLIC_KEY:}
+  # 是否沙箱环境
+  sandbox: ${ALIPAY_SANDBOX:true}
+  # 支付成功后跳转URL
+  return-url: ${ALIPAY_RETURN_URL:http://localhost:3000/payment/success}
+  # 支付回调通知URL
+  notify-url: ${ALIPAY_NOTIFY_URL:http://localhost:8080/api/payment/alipay/notify}
+  # 网关地址（可选，默认使用新加坡网关）
+  gateway-url: ${ALIPAY_GATEWAY_URL:}
+
+# 易支付配置
+yipay:
+  # 商户ID
+  pid: ${YIPAY_PID:1674}
+  # 商户密钥
+  key: ${YIPAY_KEY:your-yipay-merchant-key}
+  # 易支付网关地址
+  url: ${YIPAY_URL:https://your-pay-gateway.example.com}
+  # 支付成功后跳转URL
+  return-url: ${YIPAY_RETURN_URL:http://localhost:3000/payment/success}
+  # 支付回调通知URL
+  notify-url: ${YIPAY_NOTIFY_URL:http://localhost:8080/api/payment/yipay/notify}
+  # 默认支付方式（alipay、wxpay、qqpay等）
+  default-type: ${YIPAY_DEFAULT_TYPE:alipay}
+
+# 日志配置
+logging:
+  level:
+    com.instser.chat: debug
+    root: info
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n"
+  file:
+    name: logs/jinyu-chat.log
+
+

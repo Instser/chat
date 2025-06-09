@@ -1,0 +1,67 @@
+package com.instser.chat.dao;
+
+import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.instser.chat.entity.UserOrder;
+import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Select;
+import org.apache.ibatis.annotations.Update;
+
+import java.util.List;
+
+/**
+ * 用户订单数据访问层
+ *
+ * @author instser
+ * @since 2024-01-01
+ */
+@Mapper
+public interface UserOrderDao extends BaseMapper<UserOrder> {
+
+    /**
+     * 根据订单号查询订单
+     *
+     * @param orderNo 订单号
+     * @return 订单信息
+     */
+    @Select("SELECT * FROM t_user_order WHERE order_no = #{orderNo} AND deleted = 0 LIMIT 1")
+    UserOrder selectByOrderNo(String orderNo);
+
+    /**
+     * 根据用户ID查询订单列表
+     *
+     * @param userId 用户ID
+     * @return 订单列表
+     */
+    @Select("SELECT * FROM t_user_order WHERE user_id = #{userId} AND deleted = 0 ORDER BY create_time DESC")
+    List<UserOrder> selectByUserId(Long userId);
+
+    /**
+     * 根据支付请求ID查询订单
+     *
+     * @param paymentRequestId 支付请求ID
+     * @return 订单信息
+     */
+    @Select("SELECT * FROM t_user_order WHERE payment_request_id = #{paymentRequestId} AND deleted = 0 LIMIT 1")
+    UserOrder selectByPaymentRequestId(String paymentRequestId);
+
+    /**
+     * 更新订单支付状态
+     *
+     * @param orderNo 订单号
+     * @param paymentStatus 支付状态
+     * @param transactionId 交易流水号
+     * @return 更新行数
+     */
+    @Update("UPDATE t_user_order SET payment_status = #{paymentStatus}, transaction_id = #{transactionId}, " +
+            "payment_time = NOW(), update_time = NOW() WHERE order_no = #{orderNo} AND deleted = 0")
+    int updatePaymentStatus(String orderNo, Integer paymentStatus, String transactionId);
+
+    /**
+     * 查询用户的有效订单数量
+     *
+     * @param userId 用户ID
+     * @return 有效订单数量
+     */
+    @Select("SELECT COUNT(*) FROM t_user_order WHERE user_id = #{userId} AND payment_status = 1 AND deleted = 0")
+    int countValidOrdersByUserId(Long userId);
+}
