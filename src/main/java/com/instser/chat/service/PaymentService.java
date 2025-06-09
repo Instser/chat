@@ -4,6 +4,8 @@ import com.instser.chat.entity.UserOrder;
 import com.instser.chat.vo.PaymentRequestVO;
 import com.instser.chat.vo.PaymentResponseVO;
 
+import java.util.Map;
+
 /**
  * 支付服务接口
  *
@@ -58,6 +60,14 @@ public interface PaymentService {
      * @param notifyBody 回调内容
      * @return 验证结果
      */
-    boolean verifyNotifySignature(String requestUri, String requestMethod, String clientId, 
+    boolean verifyNotifySignature(String requestUri, String requestMethod, String clientId,
                                  String requestTime, String signature, String notifyBody);
+
+    /**
+     * 处理易支付回调通知
+     *
+     * @param notifyParams 回调参数
+     * @return 处理结果
+     */
+    boolean handleYiPayNotify(Map<String, String> notifyParams);
 }

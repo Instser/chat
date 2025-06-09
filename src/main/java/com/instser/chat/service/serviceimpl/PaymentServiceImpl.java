@@ -14,10 +14,10 @@ import com.instser.chat.config.AlipayConfig;
 import com.instser.chat.config.YiPayConfig;
 import com.instser.chat.entity.Package;
 import com.instser.chat.entity.UserOrder;
-import com.instser.chat.util.YiPayUtil;
 import com.instser.chat.service.OrderService;
 import com.instser.chat.service.PackageService;
 import com.instser.chat.service.PaymentService;
+
 import com.instser.chat.vo.PaymentRequestVO;
 import com.instser.chat.vo.PaymentResponseVO;
 import lombok.RequiredArgsConstructor;
@@ -55,18 +55,18 @@ public class PaymentServiceImpl implements PaymentService {
         PaymentResponseVO response = new PaymentResponseVO();
 
         try {
-            // 根据type字段选择支付方式
-            String paymentType = paymentRequest.getType();
+            // 根据paymentMethod字段选择支付方式
+            String paymentMethod = paymentRequest.getPaymentMethod();
 
-            if ("alipay".equals(paymentType)) {
+            if ("alipay".equals(paymentMethod)) {
                 // 使用支付宝SDK
                 return createAlipayPayment(paymentRequest);
-            } else if ("yipay".equals(paymentType)) {
+            } else if ("yipay".equals(paymentMethod)) {
                 // 使用易支付
                 return createYiPayPayment(paymentRequest);
             } else {
                 response.setSuccess(false);
-                response.setErrorMessage("不支持的支付类型: " + paymentType);
+                response.setErrorMessage("不支持的支付方式: " + paymentMethod);
                 return response;
             }
         } catch (Exception e) {
@@ -178,11 +178,8 @@ public class PaymentServiceImpl implements PaymentService {
                 paymentRequest.getUserId(),
                 paymentRequest.getPackageId(),
                 paymentRequest.getCurrency(),
-                "yipay"
+                paymentRequest.getPaymentMethod()
             );
-
-            // 获取套餐信息
-            Package packageInfo = packageService.getPackageById(paymentRequest.getPackageId());
 
             // 确定支付类型
             String paymentType = determineYiPayType(paymentRequest.getCurrency());
@@ -292,6 +289,57 @@ public class PaymentServiceImpl implements PaymentService {
             log.error("验证回调签名异常", e);
             return false;
         }
+    }
+
+    @Override
+    public boolean handleYiPayNotify(Map<String, String> notifyParams) {
+        try {
+            // 验证必要参数
+            String tradeNo = notifyParams.get("trade_no");
+            String outTradeNo = notifyParams.get("out_trade_no");
+            String tradeStatus = notifyParams.get("trade_status");
+            String sign = notifyParams.get("sign");
+
+            if (outTradeNo == null || sign == null) {
+                log.error("易支付回调参数不完整");
+                return false;
+            }
+
+            // 验证签名
+            Map<String, String> signParams = new HashMap<>(notifyParams);
+            signParams.remove("sign");
+            signParams.remove("sign_type");
+
+            boolean signValid = verifyYiPaySign(signParams, sign);
+            if (!signValid) {
+                log.error("易支付回调签名验证失败");
+                return false;
+            }
+
+            // 查找订单
+            UserOrder order = orderService.getOrderByOrderNo(outTradeNo);
+            if (order == null) {
+                log.error("未找到对应订单，订单号: {}", outTradeNo);
+                return false;
+            }
+
+            // 更新订单状态
+            Integer newStatus = parseYiPayTradeStatus(tradeStatus);
+            if (newStatus != null) {
+                boolean updated = orderService.updatePaymentStatus(outTradeNo, newStatus, tradeNo);
+                if (updated) {
+                    log.info("易支付订单状态更新成功，订单号: {}, 新状态: {}", outTradeNo, newStatus);
+                    return true;
+                } else {
+                    log.error("易支付订单状态更新失败，订单号: {}", outTradeNo);
+                }
+            }
+
+        } catch (Exception e) {
+            log.error("处理易支付回调异常", e);
+        }
+
+        return false;
     }
 
     /**
@@ -484,6 +532,8 @@ public class PaymentServiceImpl implements PaymentService {
             // 添加密钥
             signString += yiPayConfig.getKey();
 
+            log.debug("易支付签名原串: {}", signString);
+
             // MD5加密
             MessageDigest md = MessageDigest.getInstance("MD5");
             byte[] digest = md.digest(signString.getBytes("UTF-8"));
@@ -493,7 +543,10 @@ public class PaymentServiceImpl implements PaymentService {
                 sb.append(String.format("%02x", b));
             }
 
-            return sb.toString();
+            String sign = sb.toString();
+            log.debug("易支付签名结果: {}", sign);
+
+            return sign;
         } catch (Exception e) {
             log.error("生成易支付签名异常", e);
             throw new RuntimeException("签名生成失败", e);
@@ -517,6 +570,70 @@ public class PaymentServiceImpl implements PaymentService {
             return java.net.URLEncoder.encode(value, "UTF-8");
         } catch (Exception e) {
             return value;
+        }
+    }
+
+    /**
+     * 验证易支付签名
+     */
+    private boolean verifyYiPaySign(Map<String, String> params, String sign) {
+        try {
+            // 过滤空值参数并排序
+            String signString = params.entrySet().stream()
+                .filter(entry -> StringUtils.hasText(entry.getValue()))
+                .sorted(Map.Entry.comparingByKey())
+                .map(entry -> entry.getKey() + "=" + entry.getValue())
+                .collect(Collectors.joining("&"));
+
+            // 添加密钥
+            signString += yiPayConfig.getKey();
+
+            log.debug("易支付签名原串: {}", signString);
+
+            // MD5加密
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            byte[] digest = md.digest(signString.getBytes("UTF-8"));
+
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+
+            String generatedSign = sb.toString();
+            log.debug("易支付签名结果: {}", generatedSign);
+
+            boolean isValid = generatedSign.equals(sign);
+            if (!isValid) {
+                log.warn("易支付签名验证失败，期望: {}, 实际: {}", generatedSign, sign);
+            }
+
+            return isValid;
+        } catch (Exception e) {
+            log.error("验证易支付签名异常", e);
+            return false;
+        }
+    }
+
+    /**
+     * 解析易支付交易状态
+     */
+    private Integer parseYiPayTradeStatus(String tradeStatus) {
+        if (tradeStatus == null || tradeStatus.trim().isEmpty()) {
+            return null;
+        }
+
+        switch (tradeStatus.toUpperCase()) {
+            case "TRADE_SUCCESS":
+            case "SUCCESS":
+                return 1; // 已支付
+            case "TRADE_CLOSED":
+            case "CLOSED":
+                return 2; // 已取消
+            case "TRADE_REFUND":
+            case "REFUND":
+                return 3; // 已退款
+            default:
+                return 0; // 未支付
         }
     }
 }

@@ -28,16 +28,10 @@ public class PaymentRequestVO {
     private String currency;
 
     /**
-     * 支付方式（alipay）
+     * 支付方式（alipay-支付宝SDK，yipay-易支付）
      */
     @NotBlank(message = "支付方式不能为空")
     private String paymentMethod;
-
-    /**
-     * 支付类型（alipay-支付宝SDK，yipay-易支付）
-     */
-    @NotBlank(message = "支付类型不能为空")
-    private String type;
 
     /**
      * 支付成功后跳转URL

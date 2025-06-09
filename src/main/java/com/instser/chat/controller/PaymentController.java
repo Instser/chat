@@ -1,13 +1,13 @@
 package com.instser.chat.controller;
 
 import com.instser.chat.common.result.Result;
-import com.instser.chat.config.YiPayConfig;
+
 import com.instser.chat.entity.Package;
 import com.instser.chat.entity.UserOrder;
 import com.instser.chat.service.OrderService;
 import com.instser.chat.service.PackageService;
 import com.instser.chat.service.PaymentService;
-import com.instser.chat.util.YiPayUtil;
+
 import com.instser.chat.vo.*;
 import com.instser.chat.vo.converter.VOConverter;
 import lombok.RequiredArgsConstructor;
@@ -39,7 +39,6 @@ public class PaymentController {
     private final PaymentService paymentService;
     private final OrderService orderService;
     private final PackageService packageService;
-    private final YiPayConfig yiPayConfig;
 
     /**
      * 获取套餐列表
@@ -196,7 +195,7 @@ public class PaymentController {
             log.info("易支付回调参数: {}", notifyParams);
 
             // 处理易支付回调
-            boolean success = handleYiPayNotify(notifyParams);
+            boolean success = paymentService.handleYiPayNotify(notifyParams);
 
             if (success) {
                 log.info("易支付回调处理成功");
@@ -212,80 +211,5 @@ public class PaymentController {
         }
     }
 
-    /**
-     * 处理易支付回调通知
-     */
-    private boolean handleYiPayNotify(Map<String, String> notifyParams) {
-        try {
-            // 验证必要参数
-            String tradeNo = notifyParams.get("trade_no");
-            String outTradeNo = notifyParams.get("out_trade_no");
-            String tradeStatus = notifyParams.get("trade_status");
-            String sign = notifyParams.get("sign");
 
-            if (outTradeNo == null || sign == null) {
-                log.error("易支付回调参数不完整");
-                return false;
-            }
-
-            // 验证签名
-            Map<String, String> signParams = new HashMap<>(notifyParams);
-            signParams.remove("sign");
-            signParams.remove("sign_type");
-
-            // 暂时跳过签名验证，因为YiPayUtil导入有问题
-            // boolean signValid = YiPayUtil.verifySign(signParams, sign, yiPayConfig.getKey());
-            // if (!signValid) {
-            //     log.error("易支付回调签名验证失败");
-            //     return false;
-            // }
-
-            // 查找订单
-            UserOrder order = orderService.getOrderByOrderNo(outTradeNo);
-            if (order == null) {
-                log.error("未找到对应订单，订单号: {}", outTradeNo);
-                return false;
-            }
-
-            // 更新订单状态
-            Integer newStatus = parseYiPayTradeStatus(tradeStatus);
-            if (newStatus != null) {
-                boolean updated = orderService.updatePaymentStatus(outTradeNo, newStatus, tradeNo);
-                if (updated) {
-                    log.info("易支付订单状态更新成功，订单号: {}, 新状态: {}", outTradeNo, newStatus);
-                    return true;
-                } else {
-                    log.error("易支付订单状态更新失败，订单号: {}", outTradeNo);
-                }
-            }
-
-        } catch (Exception e) {
-            log.error("处理易支付回调异常", e);
-        }
-
-        return false;
-    }
-
-    /**
-     * 解析易支付交易状态
-     */
-    private Integer parseYiPayTradeStatus(String tradeStatus) {
-        if (tradeStatus == null || tradeStatus.trim().isEmpty()) {
-            return null;
-        }
-
-        switch (tradeStatus.toUpperCase()) {
-            case "TRADE_SUCCESS":
-            case "SUCCESS":
-                return 1; // 已支付
-            case "TRADE_CLOSED":
-            case "CLOSED":
-                return 2; // 已取消
-            case "TRADE_REFUND":
-            case "REFUND":
-                return 3; // 已退款
-            default:
-                return 0; // 未支付
-        }
-    }
 }
