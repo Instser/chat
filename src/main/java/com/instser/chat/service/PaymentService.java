@@ -4,7 +4,6 @@ import com.instser.chat.entity.UserOrder;
 import com.instser.chat.vo.PaymentRequestVO;
 import com.instser.chat.vo.PaymentResponseVO;
 
-import java.util.List;
 import java.util.Map;
 
 /**
@@ -34,11 +33,13 @@ public interface PaymentService {
     /**
      * 处理支付回调
      *
-     * @param paymentMethod 支付方式
-     * @param notifyParams 回调参数
+     * @param notifyBody 回调内容
+     * @param signature 签名
+     * @param requestTime 请求时间
+     * @param clientId 客户端ID
      * @return 处理结果
      */
-    boolean handlePaymentNotify(String paymentMethod, Map<String, String> notifyParams);
+    boolean handlePaymentNotify(String notifyBody, String signature, String requestTime, String clientId);
 
     /**
      * 取消支付
@@ -49,17 +50,24 @@ public interface PaymentService {
     boolean cancelPayment(String orderNo);
 
     /**
-     * 获取支持的支付方式
+     * 验证支付回调签名
      *
-     * @return 支付方式列表
+     * @param requestUri 请求URI
+     * @param requestMethod 请求方法
+     * @param clientId 客户端ID
+     * @param requestTime 请求时间
+     * @param signature 签名
+     * @param notifyBody 回调内容
+     * @return 验证结果
      */
-    List<String> getSupportedPaymentMethods();
+    boolean verifyNotifySignature(String requestUri, String requestMethod, String clientId,
+                                 String requestTime, String signature, String notifyBody);
 
     /**
-     * 检查支付方式是否可用
+     * 处理易支付回调通知
      *
-     * @param paymentMethod 支付方式
-     * @return 是否可用
+     * @param notifyParams 回调参数
+     * @return 处理结果
      */
-    boolean isPaymentMethodAvailable(String paymentMethod);
+    boolean handleYiPayNotify(Map<String, String> notifyParams);
 }
