@@ -128,11 +128,11 @@ alipay:
 # 易支付配置
 yipay:
   # 商户ID
-  pid: ${YIPAY_PID:1674}
+  pid: ${YIPAY_PID:}
   # 商户密钥
-  key: ${YIPAY_KEY:your-yipay-merchant-key}
+  key: ${YIPAY_KEY:}
   # 易支付网关地址
-  url: ${YIPAY_URL:https://your-pay-gateway.example.com}
+  url: ${YIPAY_URL:}
   # 支付成功后跳转URL
   return-url: ${YIPAY_RETURN_URL:http://localhost:3000/payment/success}
   # 支付回调通知URL

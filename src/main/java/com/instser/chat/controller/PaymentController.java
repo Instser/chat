@@ -160,8 +160,14 @@ public class PaymentController {
             String clientId = request.getHeader("client-id");
             String signature = request.getHeader("signature");
 
-            // 处理回调
-            boolean success = paymentService.handlePaymentNotify(notifyBody, signature, requestTime, clientId);
+            // 处理支付宝回调（这里需要根据实际情况解析notifyBody）
+            Map<String, String> notifyParams = new HashMap<>();
+            notifyParams.put("notifyBody", notifyBody);
+            notifyParams.put("signature", signature);
+            notifyParams.put("requestTime", requestTime);
+            notifyParams.put("clientId", clientId);
+
+            boolean success = paymentService.handlePaymentNotify("alipay", notifyParams);
 
             if (success) {
                 log.info("支付回调处理成功");
@@ -195,7 +201,7 @@ public class PaymentController {
             log.info("易支付回调参数: {}", notifyParams);
 
             // 处理易支付回调
-            boolean success = paymentService.handleYiPayNotify(notifyParams);
+            boolean success = paymentService.handlePaymentNotify("yipay", notifyParams);
 
             if (success) {
                 log.info("易支付回调处理成功");
@@ -212,4 +218,32 @@ public class PaymentController {
     }
 
 
+
+    /**
+     * 获取支持的支付方式
+     */
+    @GetMapping("/methods")
+    public ResponseEntity<List<String>> getSupportedPaymentMethods() {
+        try {
+            List<String> methods = paymentService.getSupportedPaymentMethods();
+            return ResponseEntity.ok(methods);
+        } catch (Exception e) {
+            log.error("获取支付方式异常", e);
+            return ResponseEntity.status(500).build();
+        }
+    }
+
+    /**
+     * 检查支付方式是否可用
+     */
+    @GetMapping("/methods/{paymentMethod}/available")
+    public ResponseEntity<Boolean> isPaymentMethodAvailable(@PathVariable String paymentMethod) {
+        try {
+            boolean available = paymentService.isPaymentMethodAvailable(paymentMethod);
+            return ResponseEntity.ok(available);
+        } catch (Exception e) {
+            log.error("检查支付方式可用性异常", e);
+            return ResponseEntity.status(500).build();
+        }
+    }
 }
