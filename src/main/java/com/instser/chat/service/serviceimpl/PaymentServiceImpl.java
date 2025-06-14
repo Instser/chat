@@ -10,6 +10,9 @@ import com.alipay.global.api.tools.WebhookTool;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.instser.chat.common.exception.BusinessException;
+import com.instser.chat.common.exception.PaymentException;
+import com.instser.chat.common.exception.ResourceNotFoundException;
+import com.instser.chat.common.exception.ExternalServiceException;
 import com.instser.chat.config.AlipayConfig;
 import com.instser.chat.config.YiPayConfig;
 import com.instser.chat.entity.Package;
@@ -52,9 +55,10 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public PaymentResponseVO createPayment(PaymentRequestVO paymentRequest) {
-        PaymentResponseVO response = new PaymentResponseVO();
-
         try {
+            // 验证支付请求参数
+            validatePaymentRequest(paymentRequest);
+
             // 根据paymentMethod字段选择支付方式
             String paymentMethod = paymentRequest.getPaymentMethod();
 
@@ -65,15 +69,41 @@ public class PaymentServiceImpl implements PaymentService {
                 // 使用易支付
                 return createYiPayPayment(paymentRequest);
             } else {
-                response.setSuccess(false);
-                response.setErrorMessage("不支持的支付方式: " + paymentMethod);
-                return response;
+                throw PaymentException.unsupportedPaymentMethod(paymentMethod);
             }
+        } catch (PaymentException | ResourceNotFoundException e) {
+            // 业务异常直接抛出，由全局异常处理器处理
+            throw e;
         } catch (Exception e) {
             log.error("创建支付异常", e);
-            response.setSuccess(false);
-            response.setErrorMessage("系统异常，请稍后重试");
-            return response;
+            throw new PaymentException("创建支付失败", e.getMessage());
+        }
+    }
+
+    /**
+     * 验证支付请求参数
+     */
+    private void validatePaymentRequest(PaymentRequestVO paymentRequest) {
+        if (paymentRequest == null) {
+            throw new PaymentException("支付请求不能为空");
+        }
+        if (paymentRequest.getUserId() == null) {
+            throw new PaymentException("用户ID不能为空");
+        }
+        if (paymentRequest.getPackageId() == null) {
+            throw new PaymentException("套餐ID不能为空");
+        }
+        if (!StringUtils.hasText(paymentRequest.getPaymentMethod())) {
+            throw new PaymentException("支付方式不能为空");
+        }
+        if (!StringUtils.hasText(paymentRequest.getCurrency())) {
+            throw new PaymentException("货币类型不能为空");
+        }
+
+        // 验证套餐是否存在
+        Package packageInfo = packageService.getPackageById(paymentRequest.getPackageId());
+        if (packageInfo == null) {
+            throw ResourceNotFoundException.packageNotFound(paymentRequest.getPackageId());
         }
     }
 
@@ -81,15 +111,11 @@ public class PaymentServiceImpl implements PaymentService {
      * 创建支付宝支付订单
      */
     private PaymentResponseVO createAlipayPayment(PaymentRequestVO paymentRequest) {
-        PaymentResponseVO response = new PaymentResponseVO();
-
         try {
             // 检查配置
             if (!alipayConfig.isConfigComplete()) {
                 log.warn("支付宝配置不完整，无法创建支付");
-                response.setSuccess(false);
-                response.setErrorMessage("支付宝配置未完成，请联系管理员");
-                return response;
+                throw new PaymentException("支付宝配置未完成，请联系管理员");
             }
 
             // 创建订单
@@ -102,6 +128,9 @@ public class PaymentServiceImpl implements PaymentService {
 
             // 获取套餐信息
             Package packageInfo = packageService.getPackageById(paymentRequest.getPackageId());
+            if (packageInfo == null) {
+                throw ResourceNotFoundException.packageNotFound(paymentRequest.getPackageId());
+            }
 
             // 构建支付宝支付请求
             AlipayPayRequest alipayPayRequest = buildAlipayPayRequest(order, packageInfo, paymentRequest);
@@ -109,68 +138,62 @@ public class PaymentServiceImpl implements PaymentService {
             // 调用支付宝API
             AlipayPayResponse alipayPayResponse = alipayClient.execute(alipayPayRequest);
 
-            if (alipayPayResponse != null && alipayPayResponse.getResult() != null) {
-                Result result = alipayPayResponse.getResult();
-
-                if ("SUCCESS".equals(result.getResultCode())) {
-                    // 支付请求成功
-                    String paymentUrl = extractPaymentUrl(alipayPayResponse);
-                    
-                    // 更新订单支付URL
-                    order.setPaymentUrl(paymentUrl);
-                    orderService.updateById(order);
-
-                    response.setSuccess(true);
-                    response.setOrderNo(order.getOrderNo());
-                    response.setPaymentRequestId(order.getPaymentRequestId());
-                    response.setPaymentUrl(paymentUrl);
-                    response.setAmount(order.getAmount());
-                    response.setCurrency(order.getCurrency());
-                    response.setPaymentStatus(order.getPaymentStatus());
-
-                    log.info("支付请求创建成功，订单号: {}, 支付URL: {}", order.getOrderNo(), paymentUrl);
-                } else {
-                    // 支付请求失败
-                    response.setSuccess(false);
-                    response.setErrorMessage("支付请求失败: " + result.getResultMessage());
-                    log.error("支付请求失败，订单号: {}, 错误: {}", order.getOrderNo(), result.getResultMessage());
-                }
-            } else {
-                response.setSuccess(false);
-                response.setErrorMessage("支付服务响应异常");
+            if (alipayPayResponse == null || alipayPayResponse.getResult() == null) {
                 log.error("支付宝API响应为空，订单号: {}", order.getOrderNo());
+                throw ExternalServiceException.paymentServiceError("alipay", "API响应为空");
             }
+
+            Result result = alipayPayResponse.getResult();
+            if (!"SUCCESS".equals(result.getResultCode())) {
+                log.error("支付请求失败，订单号: {}, 错误: {}", order.getOrderNo(), result.getResultMessage());
+                throw ExternalServiceException.paymentServiceError("alipay", result.getResultMessage());
+            }
+
+            // 支付请求成功
+            String paymentUrl = extractPaymentUrl(alipayPayResponse);
+            if (!StringUtils.hasText(paymentUrl)) {
+                log.error("无法提取支付URL，订单号: {}", order.getOrderNo());
+                throw new PaymentException("无法获取支付链接");
+            }
+
+            // 更新订单支付URL
+            order.setPaymentUrl(paymentUrl);
+            orderService.updateById(order);
+
+            // 构建响应
+            PaymentResponseVO response = new PaymentResponseVO();
+            response.setSuccess(true);
+            response.setOrderNo(order.getOrderNo());
+            response.setPaymentRequestId(order.getPaymentRequestId());
+            response.setPaymentUrl(paymentUrl);
+            response.setAmount(order.getAmount());
+            response.setCurrency(order.getCurrency());
+            response.setPaymentStatus(order.getPaymentStatus());
+
+            log.info("支付请求创建成功，订单号: {}, 支付URL: {}", order.getOrderNo(), paymentUrl);
+            return response;
 
         } catch (AlipayApiException e) {
             log.error("调用支付宝API异常", e);
-            response.setSuccess(false);
-            response.setErrorMessage("支付服务异常: " + e.getMessage());
-        } catch (BusinessException e) {
-            log.error("业务异常", e);
-            response.setSuccess(false);
-            response.setErrorMessage(e.getMessage());
+            throw ExternalServiceException.paymentServiceError("alipay", e.getMessage());
+        } catch (PaymentException | ResourceNotFoundException | ExternalServiceException e) {
+            // 业务异常直接抛出
+            throw e;
         } catch (Exception e) {
             log.error("创建支付异常", e);
-            response.setSuccess(false);
-            response.setErrorMessage("系统异常，请稍后重试");
+            throw new PaymentException("创建支付失败", e.getMessage());
         }
-
-        return response;
     }
 
     /**
      * 创建易支付订单
      */
     private PaymentResponseVO createYiPayPayment(PaymentRequestVO paymentRequest) {
-        PaymentResponseVO response = new PaymentResponseVO();
-
         try {
             // 检查配置
             if (!yiPayConfig.isConfigComplete()) {
                 log.warn("易支付配置不完整，无法创建支付");
-                response.setSuccess(false);
-                response.setErrorMessage("易支付配置未完成，请联系管理员");
-                return response;
+                throw new PaymentException("易支付配置未完成，请联系管理员");
             }
 
             // 创建订单
@@ -186,11 +209,17 @@ public class PaymentServiceImpl implements PaymentService {
 
             // 构建支付URL
             String paymentUrl = buildYiPayUrl(order, paymentType);
+            if (!StringUtils.hasText(paymentUrl)) {
+                log.error("无法构建易支付URL，订单号: {}", order.getOrderNo());
+                throw new PaymentException("无法生成支付链接");
+            }
 
             // 更新订单支付URL
             order.setPaymentUrl(paymentUrl);
             orderService.updateById(order);
 
+            // 构建响应
+            PaymentResponseVO response = new PaymentResponseVO();
             response.setSuccess(true);
             response.setOrderNo(order.getOrderNo());
             response.setPaymentRequestId(order.getPaymentRequestId());
@@ -200,18 +229,15 @@ public class PaymentServiceImpl implements PaymentService {
             response.setPaymentStatus(order.getPaymentStatus());
 
             log.info("易支付订单创建成功，订单号: {}, 支付URL: {}", order.getOrderNo(), paymentUrl);
+            return response;
 
-        } catch (BusinessException e) {
-            log.error("业务异常", e);
-            response.setSuccess(false);
-            response.setErrorMessage(e.getMessage());
+        } catch (PaymentException e) {
+            // 业务异常直接抛出
+            throw e;
         } catch (Exception e) {
             log.error("创建易支付订单异常", e);
-            response.setSuccess(false);
-            response.setErrorMessage("系统异常，请稍后重试");
+            throw new PaymentException("创建易支付订单失败", e.getMessage());
         }
-
-        return response;
     }
 
     @Override
@@ -227,12 +253,18 @@ public class PaymentServiceImpl implements PaymentService {
             // 验证签名
             if (!verifyNotifySignature("/api/payment/alipay/notify", "POST", clientId, requestTime, signature, notifyBody)) {
                 log.error("支付回调签名验证失败");
-                return false;
+                throw PaymentException.callbackVerificationFailed("签名验证失败");
             }
 
             // 解析回调内容
-            JsonNode notifyJson = objectMapper.readTree(notifyBody);
-            
+            JsonNode notifyJson;
+            try {
+                notifyJson = objectMapper.readTree(notifyBody);
+            } catch (Exception e) {
+                log.error("解析回调内容失败: {}", notifyBody, e);
+                throw PaymentException.callbackVerificationFailed("回调内容格式错误");
+            }
+
             // 提取关键信息
             String paymentRequestId = extractFromNotify(notifyJson, "paymentRequestId");
             String paymentStatus = extractFromNotify(notifyJson, "paymentStatus");
@@ -240,33 +272,61 @@ public class PaymentServiceImpl implements PaymentService {
 
             if (!StringUtils.hasText(paymentRequestId)) {
                 log.error("回调中缺少paymentRequestId");
-                return false;
+                throw PaymentException.callbackVerificationFailed("缺少paymentRequestId");
             }
 
             // 查找订单
             UserOrder order = orderService.getOrderByPaymentRequestId(paymentRequestId);
             if (order == null) {
                 log.error("未找到对应订单，paymentRequestId: {}", paymentRequestId);
-                return false;
+                throw ResourceNotFoundException.orderNotFound(paymentRequestId);
             }
 
-            // 更新订单状态
+            // 检查订单是否过期
+            if (orderService.isOrderExpired(order.getOrderNo())) {
+                log.warn("订单已过期，拒绝处理支付回调，订单号: {}", order.getOrderNo());
+                throw PaymentException.invalidOrderStatus(order.getOrderNo(), "已过期");
+            }
+
+            // 检查重复支付（幂等性验证）
             Integer newStatus = parsePaymentStatus(paymentStatus);
-            if (newStatus != null) {
-                boolean updated = orderService.updatePaymentStatus(order.getOrderNo(), newStatus, transactionId);
-                if (updated) {
-                    log.info("订单状态更新成功，订单号: {}, 新状态: {}", order.getOrderNo(), newStatus);
-                    return true;
-                } else {
-                    log.error("订单状态更新失败，订单号: {}", order.getOrderNo());
-                }
+            if (newStatus == null) {
+                log.error("无效的支付状态: {}", paymentStatus);
+                throw PaymentException.callbackVerificationFailed("无效的支付状态: " + paymentStatus);
             }
 
-        } catch (Exception e) {
-            log.error("处理支付回调异常", e);
-        }
+            // 如果订单已经是目标状态，直接返回成功（幂等性）
+            if (order.getPaymentStatus().equals(newStatus)) {
+                log.info("订单状态已经是目标状态，跳过更新，订单号: {}, 状态: {}", order.getOrderNo(), newStatus);
+                return true;
+            }
 
-        return false;
+            // 验证状态流转的合法性
+            if (!isValidStatusTransition(order.getPaymentStatus(), newStatus)) {
+                log.error("非法的状态流转，订单号: {}, 当前状态: {}, 目标状态: {}",
+                        order.getOrderNo(), order.getPaymentStatus(), newStatus);
+                throw PaymentException.invalidOrderStatus(order.getOrderNo(),
+                    "状态流转不合法: " + order.getPaymentStatus() + " -> " + newStatus);
+            }
+
+            boolean updated = orderService.updatePaymentStatus(order.getOrderNo(), newStatus, transactionId);
+            if (!updated) {
+                log.error("订单状态更新失败，订单号: {}", order.getOrderNo());
+                throw new PaymentException("订单状态更新失败");
+            }
+
+            log.info("订单状态更新成功，订单号: {}, 当前状态: {} -> 新状态: {}",
+                    order.getOrderNo(), order.getPaymentStatus(), newStatus);
+            return true;
+
+        } catch (PaymentException | ResourceNotFoundException e) {
+            // 业务异常记录日志但不抛出，返回false让支付平台重试
+            log.error("处理支付回调业务异常: {}", e.getMessage());
+            return false;
+        } catch (Exception e) {
+            log.error("处理支付回调系统异常", e);
+            return false;
+        }
     }
 
     @Override
@@ -323,12 +383,32 @@ public class PaymentServiceImpl implements PaymentService {
                 return false;
             }
 
+            // 检查订单是否过期
+            if (orderService.isOrderExpired(order.getOrderNo())) {
+                log.warn("订单已过期，拒绝处理易支付回调，订单号: {}", order.getOrderNo());
+                return false;
+            }
+
             // 更新订单状态
             Integer newStatus = parseYiPayTradeStatus(tradeStatus);
             if (newStatus != null) {
+                // 如果订单已经是目标状态，直接返回成功（幂等性）
+                if (order.getPaymentStatus().equals(newStatus)) {
+                    log.info("易支付订单状态已经是目标状态，跳过更新，订单号: {}, 状态: {}", order.getOrderNo(), newStatus);
+                    return true;
+                }
+
+                // 验证状态流转的合法性
+                if (!isValidStatusTransition(order.getPaymentStatus(), newStatus)) {
+                    log.error("易支付非法的状态流转，订单号: {}, 当前状态: {}, 目标状态: {}",
+                            order.getOrderNo(), order.getPaymentStatus(), newStatus);
+                    return false;
+                }
+
                 boolean updated = orderService.updatePaymentStatus(outTradeNo, newStatus, tradeNo);
                 if (updated) {
-                    log.info("易支付订单状态更新成功，订单号: {}, 新状态: {}", outTradeNo, newStatus);
+                    log.info("易支付订单状态更新成功，订单号: {}, 当前状态: {} -> 新状态: {}",
+                            outTradeNo, order.getPaymentStatus(), newStatus);
                     return true;
                 } else {
                     log.error("易支付订单状态更新失败，订单号: {}", outTradeNo);
@@ -440,6 +520,35 @@ public class PaymentServiceImpl implements PaymentService {
             log.error("提取支付URL异常", e);
             return null;
         }
+    }
+
+    /**
+     * 验证订单状态流转的合法性
+     *
+     * @param currentStatus 当前状态
+     * @param newStatus     新状态
+     * @return 是否合法
+     */
+    private boolean isValidStatusTransition(Integer currentStatus, Integer newStatus) {
+        // 状态定义：0-未支付，1-已支付，2-已取消，3-已退款
+
+        // 已支付的订单不能变为未支付
+        if (currentStatus == 1 && newStatus == 0) {
+            return false;
+        }
+
+        // 已取消的订单不能变为未支付或已支付
+        if (currentStatus == 2 && (newStatus == 0 || newStatus == 1)) {
+            return false;
+        }
+
+        // 已退款的订单不能变为其他状态
+        if (currentStatus == 3) {
+            return false;
+        }
+
+        // 其他情况都是合法的
+        return true;
     }
 
     /**

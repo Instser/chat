@@ -2,15 +2,18 @@ package com.instser.chat.service.serviceimpl;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.instser.chat.common.exception.ExternalServiceException;
 import com.instser.chat.entity.AiModel;
 import com.instser.chat.service.OpenAiService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
 
@@ -40,6 +43,9 @@ public class OpenAiServiceImpl implements OpenAiService {
     @Override
     public void streamChat(List<Map<String, String>> messages, AiModel model, SseEmitter emitter) {
         try {
+            // 验证参数
+            validateStreamChatParams(messages, model, emitter);
+
             // 构建请求体
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", model.getModelCode());
@@ -56,7 +62,7 @@ public class OpenAiServiceImpl implements OpenAiService {
                     .build();
 
             log.info("调用AI API: {}, 模型: {}", model.getBaseUrl(), model.getModelCode());
-            log.info("请求体: {}", requestBody);
+            log.debug("请求体: {}", requestBody);
 
             // 发送流式请求
             Flux<DataBuffer> responseFlux = webClient.post()
@@ -69,13 +75,7 @@ public class OpenAiServiceImpl implements OpenAiService {
                     .doOnNext(dataBuffer -> log.info("收到DataBuffer，大小: {} bytes", dataBuffer.readableByteCount()))
                     .doOnError(throwable -> log.error("AI API调用失败", throwable))
                     .onErrorResume(throwable -> {
-                        log.error("AI API调用失败", throwable);
-                        try {
-                            emitter.send(SseEmitter.event().data("抱歉，AI服务暂时不可用，请稍后重试。"));
-                            emitter.complete();
-                        } catch (Exception e) {
-                            log.error("发送错误消息失败", e);
-                        }
+                        handleStreamError(throwable, emitter, model.getModelName());
                         return Flux.empty();
                     });
 
@@ -173,12 +173,7 @@ public class OpenAiServiceImpl implements OpenAiService {
                     },
                     error -> {
                         log.error("AI API流式响应处理失败", error);
-                        try {
-                            emitter.send(SseEmitter.event().data("抱歉，AI服务出现异常，请稍后重试。"));
-                            emitter.complete();
-                        } catch (Exception e) {
-                            log.error("发送错误消息失败", e);
-                        }
+                        handleStreamError(error, emitter, model.getModelName());
                     },
                     () -> {
                         log.info("AI API流式响应处理完成");
@@ -186,14 +181,12 @@ public class OpenAiServiceImpl implements OpenAiService {
                     }
             );
 
+        } catch (ExternalServiceException e) {
+            // 业务异常直接抛出
+            throw e;
         } catch (Exception e) {
             log.error("调用AI API异常", e);
-            try {
-                emitter.send(SseEmitter.event().data("抱歉，调用AI服务时出现异常。"));
-                emitter.complete();
-            } catch (IOException ioException) {
-                log.error("发送异常消息失败", ioException);
-            }
+            handleStreamError(e, emitter, model.getModelName());
         }
     }
 
@@ -239,9 +232,70 @@ public class OpenAiServiceImpl implements OpenAiService {
 
             return "抱歉，AI服务返回了异常响应。";
 
+        } catch (WebClientResponseException e) {
+            log.error("AI API调用失败，状态码: {}, 响应: {}", e.getStatusCode(), e.getResponseBodyAsString());
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                throw ExternalServiceException.invalidApiKey(model.getModelName());
+            } else if (e.getStatusCode() == HttpStatus.TOO_MANY_REQUESTS) {
+                throw ExternalServiceException.rateLimitExceeded(model.getModelName());
+            } else if (e.getStatusCode().is5xxServerError()) {
+                throw ExternalServiceException.serviceUnavailable(model.getModelName());
+            } else {
+                throw ExternalServiceException.aiServiceError(model.getModelName(), e.getMessage());
+            }
         } catch (Exception e) {
             log.error("调用AI API异常", e);
-            return "抱歉，AI服务暂时不可用，请稍后重试。";
+            throw ExternalServiceException.aiServiceError(model.getModelName(), e.getMessage());
+        }
+    }
+
+    /**
+     * 验证流式聊天参数
+     */
+    private void validateStreamChatParams(List<Map<String, String>> messages, AiModel model, SseEmitter emitter) {
+        if (messages == null || messages.isEmpty()) {
+            throw new IllegalArgumentException("消息列表不能为空");
+        }
+        if (model == null) {
+            throw new IllegalArgumentException("AI模型不能为空");
+        }
+        if (emitter == null) {
+            throw new IllegalArgumentException("SSE发射器不能为空");
+        }
+        if (model.getBaseUrl() == null || model.getBaseUrl().trim().isEmpty()) {
+            throw ExternalServiceException.serviceUnavailable(model.getModelName());
+        }
+        if (model.getApiKey() == null || model.getApiKey().trim().isEmpty()) {
+            throw ExternalServiceException.invalidApiKey(model.getModelName());
+        }
+    }
+
+    /**
+     * 处理流式请求错误
+     */
+    private void handleStreamError(Throwable throwable, SseEmitter emitter, String modelName) {
+        String errorMessage = "抱歉，AI服务暂时不可用，请稍后重试。";
+
+        if (throwable instanceof WebClientResponseException) {
+            WebClientResponseException webEx = (WebClientResponseException) throwable;
+            log.error("AI API调用失败，状态码: {}, 响应: {}", webEx.getStatusCode(), webEx.getResponseBodyAsString());
+
+            if (webEx.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                errorMessage = "AI服务认证失败，请检查API密钥。";
+            } else if (webEx.getStatusCode() == HttpStatus.TOO_MANY_REQUESTS) {
+                errorMessage = "AI服务调用频率超限，请稍后重试。";
+            } else if (webEx.getStatusCode().is5xxServerError()) {
+                errorMessage = "AI服务暂时不可用，请稍后重试。";
+            }
+        } else {
+            log.error("AI API调用异常", throwable);
+        }
+
+        try {
+            emitter.send(SseEmitter.event().data(errorMessage));
+            emitter.complete();
+        } catch (Exception e) {
+            log.error("发送错误消息失败", e);
         }
     }
 }

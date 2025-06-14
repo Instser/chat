@@ -5,6 +5,7 @@ import com.instser.chat.service.PackageService;
 import com.instser.chat.service.UserService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -25,6 +26,12 @@ public class DataInitializer implements ApplicationRunner {
     private final UserService userService;
     private final PackageService packageService;
     private final JdbcTemplate jdbcTemplate;
+
+    @Value("${ai.default.base-url}")
+    private String defaultBaseUrl;
+
+    @Value("${ai.default.api-key}")
+    private String defaultApiKey;
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
@@ -69,7 +76,7 @@ public class DataInitializer implements ApplicationRunner {
 
                 // 更新现有模型的API配置
                 String updateSql = "UPDATE t_ai_model SET base_url = ?, api_key = ? WHERE deleted = 0";
-                jdbcTemplate.update(updateSql, "http://203.0.113.15:3000/v1", "a2366021253");
+                jdbcTemplate.update(updateSql, defaultBaseUrl, defaultApiKey);
 
                 log.info("AI模型API配置字段添加完成");
             } else {

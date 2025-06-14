@@ -140,15 +140,36 @@ yipay:
   # 默认支付方式（alipay、wxpay、qqpay等）
   default-type: ${YIPAY_DEFAULT_TYPE:alipay}
 
+# AI模型配置
+ai:
+  # 默认API配置
+  default:
+    base-url: ${AI_BASE_URL:http://203.0.113.15:3000/v1}
+    api-key: ${AI_API_KEY:a2366021253}
+
+# 应用配置
+app:
+  # CORS配置
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:3001}
+    allowed-methods: ${CORS_ALLOWED_METHODS:GET,POST,PUT,DELETE,OPTIONS}
+    allowed-headers: ${CORS_ALLOWED_HEADERS:*}
+    allow-credentials: ${CORS_ALLOW_CREDENTIALS:true}
+    max-age: ${CORS_MAX_AGE:3600}
+
 # 日志配置
 logging:
   level:
-    com.instser.chat: debug
-    root: info
+    com.instser.chat: ${LOG_LEVEL_APP:debug}
+    root: ${LOG_LEVEL_ROOT:info}
+    # 减少Druid日志输出
+    com.alibaba.druid: warn
+    # 减少MyBatis日志输出（生产环境建议关闭）
+    org.apache.ibatis: ${LOG_LEVEL_MYBATIS:info}
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{50} - %msg%n"
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n"
   file:
     name: logs/jinyu-chat.log
-
-
+    max-size: 100MB
+    max-history: 30

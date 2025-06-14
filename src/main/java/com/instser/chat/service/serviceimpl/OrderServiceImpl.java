@@ -7,6 +7,7 @@ import com.instser.chat.entity.Package;
 import com.instser.chat.entity.UserOrder;
 import com.instser.chat.service.OrderService;
 import com.instser.chat.service.PackageService;
+import com.instser.chat.util.MoneyUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -52,9 +53,12 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
             throw new BusinessException("不支持的货币类型: " + currency);
         }
 
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+        if (!MoneyUtil.isZeroOrPositive(amount)) {
             throw new BusinessException("套餐价格配置错误");
         }
+
+        // 格式化金额精度
+        amount = MoneyUtil.formatAmount(amount, currency);
 
         // 创建订单
         UserOrder order = new UserOrder();
@@ -136,6 +140,16 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmss"));
         int random = ThreadLocalRandom.current().nextInt(1000, 9999);
         return "JY" + timestamp + random;
+    }
+
+    @Override
+    public int cleanupExpiredOrders() {
+        return baseMapper.cleanupExpiredOrders();
+    }
+
+    @Override
+    public int syncPendingOrderStatus() {
+        return baseMapper.syncPendingOrderStatus();
     }
 
     /**

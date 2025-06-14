@@ -64,4 +64,31 @@ public interface UserOrderDao extends BaseMapper<UserOrder> {
      */
     @Select("SELECT COUNT(*) FROM t_user_order WHERE user_id = #{userId} AND payment_status = 1 AND deleted = 0")
     int countValidOrdersByUserId(Long userId);
+
+    /**
+     * 清理过期订单（将过期的未支付订单标记为已取消）
+     *
+     * @return 清理的订单数量
+     */
+    @Update("UPDATE t_user_order SET payment_status = 2, update_time = NOW() " +
+            "WHERE payment_status = 0 AND expire_time < NOW() AND deleted = 0")
+    int cleanupExpiredOrders();
+
+    /**
+     * 同步待支付订单状态（查询超过1小时未更新的待支付订单）
+     *
+     * @return 需要同步的订单数量
+     */
+    @Select("SELECT COUNT(*) FROM t_user_order " +
+            "WHERE payment_status = 0 AND expire_time > NOW() " +
+            "AND update_time < DATE_SUB(NOW(), INTERVAL 1 HOUR) AND deleted = 0")
+    int syncPendingOrderStatus();
+
+    /**
+     * 查询过期的未支付订单
+     *
+     * @return 过期订单列表
+     */
+    @Select("SELECT * FROM t_user_order WHERE payment_status = 0 AND expire_time < NOW() AND deleted = 0")
+    List<UserOrder> selectExpiredOrders();
 }

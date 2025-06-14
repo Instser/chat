@@ -80,4 +80,18 @@ public interface OrderService extends IService<UserOrder> {
      * @return 订单号
      */
     String generateOrderNo();
+
+    /**
+     * 清理过期订单
+     *
+     * @return 清理的订单数量
+     */
+    int cleanupExpiredOrders();
+
+    /**
+     * 同步待支付订单状态
+     *
+     * @return 同步的订单数量
+     */
+    int syncPendingOrderStatus();
 }
