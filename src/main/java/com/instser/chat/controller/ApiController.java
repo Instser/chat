@@ -1,26 +1,25 @@
 package com.instser.chat.controller;
 
-import com.instser.chat.common.exception.BusinessException;
 import com.instser.chat.common.result.Result;
 import com.instser.chat.entity.AiModel;
 import com.instser.chat.entity.ChatMessage;
 import com.instser.chat.entity.ChatSession;
-import com.instser.chat.entity.User;
+import com.instser.chat.security.UserDetailsServiceImpl;
 import com.instser.chat.service.AiModelService;
 import com.instser.chat.service.ChatMessageService;
 import com.instser.chat.service.ChatSessionService;
-import com.instser.chat.service.UserService;
 import com.instser.chat.vo.AiModelVO;
 import com.instser.chat.vo.ChatMessageVO;
 import com.instser.chat.vo.ChatSessionVO;
-import com.instser.chat.vo.UserVO;
 import com.instser.chat.vo.converter.VOConverter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.validation.constraints.NotBlank;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -38,117 +37,19 @@ import java.util.Map;
 @CrossOrigin(originPatterns = "*", allowedHeaders = "*", allowCredentials = "true")
 public class ApiController {
 
-    private final UserService userService;
     private final ChatSessionService chatSessionService;
     private final ChatMessageService chatMessageService;
     private final AiModelService aiModelService;
 
-    // ==================== 认证相关接口 ====================
+    // ==================== 认证相关接口已迁移到AuthController ====================
 
     /**
-     * 获取当前用户信息
+     * 获取当前认证用户ID
      */
-    @GetMapping("/auth/me")
-    public Result<UserVO> getCurrentUser(@RequestParam(required = false) Long userId) {
-        // TODO: 从JWT token中获取用户ID，这里暂时使用参数
-        // 如果没有提供userId，返回未认证状态
-        if (userId == null) {
-            return Result.failed("用户未认证");
-        }
-
-        User user = userService.getById(userId);
-        if (user == null) {
-            return Result.failed("用户不存在");
-        }
-        UserVO userVO = VOConverter.toUserVO(user);
-        return Result.success(userVO, "获取用户信息成功");
-    }
-
-    /**
-     * 用户登录
-     */
-    @PostMapping("/auth/login")
-    public Result<UserVO> login(@RequestBody Map<String, Object> request) {
-        String usernameOrEmail = (String) request.get("usernameOrEmail");
-        String password = (String) request.get("password");
-
-        if (usernameOrEmail == null || usernameOrEmail.trim().isEmpty()) {
-            return Result.validateFailed("用户名或邮箱不能为空");
-        }
-        if (password == null || password.trim().isEmpty()) {
-            return Result.validateFailed("密码不能为空");
-        }
-
-        try {
-            // 判断输入的是邮箱还是用户名
-            User user;
-            if (usernameOrEmail.contains("@")) {
-                // 邮箱登录
-                user = userService.login(usernameOrEmail, password);
-            } else {
-                // 用户名登录，先根据用户名获取邮箱
-                User userByUsername = userService.getUserByUsername(usernameOrEmail);
-                if (userByUsername == null) {
-                    return Result.failed("用户不存在");
-                }
-                user = userService.login(userByUsername.getEmail(), password);
-            }
-
-            UserVO userVO = VOConverter.toUserVO(user);
-            log.info("用户登录成功，用户ID：{}", user.getId());
-            return Result.success(userVO, "登录成功");
-        } catch (BusinessException e) {
-            log.warn("用户登录失败：{}", e.getMessage());
-            return Result.failed(e.getMessage());
-        } catch (Exception e) {
-            log.error("用户登录异常", e);
-            return Result.failed("登录失败，请重试");
-        }
-    }
-
-    /**
-     * 用户注册
-     */
-    @PostMapping("/auth/register")
-    public Result<UserVO> register(@RequestBody Map<String, Object> request) {
-        String username = (String) request.get("username");
-        String email = (String) request.get("email");
-        String password = (String) request.get("password");
-
-        if (username == null || username.trim().isEmpty()) {
-            return Result.validateFailed("用户名不能为空");
-        }
-        if (email == null || email.trim().isEmpty()) {
-            return Result.validateFailed("邮箱不能为空");
-        }
-        if (password == null || password.trim().isEmpty()) {
-            return Result.validateFailed("密码不能为空");
-        }
-
-        try {
-            // 调用真实的注册逻辑
-            Long userId = userService.registerUser(username, email, password);
-            User user = userService.getById(userId);
-
-            UserVO userVO = VOConverter.toUserVO(user);
-            log.info("用户注册成功，用户ID：{}，用户名：{}", userId, username);
-            return Result.success(userVO, "注册成功");
-        } catch (BusinessException e) {
-            log.warn("用户注册失败：{}", e.getMessage());
-            return Result.failed(e.getMessage());
-        } catch (Exception e) {
-            log.error("用户注册异常", e);
-            return Result.failed("注册失败，请重试");
-        }
-    }
-
-    /**
-     * 用户登出
-     */
-    @PostMapping("/auth/logout")
-    public Result<Void> logout() {
-        // TODO: 实现登出逻辑，清除JWT token
-        return Result.success(null, "登出成功");
+    private Long getCurrentUserId(Authentication authentication) {
+        UserDetailsServiceImpl.CustomUserDetails userDetails =
+            (UserDetailsServiceImpl.CustomUserDetails) authentication.getPrincipal();
+        return userDetails.getUserId();
     }
 
     // ==================== 聊天会话相关接口 ====================
@@ -157,11 +58,42 @@ public class ApiController {
      * 获取用户的聊天列表
      */
     @GetMapping("/chats")
-    public Result<List<ChatSessionVO>> getChats(@RequestParam(defaultValue = "1") Long userId) {
-        // TODO: 从JWT token中获取用户ID
+    public Result<List<ChatSessionVO>> getChats(Authentication authentication) {
+        UserDetailsServiceImpl.CustomUserDetails userDetails =
+            (UserDetailsServiceImpl.CustomUserDetails) authentication.getPrincipal();
+        Long userId = userDetails.getUserId();
+
         List<ChatSession> chatSessions = chatSessionService.getUserSessions(userId);
         List<ChatSessionVO> chatSessionVOs = VOConverter.toChatSessionVOList(chatSessions);
         return Result.success(chatSessionVOs, "获取聊天列表成功");
+    }
+
+    /**
+     * 获取用户的聊天列表 - 支持分页
+     */
+    @GetMapping("/chats/paged")
+    public Result<Map<String, Object>> getChatsWithPaging(
+            @RequestParam(defaultValue = "20") Integer limit,
+            @RequestParam(defaultValue = "0") Integer offset,
+            Authentication authentication) {
+        UserDetailsServiceImpl.CustomUserDetails userDetails =
+            (UserDetailsServiceImpl.CustomUserDetails) authentication.getPrincipal();
+        Long userId = userDetails.getUserId();
+
+        List<ChatSession> allChatSessions = chatSessionService.getUserSessions(userId);
+        List<ChatSessionVO> allChatSessionVOs = VOConverter.toChatSessionVOList(allChatSessions);
+
+        // 实现分页逻辑
+        int start = Math.min(offset, allChatSessionVOs.size());
+        int end = Math.min(offset + limit, allChatSessionVOs.size());
+        List<ChatSessionVO> pagedChats = allChatSessionVOs.subList(start, end);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("chats", pagedChats);
+        response.put("total", allChatSessionVOs.size());
+        response.put("hasMore", end < allChatSessionVOs.size());
+
+        return Result.success(response, "获取聊天列表成功");
     }
 
     /**
@@ -169,11 +101,11 @@ public class ApiController {
      */
     @PostMapping("/chats")
     public Result<ChatSessionVO> createChat(@RequestBody Map<String, Object> request,
-                                           @RequestParam(defaultValue = "1") Long userId) {
+                                           Authentication authentication) {
+        Long userId = getCurrentUserId(authentication);
         String title = (String) request.getOrDefault("title", "新对话");
         Long modelId = Long.valueOf(request.getOrDefault("modelId", "1").toString());
 
-        // TODO: 从JWT token中获取用户ID
         String sessionId = chatSessionService.createSession(userId, modelId);
         ChatSession chatSession = chatSessionService.getSessionInfo(sessionId);
 
@@ -199,7 +131,8 @@ public class ApiController {
      */
     @GetMapping("/chats/{id}")
     public Result<ChatSessionVO> getChat(@PathVariable @NotBlank String id,
-                                        @RequestParam(defaultValue = "1") Long userId) {
+                                        Authentication authentication) {
+        Long userId = getCurrentUserId(authentication);
         ChatSession chatSession = chatSessionService.getSessionInfo(id);
         if (chatSession == null) {
             return Result.failed("聊天不存在");
@@ -223,7 +156,8 @@ public class ApiController {
     @PutMapping("/chats/{id}")
     public Result<ChatSessionVO> updateChat(@PathVariable @NotBlank String id,
                                            @RequestBody Map<String, Object> request,
-                                           @RequestParam(defaultValue = "1") Long userId) {
+                                           Authentication authentication) {
+        Long userId = getCurrentUserId(authentication);
         String title = (String) request.get("title");
 
         if (title == null || title.trim().isEmpty()) {
@@ -256,7 +190,8 @@ public class ApiController {
      */
     @DeleteMapping("/chats/{id}")
     public Result<Void> deleteChat(@PathVariable @NotBlank String id,
-                                  @RequestParam(defaultValue = "1") Long userId) {
+                                  Authentication authentication) {
+        Long userId = getCurrentUserId(authentication);
         // 先验证聊天是否属于当前用户
         ChatSession chatSession = chatSessionService.getSessionInfo(id);
         if (chatSession == null) {
@@ -276,11 +211,16 @@ public class ApiController {
     // ==================== 消息相关接口 ====================
 
     /**
-     * 获取聊天的所有消息
+     * 获取聊天消息 - 支持分页参数
      */
     @GetMapping("/chats/{chatId}/messages")
-    public Result<List<ChatMessageVO>> getChatMessages(@PathVariable @NotBlank String chatId,
-                                                      @RequestParam(defaultValue = "1") Long userId) {
+    public Result<Map<String, Object>> getChatMessages(
+            @PathVariable @NotBlank String chatId,
+            @RequestParam(required = false) Integer limit,
+            @RequestParam(required = false) Integer offset,
+            Authentication authentication) {
+        Long userId = getCurrentUserId(authentication);
+
         // 先验证聊天是否属于当前用户
         ChatSession chatSession = chatSessionService.getSessionInfo(chatId);
         if (chatSession == null) {
@@ -290,10 +230,35 @@ public class ApiController {
             return Result.failed("无权访问此聊天");
         }
 
-        List<ChatMessage> chatMessages = chatMessageService.getSessionMessages(chatId);
-        List<ChatMessageVO> chatMessageVOs = VOConverter.toChatMessageVOList(chatMessages);
-        return Result.success(chatMessageVOs, "获取消息列表成功");
+        List<ChatMessage> allMessages = chatMessageService.getSessionMessages(chatId);
+        List<ChatMessageVO> allMessageVOs = VOConverter.toChatMessageVOList(allMessages);
+
+        // 如果没有分页参数，返回所有消息（保持向后兼容）
+        if (limit == null && offset == null) {
+            Map<String, Object> response = new HashMap<>();
+            response.put("messages", allMessageVOs);
+            response.put("total", allMessageVOs.size());
+            response.put("hasMore", false);
+            return Result.success(response, "获取消息列表成功");
+        }
+
+        // 有分页参数时，返回分页结果
+        int actualLimit = limit != null ? limit : 50;
+        int actualOffset = offset != null ? offset : 0;
+
+        int start = Math.min(actualOffset, allMessageVOs.size());
+        int end = Math.min(actualOffset + actualLimit, allMessageVOs.size());
+        List<ChatMessageVO> pagedMessages = allMessageVOs.subList(start, end);
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("messages", pagedMessages);
+        response.put("total", allMessageVOs.size());
+        response.put("hasMore", end < allMessageVOs.size());
+
+        return Result.success(response, "获取消息成功");
     }
+
+
 
     /**
      * 添加新消息到聊天
@@ -301,7 +266,8 @@ public class ApiController {
     @PostMapping("/chats/{chatId}/messages")
     public Result<ChatMessageVO> addMessage(@PathVariable @NotBlank String chatId,
                                            @RequestBody Map<String, Object> request,
-                                           @RequestParam(defaultValue = "1") Long userId) {
+                                           Authentication authentication) {
+        Long userId = getCurrentUserId(authentication);
         String role = (String) request.get("role");
         String content = (String) request.get("content");
 
@@ -321,7 +287,6 @@ public class ApiController {
             return Result.failed("无权访问此聊天");
         }
 
-        // TODO: 从JWT token中获取用户ID
         Long messageId = chatMessageService.sendMessage(chatId, role, content, userId);
         ChatMessage chatMessage = chatMessageService.getById(messageId);
 

@@ -1,6 +1,7 @@
 package com.instser.chat.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
+import com.instser.chat.dto.request.UpdateProfileRequest;
 import com.instser.chat.entity.User;
 
 /**
@@ -57,4 +58,30 @@ public interface UserService extends IService<User> {
      * 初始化默认用户
      */
     void initDefaultUser();
+
+    /**
+     * 检查密码是否正确
+     *
+     * @param rawPassword     原始密码
+     * @param encodedPassword 加密后的密码
+     * @return 是否匹配
+     */
+    boolean checkPassword(String rawPassword, String encodedPassword);
+
+    /**
+     * 更新用户密码
+     *
+     * @param userId      用户ID
+     * @param newPassword 新密码
+     */
+    void updatePassword(Long userId, String newPassword);
+
+    /**
+     * 更新用户资料
+     *
+     * @param userId  用户ID
+     * @param request 更新请求
+     * @return 更新后的用户信息
+     */
+    User updateProfile(Long userId, UpdateProfileRequest request);
 }

@@ -147,6 +147,25 @@ ai:
     base-url: ${AI_BASE_URL:http://203.0.113.15:3000/v1}
     api-key: ${AI_API_KEY:a2366021253}
 
+# JWT配置
+jwt:
+  # JWT密钥（生产环境请使用环境变量）
+  secret: ${JWT_SECRET:change-me-jwt-secret-key}
+  # Token过期时间（秒）- 7天
+  expiration: ${JWT_EXPIRATION:604800}
+  # Cookie名称
+  cookie-name: ${JWT_COOKIE_NAME:auth-token}
+  # Cookie是否HttpOnly
+  http-only: ${JWT_HTTP_ONLY:true}
+  # Cookie是否Secure（HTTPS）
+  secure: ${JWT_SECURE:false}
+  # Cookie SameSite策略
+  same-site: ${JWT_SAME_SITE:Strict}
+  # Token前缀
+  token-prefix: ${JWT_TOKEN_PREFIX:Bearer }
+  # 请求头名称
+  header-name: ${JWT_HEADER_NAME:Authorization}
+
 # 应用配置
 app:
   # CORS配置

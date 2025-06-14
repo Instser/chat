@@ -3,6 +3,7 @@ package com.instser.chat.service.serviceimpl;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.instser.chat.common.exception.BusinessException;
 import com.instser.chat.dao.UserDao;
+import com.instser.chat.dto.request.UpdateProfileRequest;
 import com.instser.chat.entity.User;
 import com.instser.chat.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -116,5 +117,38 @@ public class UserServiceImpl extends ServiceImpl<UserDao, User> implements UserS
 
         this.save(defaultUser);
         log.info("默认用户初始化完成，用户ID：{}", defaultUser.getId());
+    }
+
+    @Override
+    public boolean checkPassword(String rawPassword, String encodedPassword) {
+        return passwordEncoder.matches(rawPassword, encodedPassword);
+    }
+
+    @Override
+    public void updatePassword(Long userId, String newPassword) {
+        User user = new User();
+        user.setId(userId);
+        user.setPassword(passwordEncoder.encode(newPassword));
+        user.setUpdateTime(LocalDateTime.now());
+
+        this.updateById(user);
+        log.info("用户密码更新成功，用户ID：{}", userId);
+    }
+
+    @Override
+    public User updateProfile(Long userId, UpdateProfileRequest request) {
+        User user = new User();
+        user.setId(userId);
+        user.setUsername(request.getUsername());
+        user.setEmail(request.getEmail());
+        user.setAvatar(request.getAvatar());
+        user.setUpdateTime(LocalDateTime.now());
+
+        this.updateById(user);
+
+        // 返回更新后的完整用户信息
+        User updatedUser = this.getById(userId);
+        log.info("用户资料更新成功，用户ID：{}", userId);
+        return updatedUser;
     }
 }
