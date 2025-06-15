@@ -13,7 +13,7 @@
         <result column="status" property="status" />
         <result column="alipay_id" property="alipayId" />
         <result column="last_login_time" property="lastLoginTime" />
-        <result column="create_time" property="createTime" />
+        <result column="create_time" property="createdTime" />
         <result column="update_time" property="updateTime" />
         <result column="deleted" property="deleted" />
     </resultMap>

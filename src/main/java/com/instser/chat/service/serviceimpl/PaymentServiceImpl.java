@@ -20,7 +20,10 @@ import com.instser.chat.entity.UserOrder;
 import com.instser.chat.service.OrderService;
 import com.instser.chat.service.PackageService;
 import com.instser.chat.service.PaymentService;
-
+import com.instser.chat.strategy.PaymentStrategy;
+import com.instser.chat.strategy.PaymentStrategyFactory;
+import com.instser.chat.util.MoneyUtil;
+import com.instser.chat.util.PaymentSecurityUtil;
 import com.instser.chat.vo.PaymentRequestVO;
 import com.instser.chat.vo.PaymentResponseVO;
 import lombok.RequiredArgsConstructor;
@@ -28,8 +31,12 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
+import java.math.BigDecimal;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
 
@@ -44,14 +51,29 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class PaymentServiceImpl implements PaymentService {
 
-    private final AlipayClient alipayClient;
-    private final AlipayConfig alipayConfig;
-    private final YiPayConfig yiPayConfig;
+    private final PaymentStrategyFactory paymentStrategyFactory;
     private final OrderService orderService;
     private final PackageService packageService;
+    private final AlipayConfig alipayConfig;
+    private final YiPayConfig yiPayConfig;
+    private final AlipayClient alipayClient;
 
     // 创建ObjectMapper实例，避免依赖注入问题
     private final ObjectMapper objectMapper = new ObjectMapper();
+
+    /**
+     * 获取支持的支付方式
+     */
+    public List<String> getSupportedPaymentMethods() {
+        return paymentStrategyFactory.getSupportedPaymentMethods();
+    }
+
+    /**
+     * 获取可用的支付方式（配置完整）
+     */
+    public List<String> getAvailablePaymentMethods() {
+        return paymentStrategyFactory.getAvailablePaymentMethods();
+    }
 
     @Override
     public PaymentResponseVO createPayment(PaymentRequestVO paymentRequest) {
@@ -62,15 +84,12 @@ public class PaymentServiceImpl implements PaymentService {
             // 根据paymentMethod字段选择支付方式
             String paymentMethod = paymentRequest.getPaymentMethod();
 
-            if ("alipay".equals(paymentMethod)) {
-                // 使用支付宝SDK
-                return createAlipayPayment(paymentRequest);
-            } else if ("yipay".equals(paymentMethod)) {
-                // 使用易支付
-                return createYiPayPayment(paymentRequest);
-            } else {
-                throw PaymentException.unsupportedPaymentMethod(paymentMethod);
-            }
+            // 使用策略模式获取对应的支付策略
+            PaymentStrategy strategy = paymentStrategyFactory.getStrategy(paymentMethod);
+
+            // 执行支付创建
+            return strategy.createPayment(paymentRequest);
+
         } catch (PaymentException | ResourceNotFoundException e) {
             // 业务异常直接抛出，由全局异常处理器处理
             throw e;

@@ -38,7 +38,7 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
         message.setModelId(1L); // 默认模型ID，后续可以从会话中获取
         message.setTokenCount(content.length() / 4); // 简单估算token数
         message.setStatus(1); // 成功状态
-        message.setCreateTime(LocalDateTime.now());
+        message.setCreatedTime(LocalDateTime.now());
         message.setUpdateTime(LocalDateTime.now());
 
         this.save(message);

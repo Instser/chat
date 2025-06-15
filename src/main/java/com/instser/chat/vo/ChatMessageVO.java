@@ -72,9 +72,9 @@ public class ChatMessageVO implements Serializable {
     private String errorMessage;
 
     /**
-     * 创建时间（前端使用created_at）
+     * 创建时间
      */
-    private LocalDateTime createdAt;
+    private LocalDateTime createdTime;
 
     /**
      * 更新时间

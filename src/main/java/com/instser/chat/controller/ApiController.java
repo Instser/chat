@@ -18,8 +18,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
-import org.springframework.http.MediaType;
+
 import org.springframework.beans.factory.annotation.Value;
 
 import jakarta.validation.constraints.NotBlank;
@@ -40,7 +39,7 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api")
+@RequestMapping("")
 @RequiredArgsConstructor
 @Validated
 @CrossOrigin(originPatterns = "*", allowedHeaders = "*", allowCredentials = "true")
@@ -48,7 +47,6 @@ public class ApiController {
 
     private final ChatSessionService chatSessionService;
     private final ChatMessageService chatMessageService;
-    private final ChatApiController chatApiController;
 
     @Value("${file.upload.path:uploads}")
     private String uploadPath;
@@ -713,69 +711,9 @@ public class ApiController {
     }
 
     // ==================== AI聊天相关接口 ====================
+    // 注意：聊天接口已迁移到ChatApiController，避免路径冲突
 
-    /**
-     * AI聊天接口 - 前端兼容版本
-     * 路径：POST /api/chat
-     */
-    @PostMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter chatFrontend(@RequestBody Map<String, Object> request) {
-        log.info("收到前端兼容聊天请求：{}", request);
 
-        // 转换请求参数格式以适配原有接口
-        Map<String, Object> adaptedRequest = adaptChatRequest(request);
-
-        // 调用原有的聊天接口
-        return chatApiController.chat(adaptedRequest);
-    }
-
-    /**
-     * AI聊天接口 - GET方式（用于EventSource）
-     * 路径：GET /api/chat
-     */
-    @GetMapping(value = "/chat", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter chatFrontendGet(@RequestParam("data") String requestData) {
-        log.info("收到前端兼容EventSource聊天请求：{}", requestData);
-
-        // 调用原有的GET接口
-        return chatApiController.chatGet(requestData);
-    }
-
-    /**
-     * 转换前端请求参数为后端格式
-     */
-    private Map<String, Object> adaptChatRequest(Map<String, Object> frontendRequest) {
-        Map<String, Object> backendRequest = new HashMap<>(frontendRequest);
-
-        // 前端可能发送的参数：
-        // {
-        //   "messages": [...],
-        //   "deepThinking": boolean
-        // }
-
-        // 后端期望的参数：
-        // {
-        //   "messages": [...],
-        //   "userId": Long,
-        //   "modelCode": string
-        // }
-
-        // 如果前端没有提供userId，使用默认值（临时方案）
-        if (!backendRequest.containsKey("userId")) {
-            backendRequest.put("userId", 1L);
-        }
-
-        // 如果前端没有提供modelCode，使用默认模型
-        if (!backendRequest.containsKey("modelCode")) {
-            backendRequest.put("modelCode", "qwen3-235b-a22b");
-        }
-
-        // 保留deepThinking参数（如果有的话）
-        // 这个参数可能在后端实现中使用
-
-        log.debug("适配后的请求参数：{}", backendRequest);
-        return backendRequest;
-    }
 
     // ==================== AI模型相关接口 ====================
 

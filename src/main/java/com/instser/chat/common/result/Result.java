@@ -137,6 +137,15 @@ public class Result<T> implements Serializable {
     }
 
     /**
+     * 未登录返回结果
+     *
+     * @param message 提示信息
+     */
+    public static <T> Result<T> unauthorized(String message) {
+        return new Result<T>(ResultCode.UNAUTHORIZED.getCode(), message);
+    }
+
+    /**
      * 未授权返回结果
      */
     public static <T> Result<T> forbidden(T data) {

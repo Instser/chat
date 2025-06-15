@@ -48,7 +48,7 @@ public class AiModelServiceImpl extends ServiceImpl<AiModelDao, AiModel> impleme
         gpt4.setTokenLimit(8192);
         gpt4.setPricePer1kTokens(new BigDecimal("0.03"));
         gpt4.setIsAvailable(1);
-        gpt4.setCreateTime(LocalDateTime.now());
+        gpt4.setCreatedTime(LocalDateTime.now());
         gpt4.setUpdateTime(LocalDateTime.now());
 
         AiModel gpt35 = new AiModel();
@@ -60,7 +60,7 @@ public class AiModelServiceImpl extends ServiceImpl<AiModelDao, AiModel> impleme
         gpt35.setTokenLimit(4096);
         gpt35.setPricePer1kTokens(new BigDecimal("0.002"));
         gpt35.setIsAvailable(1);
-        gpt35.setCreateTime(LocalDateTime.now());
+        gpt35.setCreatedTime(LocalDateTime.now());
         gpt35.setUpdateTime(LocalDateTime.now());
 
         AiModel qwen = new AiModel();
@@ -72,7 +72,7 @@ public class AiModelServiceImpl extends ServiceImpl<AiModelDao, AiModel> impleme
         qwen.setTokenLimit(8192);
         qwen.setPricePer1kTokens(new BigDecimal("0.001"));
         qwen.setIsAvailable(1);
-        qwen.setCreateTime(LocalDateTime.now());
+        qwen.setCreatedTime(LocalDateTime.now());
         qwen.setUpdateTime(LocalDateTime.now());
 
         this.saveBatch(List.of(gpt4, gpt35, qwen));

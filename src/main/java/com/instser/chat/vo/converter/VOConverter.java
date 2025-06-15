@@ -59,7 +59,8 @@ public class VOConverter {
         
         // 设置前端需要的字段
         chatSessionVO.setId(chatSession.getSessionId()); // 前端使用sessionId作为id
-        chatSessionVO.setUpdatedAt(chatSession.getUpdateTime()); // 前端使用updated_at
+        chatSessionVO.setCreatedTime(chatSession.getCreatedTime()); // 统一使用createdTime
+        chatSessionVO.setUpdateTime(chatSession.getUpdateTime()); // 统一使用updateTime
         
         return chatSessionVO;
     }
@@ -88,7 +89,8 @@ public class VOConverter {
         // 设置前端需要的字段
         chatMessageVO.setId(chatMessage.getMessageId()); // 前端使用messageId作为id
         chatMessageVO.setChatId(chatMessage.getSessionId()); // 前端使用chatId
-        chatMessageVO.setCreatedAt(chatMessage.getCreateTime()); // 前端使用created_at
+        chatMessageVO.setCreatedTime(chatMessage.getCreatedTime()); // 统一使用createdTime
+        chatMessageVO.setUpdateTime(chatMessage.getUpdateTime()); // 统一使用updateTime
         
         return chatMessageVO;
     }

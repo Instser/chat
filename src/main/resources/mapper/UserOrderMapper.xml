@@ -18,7 +18,7 @@
         <result column="payment_url" property="paymentUrl" />
         <result column="expire_time" property="expireTime" />
         <result column="remark" property="remark" />
-        <result column="create_time" property="createTime" />
+        <result column="create_time" property="createdTime" />
         <result column="update_time" property="updateTime" />
         <result column="deleted" property="deleted" />
     </resultMap>

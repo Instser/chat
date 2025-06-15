@@ -205,4 +205,30 @@ public class MoneyUtil {
         BigDecimal formattedAmount = formatAmount(amount, currency);
         return formattedAmount.toPlainString();
     }
+
+    /**
+     * 格式化金额用于支付宝API
+     *
+     * @param amount 金额
+     * @return 格式化后的金额字符串
+     */
+    public static String formatAmountForAlipay(BigDecimal amount) {
+        if (amount == null) {
+            return "0.00";
+        }
+        return amount.setScale(2, DEFAULT_ROUNDING_MODE).toPlainString();
+    }
+
+    /**
+     * 格式化金额用于易支付API
+     *
+     * @param amount 金额
+     * @return 格式化后的金额字符串
+     */
+    public static String formatAmountForYiPay(BigDecimal amount) {
+        if (amount == null) {
+            return "0.00";
+        }
+        return amount.setScale(2, DEFAULT_ROUNDING_MODE).toPlainString();
+    }
 }

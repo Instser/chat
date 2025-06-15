@@ -156,11 +156,13 @@ jwt:
   # Cookie名称
   cookie-name: ${JWT_COOKIE_NAME:auth-token}
   # Cookie是否HttpOnly
-  http-only: ${JWT_HTTP_ONLY:true}
+  http-only: ${JWT_HTTP_ONLY:false}
   # Cookie是否Secure（HTTPS）
   secure: ${JWT_SECURE:false}
   # Cookie SameSite策略
-  same-site: ${JWT_SAME_SITE:Strict}
+  same-site: ${JWT_SAME_SITE:Lax}
+  # Cookie路径
+  path: ${JWT_PATH:/api}
   # Token前缀
   token-prefix: ${JWT_TOKEN_PREFIX:Bearer }
   # 请求头名称
@@ -175,6 +177,31 @@ app:
     allowed-headers: ${CORS_ALLOWED_HEADERS:*}
     allow-credentials: ${CORS_ALLOW_CREDENTIALS:true}
     max-age: ${CORS_MAX_AGE:3600}
+
+# Swagger/OpenAPI 配置
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+    display-request-duration: true
+    show-extensions: true
+    show-common-extensions: true
+  show-actuator: false
+  group-configs:
+    - group: 'auth'
+      display-name: '认证模块'
+      paths-to-match: '/auth/**'
+    - group: 'chat'
+      display-name: '聊天模块'
+      paths-to-match: '/chat/**'
+    - group: 'payment'
+      display-name: '支付模块'
+      paths-to-match: '/payment/**'
 
 # 日志配置
 logging:

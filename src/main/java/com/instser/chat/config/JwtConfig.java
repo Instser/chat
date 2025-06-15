@@ -33,7 +33,7 @@ public class JwtConfig {
     /**
      * Cookie是否HttpOnly
      */
-    private boolean httpOnly = true;
+    private boolean httpOnly = false;
     
     /**
      * Cookie是否Secure（HTTPS）
@@ -43,13 +43,18 @@ public class JwtConfig {
     /**
      * Cookie SameSite策略
      */
-    private String sameSite = "Strict";
-    
+    private String sameSite = "Lax";
+
+    /**
+     * Cookie路径
+     */
+    private String path = "/api";
+
     /**
      * Token前缀
      */
     private String tokenPrefix = "Bearer ";
-    
+
     /**
      * 请求头名称
      */

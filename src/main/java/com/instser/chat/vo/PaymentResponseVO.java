@@ -52,4 +52,14 @@ public class PaymentResponseVO {
      * 是否成功
      */
     private Boolean success;
+
+    /**
+     * 支付方式
+     */
+    private String paymentMethod;
+
+    /**
+     * 响应消息
+     */
+    private String message;
 }

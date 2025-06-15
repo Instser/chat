@@ -15,7 +15,7 @@
         <result column="model_permissions" property="modelPermissions" />
         <result column="is_enabled" property="isEnabled" />
         <result column="sort_order" property="sortOrder" />
-        <result column="create_time" property="createTime" />
+        <result column="create_time" property="createdTime" />
         <result column="update_time" property="updateTime" />
         <result column="deleted" property="deleted" />
     </resultMap>

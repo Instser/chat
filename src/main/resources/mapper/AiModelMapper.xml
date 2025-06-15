@@ -15,7 +15,7 @@
         <result column="is_available" property="isAvailable" />
         <result column="base_url" property="baseUrl" />
         <result column="api_key" property="apiKey" />
-        <result column="create_time" property="createTime" />
+        <result column="create_time" property="createdTime" />
         <result column="update_time" property="updateTime" />
         <result column="deleted" property="deleted" />
     </resultMap>

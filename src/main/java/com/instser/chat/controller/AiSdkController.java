@@ -16,11 +16,12 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * AI SDK兼容的聊天控制器
+ * AI SDK兼容的聊天控制器 - 已禁用
+ * 所有聊天请求现在统一使用 /api/chat 端点
  * 提供标准的 /api/chat 端点，兼容 AI React SDK
  */
 @Slf4j
-@RestController
+// @RestController  // 禁用此控制器
 @RequestMapping("/ai-chat")
 @RequiredArgsConstructor
 @CrossOrigin(origins = {"http://localhost:3001", "http://localhost:3000"}, allowCredentials = "false")

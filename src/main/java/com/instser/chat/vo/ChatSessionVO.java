@@ -64,10 +64,10 @@ public class ChatSessionVO implements Serializable {
     /**
      * 创建时间
      */
-    private LocalDateTime createTime;
+    private LocalDateTime createdTime;
 
     /**
-     * 更新时间（前端使用updated_at）
+     * 更新时间
      */
-    private LocalDateTime updatedAt;
+    private LocalDateTime updateTime;
 }

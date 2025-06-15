@@ -13,7 +13,7 @@
         <result column="last_message" property="lastMessage" />
         <result column="last_active_time" property="lastActiveTime" />
         <result column="token_count" property="tokenCount" />
-        <result column="create_time" property="createTime" />
+        <result column="create_time" property="createdTime" />
         <result column="update_time" property="updateTime" />
         <result column="deleted" property="deleted" />
     </resultMap>

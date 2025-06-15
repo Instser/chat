@@ -6,8 +6,8 @@ import com.instser.chat.dao.UserDao;
 import com.instser.chat.dto.request.UpdateProfileRequest;
 import com.instser.chat.entity.User;
 import com.instser.chat.service.UserService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -21,10 +21,14 @@ import java.time.LocalDateTime;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class UserServiceImpl extends ServiceImpl<UserDao, User> implements UserService {
 
     private final PasswordEncoder passwordEncoder;
+
+    // 使用@Lazy注解延迟注入PasswordEncoder，打破循环依赖
+    public UserServiceImpl(@Lazy PasswordEncoder passwordEncoder) {
+        this.passwordEncoder = passwordEncoder;
+    }
 
     @Override
     public User getUserByEmail(String email) {
@@ -54,7 +58,7 @@ public class UserServiceImpl extends ServiceImpl<UserDao, User> implements UserS
         user.setPassword(passwordEncoder.encode(password));
         user.setRole("user");
         user.setStatus(1);
-        user.setCreateTime(LocalDateTime.now());
+        user.setCreatedTime(LocalDateTime.now());
         user.setUpdateTime(LocalDateTime.now());
 
         this.save(user);
@@ -112,7 +116,7 @@ public class UserServiceImpl extends ServiceImpl<UserDao, User> implements UserS
         defaultUser.setPassword(passwordEncoder.encode("admin123"));
         defaultUser.setRole("admin");
         defaultUser.setStatus(1);
-        defaultUser.setCreateTime(LocalDateTime.now());
+        defaultUser.setCreatedTime(LocalDateTime.now());
         defaultUser.setUpdateTime(LocalDateTime.now());
 
         this.save(defaultUser);

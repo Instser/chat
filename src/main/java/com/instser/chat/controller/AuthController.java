@@ -1,6 +1,6 @@
 package com.instser.chat.controller;
 
-import com.instser.chat.common.Result;
+import com.instser.chat.common.result.Result;
 import com.instser.chat.dto.request.ChangePasswordRequest;
 import com.instser.chat.dto.request.LoginRequest;
 import com.instser.chat.dto.request.RegisterRequest;
@@ -9,8 +9,13 @@ import com.instser.chat.entity.User;
 import com.instser.chat.security.UserDetailsServiceImpl;
 import com.instser.chat.service.UserService;
 import com.instser.chat.util.JwtUtil;
-import com.instser.chat.util.VOConverter;
+import com.instser.chat.vo.converter.VOConverter;
 import com.instser.chat.vo.UserVO;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -32,8 +37,9 @@ import org.springframework.web.bind.annotation.*;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/auth")
+@RequestMapping("/auth")
 @RequiredArgsConstructor
+@Tag(name = "认证管理", description = "用户认证相关接口，包括注册、登录、登出等功能")
 public class AuthController {
     
     private final AuthenticationManager authenticationManager;
@@ -43,9 +49,16 @@ public class AuthController {
     /**
      * 用户注册
      */
+    @Operation(summary = "用户注册", description = "创建新用户账户")
+    @ApiResponses(value = {
+        @ApiResponse(responseCode = "200", description = "注册成功"),
+        @ApiResponse(responseCode = "400", description = "参数错误或用户已存在")
+    })
     @PostMapping("/register")
-    public ResponseEntity<Result<UserVO>> register(@Valid @RequestBody RegisterRequest request, 
-                                                  HttpServletResponse response) {
+    public ResponseEntity<Result<UserVO>> register(
+            @Parameter(description = "注册请求信息", required = true)
+            @Valid @RequestBody RegisterRequest request,
+            HttpServletResponse response) {
         try {
             // 检查用户名和邮箱是否已存在
             if (userService.getUserByUsername(request.getUsername()) != null) {

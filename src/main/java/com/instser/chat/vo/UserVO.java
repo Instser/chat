@@ -59,7 +59,7 @@ public class UserVO implements Serializable {
     /**
      * 创建时间
      */
-    private LocalDateTime createTime;
+    private LocalDateTime createdTime;
 
     /**
      * 更新时间

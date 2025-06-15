@@ -31,7 +31,7 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/payment")
+@RequestMapping("/payment")
 @RequiredArgsConstructor
 @Validated
 @CrossOrigin(originPatterns = "*", allowedHeaders = "*", allowCredentials = "true")

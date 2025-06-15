@@ -3,6 +3,9 @@ package com.instser.chat.util;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.security.MessageDigest;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
@@ -171,5 +174,71 @@ public class PaymentSecurityUtil {
     public void clearAllCache() {
         callbackCache.clear();
         log.info("已清空所有回调缓存");
+    }
+
+    /**
+     * 生成易支付签名
+     *
+     * @param params 参数Map
+     * @param key    商户密钥
+     * @return MD5签名
+     */
+    public static String generateYiPaySign(Map<String, String> params, String key) {
+        try {
+            // 使用TreeMap自动排序
+            TreeMap<String, String> sortedParams = new TreeMap<>(params);
+
+            // 构建签名字符串
+            StringBuilder signStr = new StringBuilder();
+            for (Map.Entry<String, String> entry : sortedParams.entrySet()) {
+                String paramKey = entry.getKey();
+                String paramValue = entry.getValue();
+
+                // 跳过sign和sign_type参数
+                if ("sign".equals(paramKey) || "sign_type".equals(paramKey)) {
+                    continue;
+                }
+
+                // 跳过空值
+                if (paramValue == null || paramValue.trim().isEmpty()) {
+                    continue;
+                }
+
+                if (signStr.length() > 0) {
+                    signStr.append("&");
+                }
+                signStr.append(paramKey).append("=").append(paramValue);
+            }
+
+            // 添加密钥
+            signStr.append(key);
+
+            // 生成MD5签名
+            return md5(signStr.toString());
+
+        } catch (Exception e) {
+            log.error("生成易支付签名失败", e);
+            return null;
+        }
+    }
+
+    /**
+     * MD5加密
+     *
+     * @param input 输入字符串
+     * @return MD5值
+     */
+    private static String md5(String input) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            byte[] digest = md.digest(input.getBytes("UTF-8"));
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b & 0xff));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            throw new RuntimeException("MD5加密失败", e);
+        }
     }
 }

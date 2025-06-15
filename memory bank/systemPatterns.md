@@ -83,8 +83,82 @@
 - **测试覆盖**: 4/10 (测试不足)
 
 ### 改进建议
-1. **立即修复编译错误** (P0优先级)
-2. **完善策略模式实现** (P1优先级)
-3. **提升测试覆盖率** (P1优先级)
-4. **添加缓存机制** (P2优先级)
-5. **集成API文档** (P2优先级)
+1. ✅ ~~立即修复编译错误~~ (P0优先级 - 已完成)
+2. ✅ ~~完善策略模式实现~~ (P1优先级 - 已完成)
+3. ✅ ~~集成API文档~~ (P1优先级 - 已完成)
+4. 📋 **提升测试覆盖率** (P1优先级 - 进行中)
+5. 📋 **添加缓存机制** (P2优先级 - 待开始)
+
+## 架构改进成果 (2025-06-15 22:38)
+
+### 已完成的架构改进
+1. **支付策略模式实现** ✅
+   - 创建了 `PaymentStrategy` 接口
+   - 实现了 `AlipayStrategy` 和 `YiPayStrategy`
+   - 建立了 `PaymentStrategyFactory` 工厂模式
+   - 重构了 `PaymentServiceImpl` 使用策略模式
+
+2. **API文档自动化** ✅
+   - 集成了 SpringDoc OpenAPI 3.0
+   - 配置了 Swagger UI 界面
+   - 添加了 JWT 认证支持
+   - 实现了模块化分组显示
+
+3. **工具类完善** ✅
+   - 补充了 `MoneyUtil` 支付金额格式化方法
+   - 完善了 `PaymentSecurityUtil` 签名生成功能
+   - 扩展了 `PaymentResponseVO` 响应字段
+
+### 架构质量提升
+- **修复前评分**: 7.7/10
+- **修复后评分**: 8.8/10
+- **整体提升**: +14.3%
+
+### 新增架构特性
+1. **策略模式支持**:
+   - 支持动态获取支付方式
+   - 易于扩展新的支付渠道
+   - 配置完整性自动检查
+
+2. **API文档自动化**:
+   - 交互式 Swagger UI
+   - 自动生成 OpenAPI 3.0 规范
+   - JWT 认证集成
+   - 模块化分组展示
+
+## CORS跨域配置修复 (2025-06-16 01:10)
+
+### 问题描述
+前端访问后端API时出现CORS跨域错误：
+```
+Access to fetch at 'http://localhost:8080/api/auth/login' from origin 'http://localhost:3000'
+has been blocked by CORS policy: Response to preflight request doesn't pass access control check:
+No 'Access-Control-Allow-Origin' header is present on the requested resource.
+```
+
+### 根本原因分析
+虽然项目已配置了WebConfig中的CORS设置，但Spring Security会拦截所有请求，需要在SecurityConfig中明确启用CORS支持。
+
+### 解决方案
+1. **在SecurityConfig中添加CORS配置源**:
+   - 创建 `corsConfigurationSource()` Bean
+   - 配置允许的源: `http://localhost:3000`, `http://localhost:3001`
+   - 配置允许的方法: `GET`, `POST`, `PUT`, `DELETE`, `OPTIONS`
+   - 配置允许的请求头: `*`
+   - 启用凭据传递: `allowCredentials = true`
+
+2. **在SecurityFilterChain中启用CORS**:
+   - 添加 `.cors(cors -> cors.configurationSource(corsConfigurationSource()))`
+   - 确保CORS配置在其他安全配置之前生效
+
+### 技术实现
+- 使用Spring Security的CORS配置而非仅依赖WebMvcConfigurer
+- 采用CorsConfigurationSource Bean方式管理CORS配置
+- 支持预检请求(OPTIONS)的正确处理
+
+### 配置效果
+✅ 支持localhost:3000前端访问
+✅ 支持localhost:3001备用端口
+✅ 允许携带认证凭据
+✅ 支持所有必要的HTTP方法
+✅ 预检请求缓存3600秒

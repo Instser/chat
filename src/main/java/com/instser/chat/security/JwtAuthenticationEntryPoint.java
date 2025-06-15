@@ -1,7 +1,7 @@
 package com.instser.chat.security;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.instser.chat.common.Result;
+import com.instser.chat.common.result.Result;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;

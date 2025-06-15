@@ -34,7 +34,7 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionDao, ChatSess
         session.setStatus(0); // 进行中
         session.setTokenCount(0);
         session.setLastActiveTime(LocalDateTime.now());
-        session.setCreateTime(LocalDateTime.now());
+        session.setCreatedTime(LocalDateTime.now());
         session.setUpdateTime(LocalDateTime.now());
 
         this.save(session);

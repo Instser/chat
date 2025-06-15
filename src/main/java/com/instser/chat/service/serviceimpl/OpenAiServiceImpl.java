@@ -11,11 +11,14 @@ import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import org.springframework.web.reactive.function.client.WebClientResponseException;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import reactor.core.publisher.Flux;
+import reactor.util.context.Context;
+import jakarta.servlet.http.HttpServletResponse;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -120,18 +123,39 @@ public class OpenAiServiceImpl implements OpenAiService {
                         return Flux.empty();
                     });
 
-            // 处理流式响应 - 直接转发原始SSE数据
+            // 异步处理流式响应
             stringFlux.subscribe(
                     line -> {
                         try {
                             log.info("收到AI响应行: [{}]", line);
 
-                            // 转换为AI SDK期望的Data Stream Protocol格式
+                            // 转换为Vercel AI SDK Data Stream Protocol格式
                             if (line.startsWith("data: ")) {
                                 // 检查是否是结束标记
                                 if (line.equals("data: [DONE]")) {
-                                    log.info("收到结束标记，完成流式响应");
-                                    emitter.complete();
+                                    log.info("收到结束标记，发送Vercel AI SDK完成标识到前端");
+                                    try {
+                                        // 发送Vercel AI SDK格式的完成标识: d:{"finishReason":"stop","usage":{...}}
+                                        String completionData = String.format("d:%s\n",
+                                            objectMapper.writeValueAsString(Map.of(
+                                                "finishReason", "stop",
+                                                "usage", Map.of(
+                                                    "promptTokens", 10,
+                                                    "completionTokens", 20
+                                                )
+                                            ))
+                                        );
+
+                                        // 直接发送完成标记作为纯文本，不使用SSE格式
+                                        emitter.send(completionData, MediaType.TEXT_PLAIN);
+                                        log.info("Vercel AI SDK完成标识发送成功: [{}]", completionData.trim());
+
+                                        // 完成流式响应
+                                        emitter.complete();
+                                        log.info("流式响应完成");
+                                    } catch (Exception e) {
+                                        log.error("发送完成标识或完成SSE发射器失败", e);
+                                    }
                                     return;
                                 }
 
@@ -150,11 +174,18 @@ public class OpenAiServiceImpl implements OpenAiService {
                                         if (delta != null && delta.has("content")) {
                                             String content = delta.get("content").asText();
                                             if (content != null && !content.isEmpty()) {
-                                                // 转换为AI SDK Data Stream Protocol格式: 0:"content"\n
-                                                String aiSdkFormat = "0:" + mapper.writeValueAsString(content) + "\n";
-                                                log.info("发送AI SDK格式数据: [{}]", aiSdkFormat);
-                                                emitter.send(aiSdkFormat);
-                                                log.info("AI SDK格式数据发送成功");
+                                                // 转换为Vercel AI SDK Data Stream Protocol格式: 0:"content"\n
+                                                String vercelFormat = String.format("0:%s\n", mapper.writeValueAsString(content));
+                                                log.info("发送Vercel AI SDK格式数据: [{}]", vercelFormat.trim());
+
+                                                // 直接发送原始字符串作为纯文本，不使用SSE格式
+                                                try {
+                                                    emitter.send(vercelFormat, MediaType.TEXT_PLAIN);
+                                                    log.info("Vercel AI SDK格式数据发送成功");
+                                                } catch (Exception sendException) {
+                                                    log.error("发送SSE数据失败，可能响应已关闭", sendException);
+                                                    // 不再抛出异常，避免影响其他数据的发送
+                                                }
                                             }
                                         }
                                     }
@@ -163,12 +194,13 @@ public class OpenAiServiceImpl implements OpenAiService {
                                 }
                             } else if (line.trim().isEmpty()) {
                                 // 跳过空行
-                                log.info("跳过空行");
+                                log.debug("跳过空行");
                             } else {
-                                log.info("跳过非SSE格式行: [{}]", line);
+                                log.debug("跳过非SSE格式行: [{}]", line);
                             }
                         } catch (Exception e) {
-                            log.error("发送SSE数据失败", e);
+                            log.error("处理SSE数据失败", e);
+                            // 不再抛出异常，避免中断流式处理
                         }
                     },
                     error -> {
@@ -177,7 +209,11 @@ public class OpenAiServiceImpl implements OpenAiService {
                     },
                     () -> {
                         log.info("AI API流式响应处理完成");
-                        emitter.complete();
+                        try {
+                            emitter.complete();
+                        } catch (Exception e) {
+                            log.error("完成SSE发射器失败", e);
+                        }
                     }
             );
 
@@ -291,11 +327,32 @@ public class OpenAiServiceImpl implements OpenAiService {
             log.error("AI API调用异常", throwable);
         }
 
+        // 安全地发送错误消息和完成SSE
         try {
-            emitter.send(SseEmitter.event().data(errorMessage));
-            emitter.complete();
+            // 检查emitter是否还可用
+            if (emitter != null) {
+                try {
+                    emitter.send(SseEmitter.event().data(errorMessage));
+                    log.info("错误消息发送成功");
+                } catch (Exception sendException) {
+                    log.error("发送错误消息失败，可能响应已关闭: {}", sendException.getMessage());
+                }
+
+                try {
+                    emitter.complete();
+                    log.info("SSE发射器完成");
+                } catch (Exception completeException) {
+                    log.error("完成SSE发射器失败: {}", completeException.getMessage());
+                    // 如果complete失败，尝试completeWithError
+                    try {
+                        emitter.completeWithError(throwable);
+                    } catch (Exception errorException) {
+                        log.error("使用错误完成SSE发射器也失败: {}", errorException.getMessage());
+                    }
+                }
+            }
         } catch (Exception e) {
-            log.error("发送错误消息失败", e);
+            log.error("处理流式错误时发生异常", e);
         }
     }
 }

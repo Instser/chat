@@ -182,7 +182,7 @@ public class JwtUtil {
                 .secure(jwtConfig.isSecure())
                 .sameSite(jwtConfig.getSameSite())
                 .maxAge(Duration.ofSeconds(jwtConfig.getExpiration()))
-                .path("/")
+                .path(jwtConfig.getPath())
                 .build();
     }
     
@@ -193,7 +193,7 @@ public class JwtUtil {
         return ResponseCookie.from(jwtConfig.getCookieName(), "")
                 .httpOnly(jwtConfig.isHttpOnly())
                 .maxAge(0)
-                .path("/")
+                .path(jwtConfig.getPath())
                 .build();
     }
     

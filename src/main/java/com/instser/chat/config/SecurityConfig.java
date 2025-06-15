@@ -2,9 +2,11 @@ package com.instser.chat.config;
 
 import com.instser.chat.security.JwtAuthenticationEntryPoint;
 import com.instser.chat.security.JwtAuthenticationFilter;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -19,6 +21,11 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.Arrays;
 
 /**
  * Spring Security安全配置类
@@ -64,11 +71,42 @@ public class SecurityConfig {
     }
 
     /**
+     * CORS配置源
+     */
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration configuration = new CorsConfiguration();
+
+        // 允许的源
+        configuration.setAllowedOriginPatterns(Arrays.asList("http://localhost:3000", "http://localhost:3001"));
+
+        // 允许的HTTP方法
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+
+        // 允许的请求头
+        configuration.setAllowedHeaders(Arrays.asList("*"));
+
+        // 允许发送凭据
+        configuration.setAllowCredentials(true);
+
+        // 预检请求缓存时间
+        configuration.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", configuration);
+
+        return source;
+    }
+
+    /**
      * 安全过滤器链
      */
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
+            // 启用CORS
+            .cors(cors -> cors.configurationSource(corsConfigurationSource()))
+
             // 禁用CSRF（使用JWT不需要CSRF保护）
             .csrf(AbstractHttpConfigurer::disable)
 
@@ -77,21 +115,65 @@ public class SecurityConfig {
 
             // 配置异常处理
             .exceptionHandling(exceptions -> exceptions
-                .authenticationEntryPoint(jwtAuthenticationEntryPoint)
+                .authenticationEntryPoint((request, response, authException) -> {
+                    // 检查是否是SSE请求
+                    String accept = request.getHeader("Accept");
+                    if (accept != null && accept.contains("text/event-stream")) {
+                        // SSE请求的认证异常处理
+                        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                        response.setContentType("text/event-stream");
+                        response.setCharacterEncoding("UTF-8");
+                        response.setHeader("Cache-Control", "no-cache");
+                        response.setHeader("Connection", "keep-alive");
+                        response.getWriter().write("event: error\n");
+                        response.getWriter().write("data: {\"error\":\"认证失败，请重新登录\"}\n\n");
+                        response.getWriter().flush();
+                    } else {
+                        jwtAuthenticationEntryPoint.commence(request, response, authException);
+                    }
+                })
+                .accessDeniedHandler((request, response, accessDeniedException) -> {
+                    // 检查是否是SSE请求
+                    String accept = request.getHeader("Accept");
+                    if (accept != null && accept.contains("text/event-stream")) {
+                        // SSE请求的访问拒绝处理
+                        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                        response.setContentType("text/event-stream");
+                        response.setCharacterEncoding("UTF-8");
+                        response.setHeader("Cache-Control", "no-cache");
+                        response.setHeader("Connection", "keep-alive");
+                        response.getWriter().write("event: error\n");
+                        response.getWriter().write("data: {\"error\":\"访问被拒绝，权限不足\"}\n\n");
+                        response.getWriter().flush();
+                    } else {
+                        // 使用默认的访问拒绝处理
+                        response.setStatus(HttpServletResponse.SC_FORBIDDEN);
+                        response.setContentType("application/json");
+                        response.setCharacterEncoding("UTF-8");
+                        response.getWriter().write("{\"code\":403,\"message\":\"访问被拒绝，权限不足\"}");
+                    }
+                })
             )
 
             // 配置请求授权
             .authorizeHttpRequests(authz -> authz
-                // 公开接口
-                .requestMatchers("/api/auth/login", "/api/auth/register").permitAll()
+                // 公开接口 (注意：context-path是/api，所以这里的路径是相对于/api的)
+                .requestMatchers("/auth/login", "/auth/register").permitAll()
                 .requestMatchers("/druid/**").permitAll()
                 .requestMatchers("/actuator/**").permitAll()
                 .requestMatchers("/error").permitAll()
                 .requestMatchers("/", "/favicon.ico").permitAll()
                 .requestMatchers("/static/**", "/public/**").permitAll()
 
+                // 聊天接口 - 允许已认证用户访问，但排除SSE流式响应
+                .requestMatchers(HttpMethod.POST, "/chat").permitAll()  // 临时允许SSE流式响应绕过Spring Security
+                .requestMatchers("/chat/**").authenticated()
+
+                // SSE流式响应接口 - 特殊处理，避免异步权限检查问题
+                .requestMatchers("/sse/**").authenticated()
+
                 // 管理员接口
-                .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                .requestMatchers("/admin/**").hasRole("ADMIN")
 
                 // 其他接口需要认证
                 .anyRequest().authenticated()
