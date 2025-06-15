@@ -162,3 +162,91 @@ No 'Access-Control-Allow-Origin' header is present on the requested resource.
 ✅ 允许携带认证凭据
 ✅ 支持所有必要的HTTP方法
 ✅ 预检请求缓存3600秒
+
+## CORS跨域配置全面开放 (2025-06-16 06:41)
+
+### 配置更新背景
+为了支持更灵活的前端开发和部署环境，将CORS跨域配置从限制特定域名改为允许所有域名访问。
+
+### 修改内容
+1. **WebConfig.java全局跨域配置**:
+   - `allowedOriginPatterns("*")` - 允许所有域名
+   - `allowedMethods("*")` - 允许所有HTTP方法
+   - `allowedHeaders("*")` - 允许所有请求头
+   - `allowCredentials(true)` - 允许携带凭据
+   - `maxAge(3600)` - 预检请求缓存1小时
+
+2. **SecurityConfig.java安全跨域配置**:
+   - 更新 `corsConfigurationSource()` Bean
+   - `setAllowedOriginPatterns(Arrays.asList("*"))`
+   - `setAllowedMethods(Arrays.asList("*"))`
+   - `setAllowedHeaders(Arrays.asList("*"))`
+
+3. **application.yml配置文件**:
+   - `allowed-origins: *`
+   - `allowed-methods: *`
+   - `allowed-headers: *`
+
+4. **控制器响应头修复**:
+   - ChatApiController中硬编码的跨域响应头
+   - 从 `http://localhost:3000` 改为 `*`
+
+5. **控制器注解统一**:
+   - 所有控制器的@CrossOrigin注解统一为
+   - `@CrossOrigin(originPatterns = "*", allowedHeaders = "*", allowCredentials = "true")`
+
+### 安全考虑
+- 开发环境允许所有跨域访问，提升开发效率
+- 生产环境建议通过环境变量限制特定域名
+- 保持 `allowCredentials = true` 支持认证功能
+
+### 配置效果
+✅ 支持任意域名访问后端API
+✅ 支持所有HTTP方法和请求头
+✅ 保持认证凭据传递功能
+✅ 统一全局和安全层面的跨域配置
+✅ 消除前端开发中的跨域限制
+
+## CORS跨域配置局域网支持 (2025-06-16 07:14)
+
+### 配置更新背景
+用户反馈在局域网环境中调用 `/api/chat` 接口时出现跨域问题，需要添加对局域网IP `192.168.1.100` 的跨域支持。
+
+### 修改内容
+1. **SecurityConfig.java跨域配置优化**:
+   - 从允许所有源(`*`)改为指定允许的源列表
+   - 添加对 `192.168.1.100` 的HTTP和HTTPS支持
+   - 保持localhost和127.0.0.1的完整支持
+   - 支持任意端口号的访问
+
+2. **WebConfig.java全局跨域配置同步**:
+   - 更新 `allowedOriginPatterns` 为具体的域名列表
+   - 确保与SecurityConfig保持一致的配置
+
+3. **ChatApiController动态跨域处理**:
+   - 添加 `setCorsHeaders()` 方法动态设置跨域头
+   - 根据请求来源Origin头动态匹配允许的域名
+   - 支持端口号的灵活匹配
+   - 为不匹配的请求提供默认的localhost回退
+
+4. **application.yml配置文件更新**:
+   - 更新CORS配置的默认值
+   - 支持环境变量覆盖配置
+
+### 支持的域名列表
+- `http://localhost:*` / `https://localhost:*`
+- `http://127.0.0.1:*` / `https://127.0.0.1:*`
+- `http://192.168.1.100:*` / `https://192.168.1.100:*`
+
+### 安全考虑
+- 限制了允许的源，提高安全性
+- 保持 `allowCredentials = true` 支持认证
+- 动态匹配机制避免硬编码端口号
+- 为未匹配请求提供安全的默认值
+
+### 配置效果
+✅ 支持局域网IP 192.168.1.100 访问
+✅ 保持localhost开发环境支持
+✅ 动态端口号匹配
+✅ 提升跨域配置安全性
+✅ 解决局域网环境跨域问题

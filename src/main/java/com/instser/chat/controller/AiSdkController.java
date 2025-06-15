@@ -24,7 +24,7 @@ import java.util.Map;
 // @RestController  // 禁用此控制器
 @RequestMapping("/ai-chat")
 @RequiredArgsConstructor
-@CrossOrigin(origins = {"http://localhost:3001", "http://localhost:3000"}, allowCredentials = "false")
+@CrossOrigin(originPatterns = "*", allowedHeaders = "*", allowCredentials = "true")
 public class AiSdkController {
 
     private final OpenAiService openAiService;

@@ -30,15 +30,22 @@ public class WebConfig implements WebMvcConfigurer {
     private long maxAge;
 
     /**
-     * 跨域配置
+     * 跨域配置 - 允许localhost和局域网访问
      */
     @Override
     public void addCorsMappings(CorsRegistry registry) {
         registry.addMapping("/**")
-                .allowedOrigins(allowedOrigins.split(","))
-                .allowedMethods(allowedMethods.split(","))
-                .allowedHeaders(allowedHeaders.split(","))
-                .allowCredentials(allowCredentials)
-                .maxAge(maxAge);
+                .allowedOriginPatterns(
+                    "http://localhost:*",
+                    "https://localhost:*",
+                    "http://127.0.0.1:*",
+                    "https://127.0.0.1:*",
+                    "http://192.168.1.100:*",
+                    "https://192.168.1.100:*"
+                )
+                .allowedMethods("*")         // 允许所有HTTP方法
+                .allowedHeaders("*")         // 允许所有请求头
+                .allowCredentials(true)      // 允许携带凭据
+                .maxAge(3600);              // 预检请求缓存时间1小时
     }
 }

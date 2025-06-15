@@ -17,6 +17,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -25,7 +26,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
+
 import java.util.concurrent.Executor;
 
 import org.springframework.core.io.buffer.DataBuffer;
@@ -59,7 +60,8 @@ public class ChatApiController {
      * 流式聊天接口 - 兼容前端 (POST)
      */
     @PostMapping(value = "", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public void chat(@RequestBody Map<String, Object> request, Authentication authentication, HttpServletResponse response) {
+    public void chat(@RequestBody Map<String, Object> request, Authentication authentication,
+                     HttpServletRequest httpRequest, HttpServletResponse response) {
         log.info("收到聊天请求：{}, 认证信息：{}", request, authentication);
 
         // 设置Vercel AI SDK响应头和字符编码
@@ -68,8 +70,9 @@ public class ChatApiController {
         response.setHeader("x-vercel-ai-data-stream", "v1");
         response.setHeader("Cache-Control", "no-cache");
         response.setHeader("Connection", "keep-alive");
-        response.setHeader("Access-Control-Allow-Origin", "http://localhost:3000");
-        response.setHeader("Access-Control-Allow-Credentials", "true");
+
+        // 动态设置跨域头
+        setCorsHeaders(httpRequest, response);
 
         try {
             @SuppressWarnings("unchecked")
@@ -139,7 +142,8 @@ public class ChatApiController {
      * 流式聊天接口 - 支持EventSource (GET)
      */
     @GetMapping(value = "", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter chatGet(@RequestParam("data") String requestData, Authentication authentication, HttpServletResponse response) {
+    public SseEmitter chatGet(@RequestParam("data") String requestData, Authentication authentication,
+                              HttpServletRequest httpRequest, HttpServletResponse response) {
         log.info("收到EventSource聊天请求：{}, 认证信息：{}", requestData, authentication);
 
         // 设置Vercel AI SDK响应头和字符编码
@@ -148,8 +152,9 @@ public class ChatApiController {
         response.setHeader("x-vercel-ai-data-stream", "v1");
         response.setHeader("Cache-Control", "no-cache");
         response.setHeader("Connection", "keep-alive");
-        response.setHeader("Access-Control-Allow-Origin", "http://localhost:3000");
-        response.setHeader("Access-Control-Allow-Credentials", "true");
+
+        // 动态设置跨域头
+        setCorsHeaders(httpRequest, response);
 
         // 在创建SseEmitter之前进行所有验证和安全检查
         try {
@@ -448,6 +453,48 @@ public class ChatApiController {
                 log.error("发送异常消息失败", ioException);
             }
         }
+    }
+
+    /**
+     * 动态设置CORS跨域头
+     */
+    private void setCorsHeaders(HttpServletRequest request, HttpServletResponse response) {
+        String origin = request.getHeader("Origin");
+
+        // 允许的源列表
+        String[] allowedOrigins = {
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "https://localhost:3000",
+            "https://localhost:3001",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:3001",
+            "https://127.0.0.1:3000",
+            "https://127.0.0.1:3001",
+            "http://192.168.1.100:3000",
+            "http://192.168.1.100:3001",
+            "https://192.168.1.100:3000",
+            "https://192.168.1.100:3001"
+        };
+
+        // 检查请求来源是否在允许列表中
+        if (origin != null) {
+            for (String allowedOrigin : allowedOrigins) {
+                if (origin.equals(allowedOrigin) || origin.startsWith(allowedOrigin.substring(0, allowedOrigin.lastIndexOf(':')))) {
+                    response.setHeader("Access-Control-Allow-Origin", origin);
+                    response.setHeader("Access-Control-Allow-Credentials", "true");
+                    response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+                    response.setHeader("Access-Control-Allow-Headers", "*");
+                    return;
+                }
+            }
+        }
+
+        // 如果不在允许列表中，设置为localhost默认值
+        response.setHeader("Access-Control-Allow-Origin", "http://localhost:3000");
+        response.setHeader("Access-Control-Allow-Credentials", "true");
+        response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+        response.setHeader("Access-Control-Allow-Headers", "*");
     }
 
 }

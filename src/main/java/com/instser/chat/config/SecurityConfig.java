@@ -71,19 +71,26 @@ public class SecurityConfig {
     }
 
     /**
-     * CORS配置源
+     * CORS配置源 - 允许指定域名和局域网访问
      */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // 允许的源
-        configuration.setAllowedOriginPatterns(Arrays.asList("http://localhost:3000", "http://localhost:3001"));
+        // 允许的源 - 包含localhost和局域网IP
+        configuration.setAllowedOriginPatterns(Arrays.asList(
+            "http://localhost:*",
+            "https://localhost:*",
+            "http://127.0.0.1:*",
+            "https://127.0.0.1:*",
+            "http://192.168.1.100:*",
+            "https://192.168.1.100:*"
+        ));
 
-        // 允许的HTTP方法
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        // 允许所有HTTP方法
+        configuration.setAllowedMethods(Arrays.asList("*"));
 
-        // 允许的请求头
+        // 允许所有请求头
         configuration.setAllowedHeaders(Arrays.asList("*"));
 
         // 允许发送凭据
