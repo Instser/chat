@@ -203,19 +203,6 @@ springdoc:
       display-name: '支付模块'
       paths-to-match: '/payment/**'
 
-# 日志配置
+# 日志配置 - 使用logback-spring.xml进行详细配置
 logging:
-  level:
-    com.instser.chat: ${LOG_LEVEL_APP:debug}
-    root: ${LOG_LEVEL_ROOT:info}
-    # 减少Druid日志输出
-    com.alibaba.druid: warn
-    # 减少MyBatis日志输出（生产环境建议关闭）
-    org.apache.ibatis: ${LOG_LEVEL_MYBATIS:info}
-  pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
-    file: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{50} - %msg%n"
-  file:
-    name: logs/jinyu-chat.log
-    max-size: 100MB
-    max-history: 30
+  config: classpath:logback-spring.xml

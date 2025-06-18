@@ -56,6 +56,11 @@ public class ChatApiController {
     private final AiModelService aiModelService;
     private final ChatLimitService chatLimitService;
 
+    // 快速单字符响应配置
+    private static final boolean ENABLE_CHARACTER_STREAMING = true; // 是否启用单字符流式响应
+    private static final long CHARACTER_DELAY_MS = 1; // 字符间延迟（毫秒）
+    private static final int BATCH_SIZE = 1; // 批量发送字符数，1表示单字符，可设置为2-5实现小批量发送
+
 
     /**
      * 流式聊天接口 - 兼容前端 (POST)
@@ -94,7 +99,7 @@ public class ChatApiController {
             }
 
             // 硬编码使用ID为1的模型（已配置为qwen3-235b-a22b）
-            Long modelId = 2L;
+            Long modelId = 1L;
             Long userId = Long.valueOf(userIdObj.toString());
 
             // 获取模型配置
@@ -153,15 +158,19 @@ public class ChatApiController {
 
             // 直接在当前线程中调用AI服务，避免异步问题
             log.info("开始调用AI服务，模型：{}，用户：{}", model.getModelName(), userId);
-            // 直接调用AI服务，传入response对象进行直接写入
-            streamChatDirect(messages, model, response, isDeepThink);
+            // 直接调用AI服务，传入response对象进行直接写入，返回是否成功
+            boolean aiServiceSuccess = streamChatDirect(messages, model, response, isDeepThink);
 
-            // 聊天完成后记录使用次数
-            boolean recordSuccess = chatLimitService.recordChatUsage(userId);
-            if (recordSuccess) {
-                log.info("用户{}聊天使用次数记录成功", userId);
+            // 只有AI服务成功返回内容时才记录使用次数
+            if (aiServiceSuccess) {
+                boolean recordSuccess = chatLimitService.recordChatUsage(userId);
+                if (recordSuccess) {
+                    log.info("用户{}聊天使用次数记录成功", userId);
+                } else {
+                    log.warn("用户{}聊天使用次数记录失败", userId);
+                }
             } else {
-                log.warn("用户{}聊天使用次数记录失败", userId);
+                log.warn("用户{}AI服务调用失败，不记录聊天次数", userId);
             }
 
         } catch (Exception e) {
@@ -236,8 +245,12 @@ public class ChatApiController {
 
     /**
      * 直接流式聊天方法 - 不使用SseEmitter，直接写入HttpServletResponse
+     * @return true-AI服务成功返回内容，false-AI服务调用失败或无内容返回
      */
-    private void streamChatDirect(List<Map<String, String>> messages, AiModel model, HttpServletResponse response, boolean isDeepThink) {
+    private boolean streamChatDirect(List<Map<String, String>> messages, AiModel model, HttpServletResponse response, boolean isDeepThink) {
+        // 用于跟踪是否有AI内容被成功发送
+        final boolean[] hasContentSent = {false};
+
         try {
             // 添加系统提示词到消息列表开头
             List<Map<String, String>> messagesWithPrompt = new ArrayList<>();
@@ -255,6 +268,9 @@ public class ChatApiController {
             messagesWithPrompt.addAll(messages);
 
             log.info("使用{}提示词，消息总数: {}", isDeepThink ? "深度思考" : "默认", messagesWithPrompt.size());
+
+            // 添加JSON数据缓冲区，用于处理分片数据
+            StringBuilder jsonBuffer = new StringBuilder();
 
             // 构建用于日志显示的消息列表（提示词只显示开头和结尾）
             List<Map<String, String>> logMessages = new ArrayList<>();
@@ -280,8 +296,8 @@ public class ChatApiController {
                     "model", model.getModelCode(),
                     "messages", logMessages,
                     "stream", true,
-                    "max_tokens", 2000,
-                    "temperature", 0.7
+                    "temperature", 0.7,
+                    "reasoning_effort", "none"
                 ));
                 log.info("POST请求完整JSON: {}", requestJson);
             } catch (Exception e) {
@@ -293,8 +309,8 @@ public class ChatApiController {
             requestBody.put("model", model.getModelCode());
             requestBody.put("messages", messagesWithPrompt);
             requestBody.put("stream", true);
-            requestBody.put("max_tokens", 2000);
             requestBody.put("temperature", 0.7);
+            requestBody.put("reasoning_effort", "none");
 
             // 创建WebClient，确保UTF-8编码
             WebClient webClient = WebClient.builder()
@@ -319,7 +335,13 @@ public class ChatApiController {
                         byte[] bytes = new byte[dataBuffer.readableByteCount()];
                         dataBuffer.read(bytes);
                         DataBufferUtils.release(dataBuffer);
+
+                        // 创建字符串，保留所有Unicode字符
                         String chunk = new String(bytes, StandardCharsets.UTF_8);
+
+                        // 只移除真正有问题的字符，保留emoji和其他Unicode字符
+                        chunk = chunk.replaceAll("[\uFFFD\u0000]", "");
+
                         return chunk;
                     })
                     .flatMap(chunk -> {
@@ -355,28 +377,44 @@ public class ChatApiController {
                                     return;
                                 }
 
-                                // 解析JSON数据
+                                // 提取JSON数据部分
                                 String jsonData = line.substring(6).trim();
-                                ObjectMapper mapper = new ObjectMapper();
-                                JsonNode jsonNode = mapper.readTree(jsonData);
-                                JsonNode choices = jsonNode.get("choices");
 
-                                if (choices != null && choices.isArray() && choices.size() > 0) {
-                                    JsonNode delta = choices.get(0).get("delta");
-                                    if (delta != null && delta.has("content")) {
-                                        String content = delta.get("content").asText();
-                                        if (content != null && !content.isEmpty()) {
-                                            // 发送Vercel AI SDK格式: 0:"content"\n
-                                            String vercelFormat = String.format("0:%s\n", mapper.writeValueAsString(content));
-                                            response.getWriter().write(vercelFormat);
-                                            response.getWriter().flush();
-                                            log.info("Vercel AI SDK格式数据发送成功: [{}]", vercelFormat.trim());
-                                        }
+                                // 将当前行的JSON数据添加到缓冲区
+                                jsonBuffer.append(jsonData);
+
+                                // 尝试解析完整的JSON
+                                String bufferedJson = jsonBuffer.toString();
+                                if (isValidJson(bufferedJson)) {
+                                    // JSON完整，可以解析
+                                    boolean contentSent = processCompleteJson(bufferedJson, response);
+                                    if (contentSent) {
+                                        hasContentSent[0] = true;
                                     }
+                                    // 清空缓冲区
+                                    jsonBuffer.setLength(0);
+                                } else {
+                                    // JSON不完整，等待更多数据
+                                    log.debug("JSON数据不完整，等待更多数据: [{}]", bufferedJson);
+                                }
+                            } else if (!line.startsWith("data:") && jsonBuffer.length() > 0) {
+                                // 这可能是分片JSON的剩余部分
+                                jsonBuffer.append(line);
+
+                                // 再次尝试解析
+                                String bufferedJson = jsonBuffer.toString();
+                                if (isValidJson(bufferedJson)) {
+                                    boolean contentSent = processCompleteJson(bufferedJson, response);
+                                    if (contentSent) {
+                                        hasContentSent[0] = true;
+                                    }
+                                    jsonBuffer.setLength(0);
                                 }
                             }
                         } catch (Exception e) {
                             log.error("处理流式数据失败: {}", e.getMessage());
+                            // 清空缓冲区，避免错误数据影响后续处理
+                            jsonBuffer.setLength(0);
                         }
                     })
                     .doOnError(error -> {
@@ -393,6 +431,9 @@ public class ChatApiController {
                     })
                     .blockLast(); // 阻塞等待完成
 
+            // 返回是否有内容被发送
+            return hasContentSent[0];
+
         } catch (Exception e) {
             log.error("直接流式聊天异常", e);
             try {
@@ -401,6 +442,211 @@ public class ChatApiController {
             } catch (IOException ioException) {
                 log.error("发送异常消息失败", ioException);
             }
+            // 异常情况下返回false
+            return false;
+        }
+    }
+
+    /**
+     * 验证JSON字符串是否完整有效
+     */
+    private boolean isValidJson(String jsonString) {
+        if (jsonString == null || jsonString.trim().isEmpty()) {
+            return false;
+        }
+
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            mapper.readTree(jsonString);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /**
+     * 清理内容，移除无效字符和替换字符
+     */
+    private String cleanContent(String content) {
+        if (content == null) {
+            return "";
+        }
+
+        // 只移除最关键的问题字符，避免过度过滤
+        // \uFFFD: 替换字符（�）
+        // \u0000: 空字符
+        String cleaned = content.replaceAll("[\uFFFD\u0000]", "");
+
+        // 移除连续的多个空格，但保留单个空格和换行
+        cleaned = cleaned.replaceAll(" {2,}", " ");
+
+        return cleaned;
+    }
+
+    /**
+     * 验证字符是否有效
+     */
+    private boolean isValidCharacter(char ch) {
+        // 只排除最关键的问题字符
+        // 排除替换字符（�）
+        if (ch == '\uFFFD') {
+            return false;
+        }
+
+        // 排除空字符
+        if (ch == '\u0000') {
+            return false;
+        }
+
+        // 其他字符都认为是有效的，包括所有Unicode字符
+        return true;
+    }
+
+    /**
+     * 处理完整的JSON数据 - 支持快速单字符响应
+     * @return true-成功发送了AI内容，false-没有发送内容
+     */
+    private boolean processCompleteJson(String jsonData, HttpServletResponse response) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode jsonNode = mapper.readTree(jsonData);
+            JsonNode choices = jsonNode.get("choices");
+
+            if (choices != null && choices.isArray() && choices.size() > 0) {
+                JsonNode delta = choices.get(0).get("delta");
+                if (delta != null && delta.has("content")) {
+                    String content = delta.get("content").asText();
+                    if (content != null && !content.isEmpty()) {
+                        // 调试：记录原始内容
+                        log.debug("原始AI内容: [{}]", content.replace("\n", "\\n").replace("\r", "\\r"));
+
+                        // 清理内容，移除无效字符
+                        String cleanContent = cleanContent(content);
+
+                        // 调试：记录清理后内容
+                        if (!content.equals(cleanContent)) {
+                            log.debug("内容已清理: [{}] -> [{}]",
+                                content.replace("\n", "\\n").replace("\r", "\\r"),
+                                cleanContent.replace("\n", "\\n").replace("\r", "\\r"));
+                        }
+
+                        if (!cleanContent.isEmpty()) {
+                            // 根据配置选择响应模式
+                            if (ENABLE_CHARACTER_STREAMING) {
+                                // 按字符逐个发送，实现快速单字符响应
+                                sendContentByCharacter(cleanContent, response, mapper);
+                            } else {
+                                // 传统块发送模式
+                                sendContentAsBlock(cleanContent, response, mapper);
+                            }
+                            // 成功发送了内容
+                            return true;
+                        }
+                    }
+                }
+            }
+            // 没有发送内容
+            return false;
+        } catch (Exception e) {
+            log.error("处理完整JSON数据失败: {}", e.getMessage());
+            // 处理失败，没有发送内容
+            return false;
+        }
+    }
+
+    /**
+     * 按字符逐个发送内容，实现快速单字符响应
+     * 支持批量发送和智能字符处理
+     */
+    protected void sendContentByCharacter(String content, HttpServletResponse response, ObjectMapper mapper) {
+        try {
+            // 将内容转换为字符数组，支持Unicode字符
+            char[] chars = content.toCharArray();
+            StringBuilder batch = new StringBuilder();
+            int sentChars = 0;
+
+            for (int i = 0; i < chars.length; i++) {
+                char ch = chars[i];
+
+                // 跳过无效字符
+                if (isValidCharacter(ch)) {
+                    batch.append(ch);
+                }
+
+                // 当达到批量大小或者是最后一个字符时发送
+                if (batch.length() >= BATCH_SIZE || i == chars.length - 1) {
+                    try {
+                        String batchContent = batch.toString();
+
+                        // 发送Vercel AI SDK格式: 0:"content"\n
+                        String vercelFormat = String.format("0:%s\n", mapper.writeValueAsString(batchContent));
+                        response.getWriter().write(vercelFormat);
+                        response.getWriter().flush();
+
+                        sentChars += batchContent.length();
+
+                        // 记录发送的内容（对特殊字符进行转义显示）
+                        String displayContent = batchContent.replace("\n", "\\n")
+                                                           .replace("\r", "\\r")
+                                                           .replace("\t", "\\t");
+                        log.debug("发送批量内容: [{}] ({}字符)", displayContent, batchContent.length());
+
+                        // 清空批量缓冲区
+                        batch.setLength(0);
+
+                        // 添加延迟，控制发送速度
+                        if (CHARACTER_DELAY_MS > 0) {
+                            Thread.sleep(CHARACTER_DELAY_MS);
+                        }
+
+                    } catch (InterruptedException e) {
+                        log.warn("字符发送被中断: {}", e.getMessage());
+                        Thread.currentThread().interrupt();
+                        break;
+                    } catch (IOException e) {
+                        log.error("发送批量字符失败: {}", e.getMessage());
+                        // 如果批量发送失败，清空缓冲区继续下一批
+                        batch.setLength(0);
+                        continue;
+                    }
+                }
+            }
+
+            log.info("完成字符流式发送，总字符数: {}, 实际发送: {}", chars.length, sentChars);
+
+        } catch (Exception e) {
+            log.error("按字符发送内容失败: {}", e.getMessage());
+            // 如果按字符发送失败，回退到原来的块发送方式
+            try {
+                String vercelFormat = String.format("0:%s\n", mapper.writeValueAsString(content));
+                response.getWriter().write(vercelFormat);
+                response.getWriter().flush();
+                log.info("回退到块发送模式: [{}]", content);
+            } catch (Exception fallbackException) {
+                log.error("回退发送也失败: {}", fallbackException.getMessage());
+            }
+        }
+    }
+
+    /**
+     * 传统块发送模式 - 一次性发送整个content
+     */
+    protected void sendContentAsBlock(String content, HttpServletResponse response, ObjectMapper mapper) {
+        try {
+            // 确保内容已经清理过
+            String cleanContent = cleanContent(content);
+
+            if (!cleanContent.isEmpty()) {
+                // 发送Vercel AI SDK格式: 0:"content"\n
+                String vercelFormat = String.format("0:%s\n", mapper.writeValueAsString(cleanContent));
+                response.getWriter().write(vercelFormat);
+                response.getWriter().flush();
+                log.info("块发送模式数据发送成功: [{}]", cleanContent);
+            } else {
+                log.debug("块发送模式：内容为空，跳过发送");
+            }
+        } catch (Exception e) {
+            log.error("块发送模式失败: {}", e.getMessage());
         }
     }
 

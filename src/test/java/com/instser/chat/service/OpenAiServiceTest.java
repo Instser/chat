@@ -39,8 +39,8 @@ public class OpenAiServiceTest {
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", model.getModelCode());
             requestBody.put("messages", messages);
-            requestBody.put("max_tokens", 50);
             requestBody.put("temperature", 0.7);
+            requestBody.put("reasoning_effort", "none");
 
             // 创建WebClient
             WebClient webClient = WebClient.builder()
