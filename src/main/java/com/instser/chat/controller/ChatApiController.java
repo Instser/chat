@@ -483,24 +483,7 @@ public class ChatApiController {
         return cleaned;
     }
 
-    /**
-     * 验证字符是否有效
-     */
-    private boolean isValidCharacter(char ch) {
-        // 只排除最关键的问题字符
-        // 排除替换字符（�）
-        if (ch == '\uFFFD') {
-            return false;
-        }
 
-        // 排除空字符
-        if (ch == '\u0000') {
-            return false;
-        }
-
-        // 其他字符都认为是有效的，包括所有Unicode字符
-        return true;
-    }
 
     /**
      * 处理完整的JSON数据 - 支持快速单字符响应
@@ -556,25 +539,28 @@ public class ChatApiController {
 
     /**
      * 按字符逐个发送内容，实现快速单字符响应
-     * 支持批量发送和智能字符处理
+     * 支持批量发送和智能字符处理，正确处理emoji等多字节Unicode字符
      */
     protected void sendContentByCharacter(String content, HttpServletResponse response, ObjectMapper mapper) {
         try {
-            // 将内容转换为字符数组，支持Unicode字符
-            char[] chars = content.toCharArray();
+            // 使用codePoints正确处理emoji等多字节Unicode字符
+            int[] codePoints = content.codePoints().toArray();
             StringBuilder batch = new StringBuilder();
             int sentChars = 0;
 
-            for (int i = 0; i < chars.length; i++) {
-                char ch = chars[i];
+            for (int i = 0; i < codePoints.length; i++) {
+                int codePoint = codePoints[i];
 
-                // 跳过无效字符
-                if (isValidCharacter(ch)) {
-                    batch.append(ch);
+                // 将codePoint转换为字符串
+                String character = new String(Character.toChars(codePoint));
+
+                // 跳过无效字符（只检查替换字符和空字符）
+                if (codePoint != 0xFFFD && codePoint != 0x0000) {
+                    batch.append(character);
                 }
 
                 // 当达到批量大小或者是最后一个字符时发送
-                if (batch.length() >= BATCH_SIZE || i == chars.length - 1) {
+                if (batch.length() >= BATCH_SIZE || i == codePoints.length - 1) {
                     try {
                         String batchContent = batch.toString();
 
@@ -612,7 +598,7 @@ public class ChatApiController {
                 }
             }
 
-            log.info("完成字符流式发送，总字符数: {}, 实际发送: {}", chars.length, sentChars);
+            log.info("完成字符流式发送，总字符数: {}, 实际发送: {}", codePoints.length, sentChars);
 
         } catch (Exception e) {
             log.error("按字符发送内容失败: {}", e.getMessage());
