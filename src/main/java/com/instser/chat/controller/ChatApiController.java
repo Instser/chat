@@ -109,6 +109,7 @@ public class ChatApiController {
                 response.getWriter().flush();
                 return;
             }
+            System.out.println("当前模型为：" + model.getModelName() + " url：" + model.getBaseUrl());
 
             // 验证消息格式
             Map<String, String> lastMessage = messages.get(messages.size() - 1);
@@ -272,59 +273,35 @@ public class ChatApiController {
             // 添加JSON数据缓冲区，用于处理分片数据
             StringBuilder jsonBuffer = new StringBuilder();
 
-            // 构建用于日志显示的消息列表（提示词只显示开头和结尾）
-            List<Map<String, String>> logMessages = new ArrayList<>();
-            for (Map<String, String> msg : messagesWithPrompt) {
-                Map<String, String> logMsg = new HashMap<>();
-                logMsg.put("role", msg.get("role"));
-
-                String content = msg.get("content");
-                if ("system".equals(msg.get("role")) && content != null && content.length() > 60) {
-                    // 系统提示词只显示开头30字符和结尾30字符
-                    String preview = content.substring(0, 30) + "..." + content.substring(content.length() - 30);
-                    logMsg.put("content", preview);
-                } else {
-                    logMsg.put("content", content);
-                }
-                logMessages.add(logMsg);
-            }
-
-            // 打印完整的请求JSON（提示词已简化）
-            try {
-                ObjectMapper logMapper = new ObjectMapper();
-                String requestJson = logMapper.writeValueAsString(Map.of(
-                    "model", model.getModelCode(),
-                    "messages", logMessages,
-                    "stream", true,
-                    "temperature", 0.7,
-                    "reasoning_effort", "none"
-                ));
-                log.info("POST请求完整JSON: {}", requestJson);
-            } catch (Exception e) {
-                log.warn("无法序列化请求JSON: {}", e.getMessage());
-            }
-
             // 构建请求体
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", model.getModelCode());
             requestBody.put("messages", messagesWithPrompt);
             requestBody.put("stream", true);
-            requestBody.put("temperature", 0.7);
             requestBody.put("reasoning_effort", "none");
 
-            // 创建WebClient，确保UTF-8编码
+            // 打印最终向AI发送的真实完整JSON（包含完整的系统提示词）
+            try {
+                ObjectMapper logMapper = new ObjectMapper();
+                String actualRequestJson = logMapper.writeValueAsString(requestBody);
+                log.info("POST请求完整JSON（真实发送内容）: {}", actualRequestJson);
+            } catch (Exception e) {
+                log.warn("无法序列化实际请求JSON: {}", e.getMessage());
+            }
+
+            // 创建WebClient，确保UTF-8编码 - 使用直接完整URL
             WebClient webClient = WebClient.builder()
-                    .baseUrl(model.getBaseUrl())
                     .defaultHeader("Authorization", "Bearer " + model.getApiKey())
                     .defaultHeader("Content-Type", "application/json; charset=UTF-8")
                     .defaultHeader("Accept-Charset", "UTF-8")
+                    .defaultHeader("User-Agent", "OpenAI/PowerShell")  // 添加与成功脚本相同的User-Agent
                     .build();
 
             log.info("调用AI API: {}, 模型: {}", model.getBaseUrl(), model.getModelCode());
 
-            // 发送流式请求并直接处理响应 - 使用阻塞方式
+            // 发送流式请求并直接处理响应 - 使用直接完整URL
             webClient.post()
-                    .uri("/chat/completions")
+                    .uri(model.getBaseUrl())
                     .contentType(MediaType.APPLICATION_JSON)
                     .bodyValue(requestBody)
                     .retrieve()
@@ -681,5 +658,7 @@ public class ChatApiController {
         response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
         response.setHeader("Access-Control-Allow-Headers", "*");
     }
+
+
 
 }

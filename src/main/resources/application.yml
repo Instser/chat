@@ -144,8 +144,8 @@ yipay:
 ai:
   # 默认API配置
   default:
-    base-url: ${AI_BASE_URL:http://203.0.113.15:3000/v1}
-    api-key: ${AI_API_KEY:a2366021253}
+    base-url: ${AI_BASE_URL:https://generativelanguage.googleapis.com/v1beta/openai/chat/completions/}
+    api-key: ${AI_API_KEY:your-google-api-key}
 
 # JWT配置
 jwt:
