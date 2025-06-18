@@ -32,4 +32,12 @@ public interface ChatMessageDao extends BaseMapper<ChatMessage> {
      * @return 消息列表
      */
     List<ChatMessage> selectRecentByUserId(@Param("userId") Long userId, @Param("limit") Integer limit);
+
+    /**
+     * 根据消息ID查询消息
+     *
+     * @param messageId 消息ID（UUID）
+     * @return 消息信息
+     */
+    ChatMessage selectByMessageId(@Param("messageId") String messageId);
 }

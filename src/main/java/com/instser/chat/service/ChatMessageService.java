@@ -59,4 +59,12 @@ public interface ChatMessageService extends IService<ChatMessage> {
      * @param errorMessage 错误信息
      */
     void updateMessageStatus(Long messageId, Integer status, String errorMessage);
+
+    /**
+     * 根据消息ID查询消息
+     *
+     * @param messageId 消息ID（UUID）
+     * @return 消息信息
+     */
+    ChatMessage getByMessageId(String messageId);
 }

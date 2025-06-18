@@ -2,20 +2,23 @@ package com.instser.chat.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.instser.chat.common.result.Result;
+import com.instser.chat.constants.PromptConstants;
 import com.instser.chat.entity.AiModel;
 import com.instser.chat.entity.ChatMessage;
 import com.instser.chat.entity.ChatSession;
 import com.instser.chat.service.AiModelService;
 import com.instser.chat.service.ChatMessageService;
 import com.instser.chat.service.ChatSessionService;
-import com.instser.chat.service.OpenAiService;
+import com.instser.chat.service.ChatLimitService;
+import com.instser.chat.vo.ChatLimitVO;
+
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
+
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -27,7 +30,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-import java.util.concurrent.Executor;
+
 
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
@@ -51,10 +54,8 @@ public class ChatApiController {
     private final ChatMessageService chatMessageService;
     private final ChatSessionService chatSessionService;
     private final AiModelService aiModelService;
-    private final OpenAiService openAiService;
+    private final ChatLimitService chatLimitService;
 
-    @Qualifier("sseBypassExecutor")
-    private final Executor sseBypassExecutor;
 
     /**
      * 流式聊天接口 - 兼容前端 (POST)
@@ -78,6 +79,7 @@ public class ChatApiController {
             @SuppressWarnings("unchecked")
             List<Map<String, String>> messages = (List<Map<String, String>>) request.get("messages");
             Object userIdObj = request.get("userId");
+            Object deepThinkingObj = request.get("deepThinking");
 
             if (messages == null || messages.isEmpty()) {
                 response.getWriter().write("3:\"消息列表不能为空\"\n");
@@ -92,7 +94,7 @@ public class ChatApiController {
             }
 
             // 硬编码使用ID为1的模型（已配置为qwen3-235b-a22b）
-            Long modelId = 1L;
+            Long modelId = 2L;
             Long userId = Long.valueOf(userIdObj.toString());
 
             // 获取模型配置
@@ -120,12 +122,47 @@ public class ChatApiController {
                 return;
             }
 
+            // 验证用户聊天权限和套餐限制
+            ChatLimitVO limitCheck = chatLimitService.validateChatPermission(userId);
+            if (!limitCheck.getCanChat()) {
+                String errorMessage = limitCheck.getLimitReason() != null ?
+                    limitCheck.getLimitReason() : "聊天权限验证失败";
+                response.getWriter().write("3:\"" + errorMessage + "\"\n");
+                response.getWriter().flush();
+                log.warn("用户{}聊天权限验证失败: {}", userId, errorMessage);
+                return;
+            }
+
+            log.info("用户{}聊天权限验证通过，套餐：{}，限制类型：{}",
+                    userId, limitCheck.getPackageName(), limitCheck.getLimitType());
             log.info("所有验证通过，开始直接流式响应");
+
+            // 解析deepThinking参数
+            boolean isDeepThink = false;
+            if (deepThinkingObj != null) {
+                if (deepThinkingObj instanceof Boolean) {
+                    isDeepThink = (Boolean) deepThinkingObj;
+                } else if (deepThinkingObj instanceof String) {
+                    isDeepThink = "true".equalsIgnoreCase((String) deepThinkingObj) || "1".equals(deepThinkingObj);
+                } else if (deepThinkingObj instanceof Number) {
+                    isDeepThink = ((Number) deepThinkingObj).intValue() == 1;
+                }
+            }
+
+            log.info("deepThinking参数: {}, 解析结果: {}", deepThinkingObj, isDeepThink);
 
             // 直接在当前线程中调用AI服务，避免异步问题
             log.info("开始调用AI服务，模型：{}，用户：{}", model.getModelName(), userId);
             // 直接调用AI服务，传入response对象进行直接写入
-            streamChatDirect(messages, model, response);
+            streamChatDirect(messages, model, response, isDeepThink);
+
+            // 聊天完成后记录使用次数
+            boolean recordSuccess = chatLimitService.recordChatUsage(userId);
+            if (recordSuccess) {
+                log.info("用户{}聊天使用次数记录成功", userId);
+            } else {
+                log.warn("用户{}聊天使用次数记录失败", userId);
+            }
 
         } catch (Exception e) {
             log.error("聊天接口异常", e);
@@ -138,144 +175,7 @@ public class ChatApiController {
         }
     }
 
-    /**
-     * 流式聊天接口 - 支持EventSource (GET)
-     */
-    @GetMapping(value = "", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter chatGet(@RequestParam("data") String requestData, Authentication authentication,
-                              HttpServletRequest httpRequest, HttpServletResponse response) {
-        log.info("收到EventSource聊天请求：{}, 认证信息：{}", requestData, authentication);
 
-        // 设置Vercel AI SDK响应头和字符编码
-        response.setContentType("text/event-stream; charset=UTF-8");
-        response.setCharacterEncoding("UTF-8");
-        response.setHeader("x-vercel-ai-data-stream", "v1");
-        response.setHeader("Cache-Control", "no-cache");
-        response.setHeader("Connection", "keep-alive");
-
-        // 动态设置跨域头
-        setCorsHeaders(httpRequest, response);
-
-        // 在创建SseEmitter之前进行所有验证和安全检查
-        try {
-            // 解析JSON数据
-            ObjectMapper objectMapper = new ObjectMapper();
-            @SuppressWarnings("unchecked")
-            Map<String, Object> request = objectMapper.readValue(requestData, Map.class);
-
-            @SuppressWarnings("unchecked")
-            List<Map<String, String>> messages = (List<Map<String, String>>) request.get("messages");
-            Object userIdObj = request.get("userId");
-
-            if (messages == null || messages.isEmpty()) {
-                throw new IllegalArgumentException("消息列表不能为空");
-            }
-
-            if (userIdObj == null) {
-                throw new IllegalArgumentException("用户ID不能为空");
-            }
-
-            // 硬编码使用ID为1的模型
-            Long modelId = 1L;
-            Long userId = Long.valueOf(userIdObj.toString());
-
-            // 获取模型配置
-            AiModel model = aiModelService.getById(modelId);
-            if (model == null || model.getIsAvailable() != 1) {
-                throw new IllegalArgumentException("AI模型不可用");
-            }
-
-            // 验证消息格式
-            Map<String, String> lastMessage = messages.get(messages.size() - 1);
-            String role = lastMessage.get("role");
-
-            if (!"user".equals(role)) {
-                throw new IllegalArgumentException("最后一条消息必须是用户消息");
-            }
-
-            // 验证用户权限（确保认证用户有权限访问）
-            if (authentication == null || !authentication.isAuthenticated()) {
-                throw new SecurityException("用户未认证");
-            }
-
-            log.info("EventSource所有验证通过，开始创建SSE流式响应");
-
-            // 创建SseEmitter（此时所有验证都已完成）
-            SseEmitter emitter = new SseEmitter(60000L);
-
-            // 设置异常处理回调
-            emitter.onError(throwable -> {
-                log.error("EventSource SSE流式响应发生错误", throwable);
-                try {
-                    emitter.complete();
-                } catch (Exception e) {
-                    log.error("完成SSE发射器失败", e);
-                }
-            });
-
-            emitter.onTimeout(() -> {
-                log.warn("EventSource SSE流式响应超时");
-                try {
-                    emitter.complete();
-                } catch (Exception e) {
-                    log.error("完成SSE发射器失败", e);
-                }
-            });
-
-            // 使用SSE专用执行器，绕过Spring Security异步检查
-            sseBypassExecutor.execute(() -> {
-                try {
-                    log.info("开始调用AI服务，模型：{}，用户：{}", model.getModelName(), userId);
-                    openAiService.streamChat(messages, model, emitter);
-                } catch (Exception e) {
-                    log.error("AI服务调用异常", e);
-                    try {
-                        emitter.send(SseEmitter.event().data("抱歉，AI服务出现异常，请稍后重试。"));
-                        emitter.complete();
-                    } catch (IOException ioException) {
-                        log.error("发送错误消息失败", ioException);
-                        emitter.completeWithError(ioException);
-                    }
-                }
-            });
-
-            return emitter;
-
-        } catch (IllegalArgumentException e) {
-            log.warn("EventSource请求参数错误: {}", e.getMessage());
-            SseEmitter errorEmitter = new SseEmitter();
-            try {
-                errorEmitter.send(SseEmitter.event().data("错误：" + e.getMessage()));
-                errorEmitter.complete();
-            } catch (IOException ioException) {
-                log.error("发送错误消息失败", ioException);
-                errorEmitter.completeWithError(ioException);
-            }
-            return errorEmitter;
-        } catch (SecurityException e) {
-            log.warn("EventSource安全验证失败: {}", e.getMessage());
-            SseEmitter errorEmitter = new SseEmitter();
-            try {
-                errorEmitter.send(SseEmitter.event().data("错误：" + e.getMessage()));
-                errorEmitter.complete();
-            } catch (IOException ioException) {
-                log.error("发送错误消息失败", ioException);
-                errorEmitter.completeWithError(ioException);
-            }
-            return errorEmitter;
-        } catch (Exception e) {
-            log.error("EventSource聊天接口异常", e);
-            SseEmitter errorEmitter = new SseEmitter();
-            try {
-                errorEmitter.send(SseEmitter.event().data("系统错误：" + e.getMessage()));
-                errorEmitter.complete();
-            } catch (IOException ioException) {
-                log.error("发送系统错误消息失败", ioException);
-                errorEmitter.completeWithError(ioException);
-            }
-            return errorEmitter;
-        }
-    }
 
     /**
      * 获取可用模型列表
@@ -337,12 +237,61 @@ public class ChatApiController {
     /**
      * 直接流式聊天方法 - 不使用SseEmitter，直接写入HttpServletResponse
      */
-    private void streamChatDirect(List<Map<String, String>> messages, AiModel model, HttpServletResponse response) {
+    private void streamChatDirect(List<Map<String, String>> messages, AiModel model, HttpServletResponse response, boolean isDeepThink) {
         try {
+            // 添加系统提示词到消息列表开头
+            List<Map<String, String>> messagesWithPrompt = new ArrayList<>();
+
+            // 根据deepthink参数选择提示词
+            String systemPrompt = isDeepThink ? PromptConstants.DEEP_THINKING_PROMPT : PromptConstants.DEFAULT_SYSTEM_PROMPT;
+
+            // 添加系统提示词
+            Map<String, String> systemMessage = new HashMap<>();
+            systemMessage.put("role", "system");
+            systemMessage.put("content", systemPrompt);
+            messagesWithPrompt.add(systemMessage);
+
+            // 添加用户的消息
+            messagesWithPrompt.addAll(messages);
+
+            log.info("使用{}提示词，消息总数: {}", isDeepThink ? "深度思考" : "默认", messagesWithPrompt.size());
+
+            // 构建用于日志显示的消息列表（提示词只显示开头和结尾）
+            List<Map<String, String>> logMessages = new ArrayList<>();
+            for (Map<String, String> msg : messagesWithPrompt) {
+                Map<String, String> logMsg = new HashMap<>();
+                logMsg.put("role", msg.get("role"));
+
+                String content = msg.get("content");
+                if ("system".equals(msg.get("role")) && content != null && content.length() > 60) {
+                    // 系统提示词只显示开头30字符和结尾30字符
+                    String preview = content.substring(0, 30) + "..." + content.substring(content.length() - 30);
+                    logMsg.put("content", preview);
+                } else {
+                    logMsg.put("content", content);
+                }
+                logMessages.add(logMsg);
+            }
+
+            // 打印完整的请求JSON（提示词已简化）
+            try {
+                ObjectMapper logMapper = new ObjectMapper();
+                String requestJson = logMapper.writeValueAsString(Map.of(
+                    "model", model.getModelCode(),
+                    "messages", logMessages,
+                    "stream", true,
+                    "max_tokens", 2000,
+                    "temperature", 0.7
+                ));
+                log.info("POST请求完整JSON: {}", requestJson);
+            } catch (Exception e) {
+                log.warn("无法序列化请求JSON: {}", e.getMessage());
+            }
+
             // 构建请求体
             Map<String, Object> requestBody = new HashMap<>();
             requestBody.put("model", model.getModelCode());
-            requestBody.put("messages", messages);
+            requestBody.put("messages", messagesWithPrompt);
             requestBody.put("stream", true);
             requestBody.put("max_tokens", 2000);
             requestBody.put("temperature", 0.7);
@@ -474,7 +423,11 @@ public class ChatApiController {
             "http://192.168.1.100:3000",
             "http://192.168.1.100:3001",
             "https://192.168.1.100:3000",
-            "https://192.168.1.100:3001"
+            "https://192.168.1.100:3001",
+            "http://192.168.1.101:3000",
+            "http://192.168.1.101:3001",
+            "https://192.168.1.101:3000",
+            "https://192.168.1.101:3001"
         };
 
         // 检查请求来源是否在允许列表中

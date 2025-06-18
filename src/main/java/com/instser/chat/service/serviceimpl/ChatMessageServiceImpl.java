@@ -69,4 +69,9 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
         this.updateById(message);
         log.info("消息状态更新成功，消息ID：{}，状态：{}", messageId, status);
     }
+
+    @Override
+    public ChatMessage getByMessageId(String messageId) {
+        return baseMapper.selectByMessageId(messageId);
+    }
 }

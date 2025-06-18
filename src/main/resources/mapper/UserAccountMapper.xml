@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.instser.chat.dao.UserAccountDao">
+
+    <!-- 通用查询映射结果 -->
+    <resultMap id="BaseResultMap" type="com.instser.chat.entity.UserAccount">
+        <id column="id" property="id" />
+        <result column="user_id" property="userId" />
+        <result column="package_id" property="packageId" />
+        <result column="chat_count_remaining" property="chatCountRemaining" />
+        <result column="package_expire_time" property="packageExpireTime" />
+        <result column="total_chat_count" property="totalChatCount" />
+        <result column="total_amount_spent" property="totalAmountSpent" />
+        <result column="token_balance" property="tokenBalance" />
+        <result column="token_used" property="tokenUsed" />
+        <result column="membership_level" property="membershipLevel" />
+        <result column="membership_expire_time" property="membershipExpireTime" />
+        <result column="create_time" property="createTime" />
+        <result column="update_time" property="updateTime" />
+        <result column="deleted" property="deleted" />
+    </resultMap>
+
+    <!-- 通用查询结果列 -->
+    <sql id="Base_Column_List">
+        id, user_id, package_id, chat_count_remaining, package_expire_time, total_chat_count,
+        total_amount_spent, token_balance, token_used, membership_level, membership_expire_time,
+        create_time, update_time, deleted
+    </sql>
+
+    <!-- 根据用户ID获取账户信息 -->
+    <select id="selectByUserId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List" />
+        FROM t_user_account
+        WHERE user_id = #{userId} AND deleted = 0
+        LIMIT 1
+    </select>
+
+    <!-- 更新用户套餐信息 -->
+    <update id="updatePackageInfo">
+        UPDATE t_user_account
+        SET package_id = #{packageId},
+            package_expire_time = #{packageExpireTime},
+            chat_count_remaining = #{chatCountRemaining},
+            update_time = NOW()
+        WHERE user_id = #{userId} AND deleted = 0
+    </update>
+
+    <!-- 原子性减少剩余聊天次数 -->
+    <update id="decrementChatCount">
+        UPDATE t_user_account
+        SET chat_count_remaining = chat_count_remaining - #{count},
+            update_time = NOW()
+        WHERE user_id = #{userId}
+          AND chat_count_remaining >= #{count}
+          AND (package_expire_time IS NULL OR package_expire_time &gt; NOW())
+          AND deleted = 0
+    </update>
+
+    <!-- 增加总聊天次数统计 -->
+    <update id="incrementTotalChatCount">
+        UPDATE t_user_account
+        SET total_chat_count = total_chat_count + #{count},
+            update_time = NOW()
+        WHERE user_id = #{userId} AND deleted = 0
+    </update>
+
+    <!-- 获取过期的用户账户列表 -->
+    <select id="selectExpiredAccounts" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List" />
+        FROM t_user_account
+        WHERE package_expire_time IS NOT NULL
+          AND package_expire_time &lt; #{beforeTime}
+          AND deleted = 0
+        ORDER BY package_expire_time ASC
+        LIMIT #{limit}
+    </select>
+
+    <!-- 批量清理过期套餐信息 -->
+    <update id="cleanExpiredPackages">
+        UPDATE t_user_account
+        SET package_id = NULL,
+            package_expire_time = NULL,
+            chat_count_remaining = 0,
+            update_time = NOW()
+        WHERE package_expire_time IS NOT NULL
+          AND package_expire_time &lt; #{beforeTime}
+          AND deleted = 0
+    </update>
+
+    <!-- 检查用户是否存在账户记录 -->
+    <select id="countByUserId" resultType="int">
+        SELECT COUNT(*)
+        FROM t_user_account
+        WHERE user_id = #{userId} AND deleted = 0
+    </select>
+
+    <!-- 创建或更新用户账户信息（原子性操作） -->
+    <insert id="insertOrUpdateAccount">
+        INSERT INTO t_user_account
+        (user_id, package_id, package_expire_time, chat_count_remaining, total_chat_count,
+         total_amount_spent, token_balance, token_used, membership_level, membership_expire_time,
+         create_time, update_time, deleted)
+        VALUES (#{userId}, #{packageId}, #{packageExpireTime}, #{chatCountRemaining}, 0,
+                0.00, 0, 0, 'free', NULL, NOW(), NOW(), 0)
+        ON DUPLICATE KEY UPDATE
+            package_id = #{packageId},
+            package_expire_time = #{packageExpireTime},
+            chat_count_remaining = #{chatCountRemaining},
+            update_time = NOW(),
+            deleted = 0
+    </insert>
+
+</mapper>

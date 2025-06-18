@@ -15,6 +15,7 @@ import com.instser.chat.vo.converter.VOConverter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
@@ -29,7 +30,6 @@ import java.nio.file.Paths;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.stream.Collectors;
 
 /**
  * 前端API控制器 - 使用VO响应
@@ -359,7 +359,7 @@ public class ApiController {
         }
 
         // 获取消息并验证
-        ChatMessage message = chatMessageService.getById(Long.valueOf(messageId));
+        ChatMessage message = chatMessageService.getByMessageId(messageId);
         if (message == null) {
             return Result.failed("消息不存在");
         }
@@ -418,65 +418,11 @@ public class ApiController {
         return Result.success(chatMessageVO, "添加消息成功");
     }
 
-    /**
-     * 批量删除消息
-     */
-    @PostMapping("/messages/delete")
-    public Result<Map<String, Object>> batchDeleteMessages(
-            @RequestBody Map<String, Object> request,
-            Authentication authentication) {
-
-        Long userId = getCurrentUserId(authentication);
-
-        @SuppressWarnings("unchecked")
-        List<String> messageIds = (List<String>) request.get("messageIds");
-        String chatId = (String) request.get("chatId");
-
-        if (messageIds == null || messageIds.isEmpty()) {
-            return Result.validateFailed("消息ID列表不能为空");
-        }
-        if (chatId == null || chatId.trim().isEmpty()) {
-            return Result.validateFailed("聊天ID不能为空");
-        }
-
-        // 先验证聊天是否属于当前用户
-        ChatSession chatSession = chatSessionService.getSessionInfo(chatId);
-        if (chatSession == null) {
-            return Result.failed("聊天不存在");
-        }
-        if (!chatSession.getUserId().equals(userId)) {
-            return Result.failed("无权访问此聊天");
-        }
-
-        // 验证所有消息都属于该聊天
-        List<Long> messageIdLongs = messageIds.stream()
-                .map(Long::valueOf)
-                .collect(java.util.stream.Collectors.toList());
-
-        List<ChatMessage> messages = chatMessageService.listByIds(messageIdLongs);
-        for (ChatMessage message : messages) {
-            if (!message.getSessionId().equals(chatId)) {
-                return Result.failed("部分消息不属于此聊天");
-            }
-        }
-
-        // 执行批量删除
-        boolean deleted = chatMessageService.removeByIds(messageIdLongs);
-        if (!deleted) {
-            return Result.failed("删除消息失败");
-        }
-
-        Map<String, Object> response = new HashMap<>();
-        response.put("success", true);
-        response.put("deletedCount", messages.size());
-
-        log.info("批量删除消息成功，聊天ID：{}，删除数量：{}", chatId, messages.size());
-        return Result.success(response, "批量删除消息成功");
-    }
 
     /**
      * 删除指定消息及之后的消息
      */
+    @Transactional
     @DeleteMapping("/messages/delete")
     public Result<Map<String, Object>> deleteMessagesFromPoint(
             @RequestParam @NotBlank String messageId,
@@ -495,7 +441,7 @@ public class ApiController {
         }
 
         // 获取指定消息
-        ChatMessage targetMessage = chatMessageService.getById(Long.valueOf(messageId));
+        ChatMessage targetMessage = chatMessageService.getByMessageId(messageId);
         if (targetMessage == null) {
             return Result.failed("消息不存在");
         }
@@ -511,7 +457,7 @@ public class ApiController {
         List<Long> messagesToDelete = new java.util.ArrayList<>();
 
         for (ChatMessage message : allMessages) {
-            if (message.getId().equals(Long.valueOf(messageId))) {
+            if (message.getMessageId().equals(messageId)) {
                 foundTarget = true;
             }
             if (foundTarget) {

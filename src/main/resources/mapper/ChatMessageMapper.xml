@@ -44,4 +44,13 @@
         LIMIT #{limit}
     </select>
 
+    <!-- 根据消息ID查询消息 -->
+    <select id="selectByMessageId" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List" />
+        FROM t_chat_message
+        WHERE message_id = #{messageId}
+          AND deleted = 0
+        LIMIT 1
+    </select>
+
 </mapper>

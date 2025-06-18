@@ -73,6 +73,18 @@ public class Package implements Serializable {
     private Integer chatCount;
 
     /**
+     * 每日聊天次数限制
+     */
+    @TableField("daily_chat_limit")
+    private Integer dailyChatLimit;
+
+    /**
+     * 限制类型（daily-每日限制，total-总次数限制）
+     */
+    @TableField("limit_type")
+    private String limitType;
+
+    /**
      * 包含的AI模型权限（JSON格式存储模型ID列表）
      */
     @TableField("model_permissions")

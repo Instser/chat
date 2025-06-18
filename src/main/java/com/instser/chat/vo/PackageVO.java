@@ -59,6 +59,16 @@ public class PackageVO {
     private Integer chatCount;
 
     /**
+     * 每日聊天次数限制
+     */
+    private Integer dailyChatLimit;
+
+    /**
+     * 限制类型（daily-每日限制，total-总次数限制）
+     */
+    private String limitType;
+
+    /**
      * 包含的AI模型权限
      */
     private List<String> modelPermissions;
