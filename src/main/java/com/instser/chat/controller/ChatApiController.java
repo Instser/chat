@@ -56,10 +56,11 @@ public class ChatApiController {
     private final AiModelService aiModelService;
     private final ChatLimitService chatLimitService;
 
-    // 快速单字符响应配置
-    private static final boolean ENABLE_CHARACTER_STREAMING = true; // 是否启用单字符流式响应
-    private static final long CHARACTER_DELAY_MS = 1; // 字符间延迟（毫秒）
-    private static final int BATCH_SIZE = 1; // 批量发送字符数，1表示单字符，可设置为2-5实现小批量发送
+    // 智能分块响应配置
+    private static final boolean ENABLE_SMART_CHUNKING = true; // 是否启用智能分块流式响应
+    private static final long CHUNK_DELAY_MS = 30; // 分块间延迟（毫秒）
+    private static final int MIN_CHUNK_SIZE = 5; // 最小分块大小
+    private static final int MAX_CHUNK_SIZE = 25; // 最大分块大小
 
 
     /**
@@ -99,7 +100,7 @@ public class ChatApiController {
             }
 
             // 硬编码使用ID为1的模型（已配置为qwen3-235b-a22b）
-            Long modelId = 1L;
+            Long modelId = 2L;
             Long userId = Long.valueOf(userIdObj.toString());
 
             // 获取模型配置
@@ -492,9 +493,9 @@ public class ChatApiController {
 
                         if (!cleanContent.isEmpty()) {
                             // 根据配置选择响应模式
-                            if (ENABLE_CHARACTER_STREAMING) {
-                                // 按字符逐个发送，实现快速单字符响应
-                                sendContentByCharacter(cleanContent, response, mapper);
+                            if (ENABLE_SMART_CHUNKING) {
+                                // 智能分块发送，根据内容长度动态调整分块大小
+                                sendContentBySmartChunking(cleanContent, response, mapper);
                             } else {
                                 // 传统块发送模式
                                 sendContentAsBlock(cleanContent, response, mapper);
@@ -515,14 +516,17 @@ public class ChatApiController {
     }
 
     /**
-     * 按字符逐个发送内容，实现快速单字符响应
-     * 支持批量发送和智能字符处理，正确处理emoji等多字节Unicode字符
+     * 智能分块发送内容，根据内容长度动态调整分块大小
+     * 支持智能字符处理，正确处理emoji等多字节Unicode字符
      */
-    protected void sendContentByCharacter(String content, HttpServletResponse response, ObjectMapper mapper) {
+    protected void sendContentBySmartChunking(String content, HttpServletResponse response, ObjectMapper mapper) {
         try {
+            // 根据内容长度计算最优分块大小
+            int optimalChunkSize = getOptimalChunkSize(content);
+
             // 使用codePoints正确处理emoji等多字节Unicode字符
             int[] codePoints = content.codePoints().toArray();
-            StringBuilder batch = new StringBuilder();
+            StringBuilder chunk = new StringBuilder();
             int sentChars = 0;
 
             for (int i = 0; i < codePoints.length; i++) {
@@ -533,53 +537,53 @@ public class ChatApiController {
 
                 // 跳过无效字符（只检查替换字符和空字符）
                 if (codePoint != 0xFFFD && codePoint != 0x0000) {
-                    batch.append(character);
+                    chunk.append(character);
                 }
 
-                // 当达到批量大小或者是最后一个字符时发送
-                if (batch.length() >= BATCH_SIZE || i == codePoints.length - 1) {
+                // 当达到分块大小或者是最后一个字符时发送
+                if (chunk.length() >= optimalChunkSize || i == codePoints.length - 1) {
                     try {
-                        String batchContent = batch.toString();
+                        String chunkContent = chunk.toString();
 
                         // 发送Vercel AI SDK格式: 0:"content"\n
-                        String vercelFormat = String.format("0:%s\n", mapper.writeValueAsString(batchContent));
+                        String vercelFormat = String.format("0:%s\n", mapper.writeValueAsString(chunkContent));
                         response.getWriter().write(vercelFormat);
                         response.getWriter().flush();
 
-                        sentChars += batchContent.length();
+                        sentChars += chunkContent.length();
 
                         // 记录发送的内容（对特殊字符进行转义显示）
-                        String displayContent = batchContent.replace("\n", "\\n")
+                        String displayContent = chunkContent.replace("\n", "\\n")
                                                            .replace("\r", "\\r")
                                                            .replace("\t", "\\t");
-                        log.debug("发送批量内容: [{}] ({}字符)", displayContent, batchContent.length());
+                        log.debug("发送智能分块内容: [{}] ({}字符, 分块大小: {})", displayContent, chunkContent.length(), optimalChunkSize);
 
-                        // 清空批量缓冲区
-                        batch.setLength(0);
+                        // 清空分块缓冲区
+                        chunk.setLength(0);
 
                         // 添加延迟，控制发送速度
-                        if (CHARACTER_DELAY_MS > 0) {
-                            Thread.sleep(CHARACTER_DELAY_MS);
+                        if (CHUNK_DELAY_MS > 0) {
+                            Thread.sleep(CHUNK_DELAY_MS);
                         }
 
                     } catch (InterruptedException e) {
-                        log.warn("字符发送被中断: {}", e.getMessage());
+                        log.warn("分块发送被中断: {}", e.getMessage());
                         Thread.currentThread().interrupt();
                         break;
                     } catch (IOException e) {
-                        log.error("发送批量字符失败: {}", e.getMessage());
-                        // 如果批量发送失败，清空缓冲区继续下一批
-                        batch.setLength(0);
+                        log.error("发送分块内容失败: {}", e.getMessage());
+                        // 如果分块发送失败，清空缓冲区继续下一块
+                        chunk.setLength(0);
                         continue;
                     }
                 }
             }
 
-            log.info("完成字符流式发送，总字符数: {}, 实际发送: {}", codePoints.length, sentChars);
+            log.info("完成智能分块流式发送，总字符数: {}, 实际发送: {}, 分块大小: {}", codePoints.length, sentChars, optimalChunkSize);
 
         } catch (Exception e) {
-            log.error("按字符发送内容失败: {}", e.getMessage());
-            // 如果按字符发送失败，回退到原来的块发送方式
+            log.error("智能分块发送内容失败: {}", e.getMessage());
+            // 如果智能分块发送失败，回退到原来的块发送方式
             try {
                 String vercelFormat = String.format("0:%s\n", mapper.writeValueAsString(content));
                 response.getWriter().write(vercelFormat);
@@ -588,6 +592,28 @@ public class ChatApiController {
             } catch (Exception fallbackException) {
                 log.error("回退发送也失败: {}", fallbackException.getMessage());
             }
+        }
+    }
+
+    /**
+     * 根据内容长度计算最优分块大小
+     * 智能分块策略：短内容直接发送，中等内容小块发送，长内容中块发送
+     */
+    private int getOptimalChunkSize(String content) {
+        int length = content.length();
+
+        if (length <= 20) {
+            // 短内容：直接发送全部内容
+            return length;
+        } else if (length <= 100) {
+            // 中等内容：使用小分块
+            return Math.max(MIN_CHUNK_SIZE, Math.min(length / 4, 10));
+        } else if (length <= 300) {
+            // 较长内容：使用中等分块
+            return Math.max(10, Math.min(length / 8, 15));
+        } else {
+            // 长内容：使用大分块
+            return Math.max(15, Math.min(MAX_CHUNK_SIZE, length / 12));
         }
     }
 
