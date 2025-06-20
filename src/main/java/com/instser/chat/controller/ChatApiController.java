@@ -169,11 +169,14 @@ public class ChatApiController {
 
             // 直接在当前线程中调用AI服务，避免异步问题
             log.info("开始调用AI服务，模型：{}，用户：{}", model.getModelName(), userId);
-            // 直接调用AI服务，传入response对象进行直接写入，返回是否成功
-            boolean aiServiceSuccess = streamChatDirect(messages, model, response, isDeepThink, sessionId, userId);
+            // 判断是否会生成标题（只有真正的AI响应且是第一次AI回复才会生成标题）
+            boolean willGenerateTitle = sessionId != null && isFirstAiResponse(messages);
 
-            // 只有AI服务成功返回内容时才记录使用次数
-            if (aiServiceSuccess) {
+            // 直接调用AI服务，传入response对象进行直接写入，返回结果包含成功状态和是否为真实AI响应
+            ChatResponseResult chatResult = streamChatDirectWithResult(messages, model, response, isDeepThink, sessionId, userId, willGenerateTitle);
+
+            // 只有AI服务真正成功返回内容时才记录使用次数
+            if (chatResult.isRealAiResponse()) {
                 boolean recordSuccess = chatLimitService.recordChatUsage(userId);
                 if (recordSuccess) {
                     log.info("用户{}聊天使用次数记录成功", userId);
@@ -181,10 +184,11 @@ public class ChatApiController {
                     log.warn("用户{}聊天使用次数记录失败", userId);
                 }
 
-                // 检测是否需要生成标题
-                if (sessionId != null && isFirstAiResponse(messages)) {
-                    generateAndSaveTitle(sessionId, messages, model);
-                }
+                // 标题生成已在流式响应中完成，这里不需要再次生成
+                log.info("用户{}AI响应成功，标题已在流式响应中处理", userId);
+            } else if (chatResult.hasContentSent()) {
+                // 有内容发送（错误响应），但不记录使用次数，也不生成标题
+                log.info("用户{}收到错误响应，已保存聊天记录但不记录使用次数，不生成标题", userId);
             } else {
                 log.warn("用户{}AI服务调用失败，不记录聊天次数", userId);
             }
@@ -197,16 +201,8 @@ public class ChatApiController {
                 String vercelFormat = String.format("0:%s\n", new ObjectMapper().writeValueAsString(errorContent));
                 response.getWriter().write(vercelFormat);
 
-                // 发送完成标记
-                String completionData = String.format("d:%s\n",
-                    new ObjectMapper().writeValueAsString(Map.of(
-                        "finishReason", "stop",
-                        "usage", Map.of(
-                            "promptTokens", 10,
-                            "completionTokens", 20
-                        )
-                    ))
-                );
+                // 发送完成标记（错误响应，不生成标题）
+                String completionData = buildCompletionData(false, false);
                 response.getWriter().write(completionData);
                 response.getWriter().flush();
 
@@ -281,12 +277,13 @@ public class ChatApiController {
 
 
     /**
-     * 直接流式聊天方法 - 不使用SseEmitter，直接写入HttpServletResponse
-     * @return true-AI服务成功返回内容，false-AI服务调用失败或无内容返回
+     * 直接流式聊天方法 - 返回详细结果，区分真实AI响应和错误响应
+     * @return ChatResponseResult 包含是否有内容发送、是否为真实AI响应和是否会生成标题
      */
-    private boolean streamChatDirect(List<Map<String, String>> messages, AiModel model, HttpServletResponse response, boolean isDeepThink, String sessionId, Long userId) {
-        // 用于跟踪是否有AI内容被成功发送
+    private ChatResponseResult streamChatDirectWithResult(List<Map<String, String>> messages, AiModel model, HttpServletResponse response, boolean isDeepThink, String sessionId, Long userId, boolean willGenerateTitle) {
+        // 用于跟踪是否有AI内容被成功发送和是否为真实AI响应
         final boolean[] hasContentSent = {false};
+        final boolean[] isRealAiResponse = {false};
 
         try {
             // 添加系统提示词到消息列表开头
@@ -374,19 +371,32 @@ public class ChatApiController {
 
                             if (line.startsWith("data: ")) {
                                 if (line.equals("data: [DONE]")) {
-                                    // 发送Vercel AI SDK完成标记
-                                    String completionData = String.format("d:%s\n",
-                                        new ObjectMapper().writeValueAsString(Map.of(
-                                            "finishReason", "stop",
-                                            "usage", Map.of(
-                                                "promptTokens", 10,
-                                                "completionTokens", 20
-                                            )
-                                        ))
-                                    );
+                                    // 如果需要生成标题且是真实AI响应，立即生成标题
+                                    String generatedTitle = null;
+                                    if (willGenerateTitle && isRealAiResponse[0]) {
+                                        try {
+                                            generatedTitle = generateTitleSync(sessionId, messages, model);
+                                            log.info("同步生成标题成功: {}", generatedTitle);
+                                        } catch (Exception e) {
+                                            log.error("同步生成标题失败", e);
+                                            generatedTitle = null;
+                                        }
+                                    }
+
+                                    // 发送Vercel AI SDK完成标记，包含标题信息
+                                    String completionData = buildCompletionData(willGenerateTitle, isRealAiResponse[0], generatedTitle);
                                     response.getWriter().write(completionData);
                                     response.getWriter().flush();
-                                    log.info("Vercel AI SDK完成标记发送成功");
+
+                                    if (willGenerateTitle && isRealAiResponse[0]) {
+                                        if (generatedTitle != null && !generatedTitle.trim().isEmpty()) {
+                                            log.info("Vercel AI SDK完成标记发送成功，title: {}", generatedTitle);
+                                        } else {
+                                            log.info("Vercel AI SDK完成标记发送成功，title: false (生成失败)");
+                                        }
+                                    } else {
+                                        log.info("Vercel AI SDK完成标记发送成功，title: false (不生成标题)");
+                                    }
                                     return;
                                 }
 
@@ -403,6 +413,7 @@ public class ChatApiController {
                                     boolean contentSent = processCompleteJson(bufferedJson, response);
                                     if (contentSent) {
                                         hasContentSent[0] = true;
+                                        isRealAiResponse[0] = true; // 标记为真实AI响应
                                     }
                                     // 清空缓冲区
                                     jsonBuffer.setLength(0);
@@ -420,6 +431,7 @@ public class ChatApiController {
                                     boolean contentSent = processCompleteJson(bufferedJson, response);
                                     if (contentSent) {
                                         hasContentSent[0] = true;
+                                        isRealAiResponse[0] = true; // 标记为真实AI响应
                                     }
                                     jsonBuffer.setLength(0);
                                 }
@@ -438,16 +450,8 @@ public class ChatApiController {
                             String vercelFormat = String.format("0:%s\n", new ObjectMapper().writeValueAsString(errorContent));
                             response.getWriter().write(vercelFormat);
 
-                            // 发送完成标记
-                            String completionData = String.format("d:%s\n",
-                                new ObjectMapper().writeValueAsString(Map.of(
-                                    "finishReason", "stop",
-                                    "usage", Map.of(
-                                        "promptTokens", 10,
-                                        "completionTokens", 20
-                                    )
-                                ))
-                            );
+                            // 发送完成标记（错误响应，不生成标题）
+                            String completionData = buildCompletionData(false, false);
                             response.getWriter().write(completionData);
                             response.getWriter().flush();
 
@@ -465,8 +469,8 @@ public class ChatApiController {
                     })
                     .blockLast(); // 阻塞等待完成
 
-            // 返回是否有内容被发送
-            return hasContentSent[0];
+            // 返回聊天响应结果，包含标题生成信息
+            return new ChatResponseResult(hasContentSent[0], isRealAiResponse[0], willGenerateTitle);
 
         } catch (Exception e) {
             log.error("直接流式聊天异常", e);
@@ -476,28 +480,20 @@ public class ChatApiController {
                 String vercelFormat = String.format("0:%s\n", new ObjectMapper().writeValueAsString(errorContent));
                 response.getWriter().write(vercelFormat);
 
-                // 发送完成标记
-                String completionData = String.format("d:%s\n",
-                    new ObjectMapper().writeValueAsString(Map.of(
-                        "finishReason", "stop",
-                        "usage", Map.of(
-                            "promptTokens", 10,
-                            "completionTokens", 20
-                        )
-                    ))
-                );
+                // 发送完成标记（错误响应，不生成标题）
+                String completionData = buildCompletionData(false, false);
                 response.getWriter().write(completionData);
                 response.getWriter().flush();
 
                 // 保存错误响应到数据库
                 saveErrorResponseToDatabase(sessionId, userId, model, errorContent);
 
-                // 异常情况下返回true，表示有内容发送，这样会保存聊天记录但不扣减使用次数
-                return true;
+                // 异常情况下返回错误响应结果，有内容发送但不是真实AI响应，不生成标题
+                return new ChatResponseResult(true, false, false);
             } catch (IOException ioException) {
                 log.error("发送异常消息失败", ioException);
-                // 如果连错误消息都发送失败，返回false
-                return false;
+                // 如果连错误消息都发送失败，返回完全失败的结果
+                return new ChatResponseResult(false, false, false);
             }
         }
     }
@@ -717,15 +713,15 @@ public class ChatApiController {
             try {
                 log.info("开始为会话{}生成标题", sessionId);
 
-                // 提取用户消息和AI回复
-                String userMessage = extractUserMessage(messages);
-                if (userMessage == null || userMessage.trim().isEmpty()) {
-                    log.warn("无法提取用户消息，跳过标题生成");
+                // 构建对话内容
+                String conversationContent = buildConversationContent(messages);
+                if (conversationContent == null || conversationContent.trim().isEmpty()) {
+                    log.warn("无法构建对话内容，跳过标题生成");
                     return;
                 }
 
                 // 构建标题生成提示词
-                String titlePrompt = buildTitlePrompt(userMessage, "AI正在回复中...");
+                String titlePrompt = buildTitlePrompt(conversationContent);
 
                 // 构建标题生成消息列表
                 List<Map<String, String>> titleMessages = new ArrayList<>();
@@ -767,39 +763,77 @@ public class ChatApiController {
     }
 
     /**
-     * 构建标题生成提示词
+     * 构建对话内容
      */
-    private String buildTitlePrompt(String userMessage, String aiResponse) {
-        return PromptConstants.TITLE_GENERATION_PROMPT
-            .replace("{userMessage}", userMessage)
-            .replace("{aiResponse}", aiResponse);
+    private String buildConversationContent(List<Map<String, String>> messages) {
+        StringBuilder conversationBuilder = new StringBuilder();
+
+        for (Map<String, String> message : messages) {
+            String role = message.get("role");
+            String content = message.get("content");
+
+            if ("user".equals(role) && content != null && !content.trim().isEmpty()) {
+                conversationBuilder.append("User: ").append(content.trim()).append("\n");
+            } else if ("assistant".equals(role) && content != null && !content.trim().isEmpty()) {
+                conversationBuilder.append("AI: ").append(content.trim()).append("\n");
+            }
+        }
+
+        return conversationBuilder.toString().trim();
     }
 
     /**
-     * 清理标题内容
+     * 构建标题生成提示词
+     */
+    private String buildTitlePrompt(String conversationContent) {
+        return PromptConstants.TITLE_GENERATION_PROMPT
+            .replace("{conversationContent}", conversationContent);
+    }
+
+    /**
+     * 清理英文标题内容
      */
     private String cleanTitle(String title) {
         if (title == null) {
-            return "新对话";
+            return "New Chat";
         }
 
-        // 移除引号和多余空格
+        // 移除引号、特殊符号和多余空格
         title = title.trim()
             .replaceAll("^[\"']+|[\"']+$", "") // 移除开头和结尾的引号
+            .replaceAll("[^a-zA-Z0-9\\s]", "") // 移除非英文字母、数字和空格的字符
             .replaceAll("\\s+", " ") // 合并多个空格
             .trim();
 
-        // 限制长度
-        if (title.length() > 15) {
-            title = title.substring(0, 15);
+        // 验证是否为有效的英文标题（3-8个单词）
+        String[] words = title.split("\\s+");
+        if (words.length < 3 || words.length > 8 || title.isEmpty()) {
+            return "New Chat";
         }
 
-        // 如果清理后为空，使用默认标题
-        if (title.isEmpty()) {
-            title = "新对话";
+        // 确保每个单词都是有效的英文单词（至少包含一个字母）
+        for (String word : words) {
+            if (!word.matches(".*[a-zA-Z].*")) {
+                return "New Chat";
+            }
         }
 
-        return title;
+        // 首字母大写处理
+        StringBuilder result = new StringBuilder();
+        for (int i = 0; i < words.length; i++) {
+            if (i > 0) {
+                result.append(" ");
+            }
+            String word = words[i].toLowerCase();
+            if (word.length() > 0) {
+                result.append(Character.toUpperCase(word.charAt(0)));
+                if (word.length() > 1) {
+                    result.append(word.substring(1));
+                }
+            }
+        }
+
+        return result.toString();
     }
 
     /**
@@ -868,6 +902,198 @@ public class ChatApiController {
         response.setHeader("Access-Control-Allow-Credentials", "true");
         response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
         response.setHeader("Access-Control-Allow-Headers", "*");
+    }
+
+    /**
+     * 聊天响应结果类
+     * 用于区分真正的AI响应和错误响应，以及是否生成标题
+     */
+    private static class ChatResponseResult {
+        private final boolean hasContentSent;
+        private final boolean isRealAiResponse;
+        private final boolean willGenerateTitle;
+
+        public ChatResponseResult(boolean hasContentSent, boolean isRealAiResponse) {
+            this.hasContentSent = hasContentSent;
+            this.isRealAiResponse = isRealAiResponse;
+            this.willGenerateTitle = false;
+        }
+
+        public ChatResponseResult(boolean hasContentSent, boolean isRealAiResponse, boolean willGenerateTitle) {
+            this.hasContentSent = hasContentSent;
+            this.isRealAiResponse = isRealAiResponse;
+            this.willGenerateTitle = willGenerateTitle;
+        }
+
+        public boolean hasContentSent() {
+            return hasContentSent;
+        }
+
+        public boolean isRealAiResponse() {
+            return isRealAiResponse;
+        }
+
+        public boolean willGenerateTitle() {
+            return willGenerateTitle;
+        }
+    }
+
+    /**
+     * 构建完成标记数据，包含title字段
+     */
+    private String buildCompletionData(boolean willGenerateTitle, boolean isRealAiResponse, String generatedTitle) {
+        try {
+            Map<String, Object> completionMap = new HashMap<>();
+            completionMap.put("finishReason", "stop");
+            completionMap.put("usage", Map.of(
+                "promptTokens", 10,
+                "completionTokens", 20
+            ));
+
+            // 使用title字段表示是否生成标题和标题内容
+            if (isRealAiResponse && willGenerateTitle) {
+                if (generatedTitle != null && !generatedTitle.trim().isEmpty()) {
+                    // 生成了标题，直接设置标题内容
+                    completionMap.put("title", generatedTitle.trim());
+                } else {
+                    // 应该生成标题但生成失败，设置为false
+                    completionMap.put("title", false);
+                }
+            } else {
+                // 不需要生成标题，设置为false
+                completionMap.put("title", false);
+            }
+
+            return String.format("d:%s\n", new ObjectMapper().writeValueAsString(completionMap));
+        } catch (Exception e) {
+            log.error("构建完成标记数据失败", e);
+            // 返回基本的完成标记
+            return "d:{\"finishReason\":\"stop\",\"usage\":{\"promptTokens\":10,\"completionTokens\":20},\"title\":false}\n";
+        }
+    }
+
+    /**
+     * 构建完成标记数据的重载方法，兼容原有调用
+     */
+    private String buildCompletionData(boolean willGenerateTitle, boolean isRealAiResponse) {
+        return buildCompletionData(willGenerateTitle, isRealAiResponse, null);
+    }
+
+    /**
+     * 同步生成标题（不保存到数据库）
+     * @param sessionId 会话ID
+     * @param messages 消息列表
+     * @param model AI模型
+     * @return 生成的标题，失败时返回null
+     */
+    private String generateTitleSync(String sessionId, List<Map<String, String>> messages, AiModel model) {
+        try {
+            // 构建对话内容
+            String conversationContent = buildConversationContent(messages);
+            if (conversationContent == null || conversationContent.trim().isEmpty()) {
+                log.warn("无法构建对话内容，跳过标题生成");
+                return null;
+            }
+
+            // 构建标题生成提示词
+            String titlePrompt = buildTitlePrompt(conversationContent);
+
+            // 构建标题生成消息列表
+            List<Map<String, String>> titleMessages = new ArrayList<>();
+            Map<String, String> titleMessage = new HashMap<>();
+            titleMessage.put("role", "user");
+            titleMessage.put("content", titlePrompt);
+            titleMessages.add(titleMessage);
+
+            // 调用AI服务生成标题
+            String rawTitle = callAiForTitle(titleMessages, model);
+            if (rawTitle == null || rawTitle.trim().isEmpty()) {
+                log.warn("AI服务返回空标题");
+                return null;
+            }
+
+            // 清理标题
+            String cleanedTitle = cleanTitle(rawTitle);
+            log.info("标题生成成功: {} -> {}", rawTitle, cleanedTitle);
+
+            // 异步保存标题到数据库
+            CompletableFuture.runAsync(() -> {
+                try {
+                    chatSessionService.updateSessionTitle(sessionId, cleanedTitle);
+                    log.info("标题已异步保存到数据库: {}", cleanedTitle);
+                } catch (Exception e) {
+                    log.error("异步保存标题失败", e);
+                }
+            });
+
+            return cleanedTitle;
+
+        } catch (Exception e) {
+            log.error("同步生成标题异常", e);
+            return null;
+        }
+    }
+
+    /**
+     * 调用AI服务生成标题
+     * @param titleMessages 标题生成消息列表
+     * @param model AI模型
+     * @return 生成的原始标题，失败时返回null
+     */
+    private String callAiForTitle(List<Map<String, String>> titleMessages, AiModel model) {
+        try {
+            // 构建请求体
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("model", model.getModelCode());
+            requestBody.put("messages", titleMessages);
+            requestBody.put("stream", false); // 非流式请求
+            requestBody.put("max_tokens", 50); // 限制标题长度
+            requestBody.put("temperature", 0.7); // 适中的创造性
+
+            // 创建WebClient
+            WebClient webClient = WebClient.builder()
+                    .defaultHeader("Authorization", "Bearer " + model.getApiKey())
+                    .defaultHeader("Content-Type", "application/json; charset=UTF-8")
+                    .build();
+
+            log.info("调用AI服务生成标题: {}", model.getBaseUrl());
+
+            // 发送请求并获取响应
+            String responseBody = webClient.post()
+                    .uri(model.getBaseUrl())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(requestBody)
+                    .retrieve()
+                    .bodyToMono(String.class)
+                    .timeout(Duration.ofSeconds(10)) // 10秒超时
+                    .block();
+
+            if (responseBody == null || responseBody.trim().isEmpty()) {
+                log.warn("AI服务返回空响应");
+                return null;
+            }
+
+            // 解析响应
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode responseJson = mapper.readTree(responseBody);
+            JsonNode choices = responseJson.get("choices");
+
+            if (choices != null && choices.isArray() && choices.size() > 0) {
+                JsonNode message = choices.get(0).get("message");
+                if (message != null && message.has("content")) {
+                    String title = message.get("content").asText();
+                    log.info("AI服务返回标题: {}", title);
+                    return title;
+                }
+            }
+
+            log.warn("AI服务响应格式异常: {}", responseBody);
+            return null;
+
+        } catch (Exception e) {
+            log.error("调用AI服务生成标题失败", e);
+            return null;
+        }
     }
 
     /**
