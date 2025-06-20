@@ -100,6 +100,11 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
     }
 
     @Override
+    public List<UserOrder> getPendingOrdersByUserId(Long userId) {
+        return baseMapper.selectPendingOrdersByUserId(userId);
+    }
+
+    @Override
     public boolean updatePaymentStatus(String orderNo, Integer paymentStatus, String transactionId) {
         int result = baseMapper.updatePaymentStatus(orderNo, paymentStatus, transactionId);
         if (result > 0) {
@@ -150,6 +155,28 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
     @Override
     public int syncPendingOrderStatus() {
         return baseMapper.syncPendingOrderStatus();
+    }
+
+    @Override
+    public List<UserOrder> getPendingOrdersAfterTime(LocalDateTime afterTime, int maxCount) {
+        try {
+            log.debug("获取指定时间之后的待支付订单，时间: {}, 最大数量: {}", afterTime, maxCount);
+            return baseMapper.selectPendingOrdersAfterTime(afterTime, maxCount);
+        } catch (Exception e) {
+            log.error("获取待支付订单异常", e);
+            return List.of();
+        }
+    }
+
+    @Override
+    public List<UserOrder> getPendingOrders(int maxCount) {
+        try {
+            log.debug("获取待支付订单，最大数量: {}", maxCount);
+            return baseMapper.selectPendingOrders(maxCount);
+        } catch (Exception e) {
+            log.error("获取待支付订单异常", e);
+            return List.of();
+        }
     }
 
     /**

@@ -10,6 +10,7 @@ import com.instser.chat.service.AiModelService;
 import com.instser.chat.service.ChatMessageService;
 import com.instser.chat.service.ChatSessionService;
 import com.instser.chat.service.ChatLimitService;
+import com.instser.chat.service.OpenAiService;
 import com.instser.chat.vo.ChatLimitVO;
 
 import lombok.RequiredArgsConstructor;
@@ -29,6 +30,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 
 
 
@@ -55,6 +57,7 @@ public class ChatApiController {
     private final ChatSessionService chatSessionService;
     private final AiModelService aiModelService;
     private final ChatLimitService chatLimitService;
+    private final OpenAiService openAiService;
 
     // 智能分块响应配置
     private static final boolean ENABLE_SMART_CHUNKING = true; // 是否启用智能分块流式响应
@@ -81,11 +84,17 @@ public class ChatApiController {
         // 动态设置跨域头
         setCorsHeaders(httpRequest, response);
 
+        // 声明变量在try块外面，以便在catch块中使用
+        String sessionId = null;
+        Long userId = null;
+        AiModel model = null;
+
         try {
             @SuppressWarnings("unchecked")
             List<Map<String, String>> messages = (List<Map<String, String>>) request.get("messages");
             Object userIdObj = request.get("userId");
             Object deepThinkingObj = request.get("deepThinking");
+            sessionId = (String) request.get("sessionId"); // 提取sessionId
 
             if (messages == null || messages.isEmpty()) {
                 response.getWriter().write("3:\"消息列表不能为空\"\n");
@@ -101,10 +110,10 @@ public class ChatApiController {
 
             // 硬编码使用ID为1的模型（已配置为qwen3-235b-a22b）
             Long modelId = 2L;
-            Long userId = Long.valueOf(userIdObj.toString());
+            userId = Long.valueOf(userIdObj.toString());
 
             // 获取模型配置
-            AiModel model = aiModelService.getById(modelId);
+            model = aiModelService.getById(modelId);
             if (model == null || model.getIsAvailable() != 1) {
                 response.getWriter().write("3:\"AI模型不可用\"\n");
                 response.getWriter().flush();
@@ -161,7 +170,7 @@ public class ChatApiController {
             // 直接在当前线程中调用AI服务，避免异步问题
             log.info("开始调用AI服务，模型：{}，用户：{}", model.getModelName(), userId);
             // 直接调用AI服务，传入response对象进行直接写入，返回是否成功
-            boolean aiServiceSuccess = streamChatDirect(messages, model, response, isDeepThink);
+            boolean aiServiceSuccess = streamChatDirect(messages, model, response, isDeepThink, sessionId, userId);
 
             // 只有AI服务成功返回内容时才记录使用次数
             if (aiServiceSuccess) {
@@ -171,6 +180,11 @@ public class ChatApiController {
                 } else {
                     log.warn("用户{}聊天使用次数记录失败", userId);
                 }
+
+                // 检测是否需要生成标题
+                if (sessionId != null && isFirstAiResponse(messages)) {
+                    generateAndSaveTitle(sessionId, messages, model);
+                }
             } else {
                 log.warn("用户{}AI服务调用失败，不记录聊天次数", userId);
             }
@@ -178,8 +192,27 @@ public class ChatApiController {
         } catch (Exception e) {
             log.error("聊天接口异常", e);
             try {
-                response.getWriter().write("3:\"系统错误：" + e.getMessage() + "\"\n");
+                // 返回通用错误消息，不暴露具体错误信息
+                String errorContent = "请求错误";
+                String vercelFormat = String.format("0:%s\n", new ObjectMapper().writeValueAsString(errorContent));
+                response.getWriter().write(vercelFormat);
+
+                // 发送完成标记
+                String completionData = String.format("d:%s\n",
+                    new ObjectMapper().writeValueAsString(Map.of(
+                        "finishReason", "stop",
+                        "usage", Map.of(
+                            "promptTokens", 10,
+                            "completionTokens", 20
+                        )
+                    ))
+                );
+                response.getWriter().write(completionData);
                 response.getWriter().flush();
+
+                // 保存错误消息作为AI响应到数据库，但不扣减使用次数
+                saveErrorResponseToDatabase(sessionId, userId, model, errorContent);
+
             } catch (IOException ioException) {
                 log.error("发送系统错误消息失败", ioException);
             }
@@ -245,11 +278,13 @@ public class ChatApiController {
         return Result.success(null, "会话删除成功");
     }
 
+
+
     /**
      * 直接流式聊天方法 - 不使用SseEmitter，直接写入HttpServletResponse
      * @return true-AI服务成功返回内容，false-AI服务调用失败或无内容返回
      */
-    private boolean streamChatDirect(List<Map<String, String>> messages, AiModel model, HttpServletResponse response, boolean isDeepThink) {
+    private boolean streamChatDirect(List<Map<String, String>> messages, AiModel model, HttpServletResponse response, boolean isDeepThink, String sessionId, Long userId) {
         // 用于跟踪是否有AI内容被成功发送
         final boolean[] hasContentSent = {false};
 
@@ -398,9 +433,30 @@ public class ChatApiController {
                     .doOnError(error -> {
                         log.error("AI API流式响应处理失败", error);
                         try {
-                            response.getWriter().write("3:\"AI服务调用失败\"\n");
+                            // 返回通用错误消息，不暴露具体错误信息
+                            String errorContent = "请求错误";
+                            String vercelFormat = String.format("0:%s\n", new ObjectMapper().writeValueAsString(errorContent));
+                            response.getWriter().write(vercelFormat);
+
+                            // 发送完成标记
+                            String completionData = String.format("d:%s\n",
+                                new ObjectMapper().writeValueAsString(Map.of(
+                                    "finishReason", "stop",
+                                    "usage", Map.of(
+                                        "promptTokens", 10,
+                                        "completionTokens", 20
+                                    )
+                                ))
+                            );
+                            response.getWriter().write(completionData);
                             response.getWriter().flush();
-                        } catch (IOException e) {
+
+                            // 标记有内容发送，这样会保存聊天记录但不扣减使用次数
+                            hasContentSent[0] = true;
+
+                            // 保存错误响应到数据库
+                            saveErrorResponseToDatabase(sessionId, userId, model, errorContent);
+                        } catch (Exception e) {
                             log.error("发送错误消息失败", e);
                         }
                     })
@@ -415,13 +471,34 @@ public class ChatApiController {
         } catch (Exception e) {
             log.error("直接流式聊天异常", e);
             try {
-                response.getWriter().write("3:\"流式聊天服务异常\"\n");
+                // 返回通用错误消息，不暴露具体错误信息
+                String errorContent = "请求错误";
+                String vercelFormat = String.format("0:%s\n", new ObjectMapper().writeValueAsString(errorContent));
+                response.getWriter().write(vercelFormat);
+
+                // 发送完成标记
+                String completionData = String.format("d:%s\n",
+                    new ObjectMapper().writeValueAsString(Map.of(
+                        "finishReason", "stop",
+                        "usage", Map.of(
+                            "promptTokens", 10,
+                            "completionTokens", 20
+                        )
+                    ))
+                );
+                response.getWriter().write(completionData);
                 response.getWriter().flush();
+
+                // 保存错误响应到数据库
+                saveErrorResponseToDatabase(sessionId, userId, model, errorContent);
+
+                // 异常情况下返回true，表示有内容发送，这样会保存聊天记录但不扣减使用次数
+                return true;
             } catch (IOException ioException) {
                 log.error("发送异常消息失败", ioException);
+                // 如果连错误消息都发送失败，返回false
+                return false;
             }
-            // 异常情况下返回false
-            return false;
         }
     }
 
@@ -618,6 +695,114 @@ public class ChatApiController {
     }
 
     /**
+     * 检测是否为首次AI响应
+     * 通过消息列表中用户消息的数量判断
+     */
+    private boolean isFirstAiResponse(List<Map<String, String>> messages) {
+        // 统计用户消息数量
+        long userMessageCount = messages.stream()
+            .filter(msg -> "user".equals(msg.get("role")))
+            .count();
+
+        // 如果只有1条用户消息，说明这是首次AI响应
+        return userMessageCount == 1;
+    }
+
+    /**
+     * 异步生成并保存对话标题
+     */
+    private void generateAndSaveTitle(String sessionId, List<Map<String, String>> messages, AiModel model) {
+        // 异步执行，不阻塞主流程
+        CompletableFuture.runAsync(() -> {
+            try {
+                log.info("开始为会话{}生成标题", sessionId);
+
+                // 提取用户消息和AI回复
+                String userMessage = extractUserMessage(messages);
+                if (userMessage == null || userMessage.trim().isEmpty()) {
+                    log.warn("无法提取用户消息，跳过标题生成");
+                    return;
+                }
+
+                // 构建标题生成提示词
+                String titlePrompt = buildTitlePrompt(userMessage, "AI正在回复中...");
+
+                // 构建标题生成消息列表
+                List<Map<String, String>> titleMessages = new ArrayList<>();
+                Map<String, String> titleMessage = new HashMap<>();
+                titleMessage.put("role", "user");
+                titleMessage.put("content", titlePrompt);
+                titleMessages.add(titleMessage);
+
+                // 调用AI生成标题（使用非流式chat方法）
+                String title = openAiService.chat(titleMessages, model);
+
+                // 清理标题（移除引号和多余空格）
+                title = cleanTitle(title);
+
+                // 保存标题到会话
+                boolean success = chatSessionService.updateSessionTitle(sessionId, title);
+                if (success) {
+                    log.info("会话{}标题生成成功: {}", sessionId, title);
+                } else {
+                    log.warn("会话{}标题保存失败", sessionId);
+                }
+
+            } catch (Exception e) {
+                log.warn("生成对话标题失败: {}", e.getMessage());
+            }
+        });
+    }
+
+    /**
+     * 提取用户消息内容
+     */
+    private String extractUserMessage(List<Map<String, String>> messages) {
+        for (Map<String, String> message : messages) {
+            if ("user".equals(message.get("role"))) {
+                return message.get("content");
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 构建标题生成提示词
+     */
+    private String buildTitlePrompt(String userMessage, String aiResponse) {
+        return PromptConstants.TITLE_GENERATION_PROMPT
+            .replace("{userMessage}", userMessage)
+            .replace("{aiResponse}", aiResponse);
+    }
+
+    /**
+     * 清理标题内容
+     */
+    private String cleanTitle(String title) {
+        if (title == null) {
+            return "新对话";
+        }
+
+        // 移除引号和多余空格
+        title = title.trim()
+            .replaceAll("^[\"']+|[\"']+$", "") // 移除开头和结尾的引号
+            .replaceAll("\\s+", " ") // 合并多个空格
+            .trim();
+
+        // 限制长度
+        if (title.length() > 15) {
+            title = title.substring(0, 15);
+        }
+
+        // 如果清理后为空，使用默认标题
+        if (title.isEmpty()) {
+            title = "新对话";
+        }
+
+        return title;
+    }
+
+    /**
      * 传统块发送模式 - 一次性发送整个content
      */
     protected void sendContentAsBlock(String content, HttpServletResponse response, ObjectMapper mapper) {
@@ -685,6 +870,23 @@ public class ChatApiController {
         response.setHeader("Access-Control-Allow-Headers", "*");
     }
 
-
+    /**
+     * 保存错误响应到数据库
+     * 将AI请求错误作为正常的AI响应保存，但不扣减用户使用次数
+     */
+    private void saveErrorResponseToDatabase(String sessionId, Long userId, AiModel model, String errorContent) {
+        try {
+            if (sessionId != null && userId != null && model != null) {
+                // 保存错误消息作为AI响应到数据库
+                chatMessageService.sendMessage(sessionId, "assistant", errorContent, userId);
+                log.info("错误响应已保存到数据库，会话ID：{}，用户ID：{}，内容：{}", sessionId, userId, errorContent);
+            } else {
+                log.warn("无法保存错误响应到数据库，缺少必要参数：sessionId={}, userId={}, model={}",
+                        sessionId, userId, model != null ? model.getModelName() : "null");
+            }
+        } catch (Exception e) {
+            log.error("保存错误响应到数据库失败", e);
+        }
+    }
 
 }

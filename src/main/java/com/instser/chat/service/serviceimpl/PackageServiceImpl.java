@@ -36,6 +36,17 @@ public class PackageServiceImpl extends ServiceImpl<PackageDao, Package> impleme
     }
 
     @Override
+    public Package getPackageByFrontendId(Integer frontendPackageId) {
+        if (frontendPackageId == null) {
+            log.warn("前端套餐ID不能为空");
+            return null;
+        }
+
+        // 直接使用前端传递的ID查询数据库
+        return baseMapper.selectById(frontendPackageId.longValue());
+    }
+
+    @Override
     public void initDefaultPackages() {
         // 检查是否已有数据
         if (this.count() > 0) {

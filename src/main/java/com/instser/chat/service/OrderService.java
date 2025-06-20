@@ -3,6 +3,7 @@ package com.instser.chat.service;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.instser.chat.entity.UserOrder;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -47,6 +48,14 @@ public interface OrderService extends IService<UserOrder> {
      * @return 订单列表
      */
     List<UserOrder> getOrdersByUserId(Long userId);
+
+    /**
+     * 根据用户ID获取待支付订单列表
+     *
+     * @param userId 用户ID
+     * @return 待支付订单列表
+     */
+    List<UserOrder> getPendingOrdersByUserId(Long userId);
 
     /**
      * 更新订单支付状态
@@ -94,4 +103,21 @@ public interface OrderService extends IService<UserOrder> {
      * @return 同步的订单数量
      */
     int syncPendingOrderStatus();
+
+    /**
+     * 获取指定时间之后的待支付订单
+     *
+     * @param afterTime 时间阈值
+     * @param maxCount 最大数量
+     * @return 订单列表
+     */
+    List<UserOrder> getPendingOrdersAfterTime(LocalDateTime afterTime, int maxCount);
+
+    /**
+     * 获取所有待支付订单
+     *
+     * @param maxCount 最大数量
+     * @return 订单列表
+     */
+    List<UserOrder> getPendingOrders(int maxCount);
 }

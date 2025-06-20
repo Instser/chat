@@ -3,9 +3,11 @@ package com.instser.chat.dao;
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.instser.chat.entity.UserOrder;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -34,6 +36,15 @@ public interface UserOrderDao extends BaseMapper<UserOrder> {
      */
     @Select("SELECT * FROM t_user_order WHERE user_id = #{userId} AND deleted = 0 ORDER BY create_time DESC")
     List<UserOrder> selectByUserId(Long userId);
+
+    /**
+     * 根据用户ID查询待支付订单列表
+     *
+     * @param userId 用户ID
+     * @return 待支付订单列表
+     */
+    @Select("SELECT * FROM t_user_order WHERE user_id = #{userId} AND payment_status = 0 AND expire_time > NOW() AND deleted = 0 ORDER BY create_time DESC")
+    List<UserOrder> selectPendingOrdersByUserId(Long userId);
 
     /**
      * 根据支付请求ID查询订单
@@ -91,4 +102,26 @@ public interface UserOrderDao extends BaseMapper<UserOrder> {
      */
     @Select("SELECT * FROM t_user_order WHERE payment_status = 0 AND expire_time < NOW() AND deleted = 0")
     List<UserOrder> selectExpiredOrders();
+
+    /**
+     * 查询指定时间之后的待支付订单
+     *
+     * @param afterTime 时间阈值
+     * @param maxCount 最大数量
+     * @return 订单列表
+     */
+    @Select("SELECT * FROM t_user_order WHERE payment_status = 0 AND expire_time > NOW() " +
+            "AND create_time > #{afterTime} AND deleted = 0 " +
+            "ORDER BY create_time DESC LIMIT #{maxCount}")
+    List<UserOrder> selectPendingOrdersAfterTime(@Param("afterTime") LocalDateTime afterTime, @Param("maxCount") int maxCount);
+
+    /**
+     * 查询待支付订单
+     *
+     * @param maxCount 最大数量
+     * @return 订单列表
+     */
+    @Select("SELECT * FROM t_user_order WHERE payment_status = 0 AND expire_time > NOW() AND deleted = 0 " +
+            "ORDER BY create_time DESC LIMIT #{maxCount}")
+    List<UserOrder> selectPendingOrders(@Param("maxCount") int maxCount);
 }

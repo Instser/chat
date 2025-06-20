@@ -3,7 +3,10 @@ package com.instser.chat.util;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.math.BigDecimal;
 import java.security.MessageDigest;
+import java.time.LocalDate;
+import java.time.format.DateTimeFormatter;
 import java.util.Map;
 import java.util.TreeMap;
 import java.util.concurrent.ConcurrentHashMap;
@@ -240,5 +243,161 @@ public class PaymentSecurityUtil {
         } catch (Exception e) {
             throw new RuntimeException("MD5加密失败", e);
         }
+    }
+
+    // ==================== 支付安全性增强方法 ====================
+
+    /**
+     * 频率限制缓存
+     * Key: 限制键, Value: 请求时间戳列表
+     */
+    private final ConcurrentHashMap<String, ConcurrentHashMap<Long, Boolean>> rateLimitCache = new ConcurrentHashMap<>();
+
+    /**
+     * 每日限制缓存
+     * Key: 限制键, Value: 当日计数
+     */
+    private final ConcurrentHashMap<String, Integer> dailyLimitCache = new ConcurrentHashMap<>();
+
+    /**
+     * 每日金额限制缓存
+     * Key: 限制键, Value: 当日累计金额
+     */
+    private final ConcurrentHashMap<String, BigDecimal> dailyAmountCache = new ConcurrentHashMap<>();
+
+    /**
+     * 检查频率限制
+     *
+     * @param key 限制键
+     * @param maxRequests 最大请求数
+     * @param timeWindowSeconds 时间窗口（秒）
+     * @return 是否允许请求
+     */
+    public boolean checkRateLimit(String key, int maxRequests, int timeWindowSeconds) {
+        if (key == null || key.trim().isEmpty()) {
+            log.warn("频率限制键为空");
+            return false;
+        }
+
+        long currentTime = System.currentTimeMillis();
+        long timeWindow = TimeUnit.SECONDS.toMillis(timeWindowSeconds);
+
+        // 获取或创建该键的请求记录
+        ConcurrentHashMap<Long, Boolean> requests = rateLimitCache.computeIfAbsent(key, k -> new ConcurrentHashMap<>());
+
+        // 清理过期的请求记录
+        requests.entrySet().removeIf(entry -> currentTime - entry.getKey() > timeWindow);
+
+        // 检查当前请求数是否超限
+        if (requests.size() >= maxRequests) {
+            log.warn("频率限制触发，键: {}, 当前请求数: {}, 最大允许: {}, 时间窗口: {}秒",
+                    key, requests.size(), maxRequests, timeWindowSeconds);
+            return false;
+        }
+
+        // 记录本次请求
+        requests.put(currentTime, true);
+        log.debug("频率限制检查通过，键: {}, 当前请求数: {}/{}, 时间窗口: {}秒",
+                key, requests.size(), maxRequests, timeWindowSeconds);
+
+        return true;
+    }
+
+    /**
+     * 检查每日限制
+     *
+     * @param key 限制键
+     * @param maxDaily 每日最大次数
+     * @return 是否允许请求
+     */
+    public boolean checkDailyLimit(String key, int maxDaily) {
+        if (key == null || key.trim().isEmpty()) {
+            log.warn("每日限制键为空");
+            return false;
+        }
+
+        String dailyKey = key + ":" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+
+        // 获取当日计数
+        Integer currentCount = dailyLimitCache.getOrDefault(dailyKey, 0);
+
+        // 检查是否超限
+        if (currentCount >= maxDaily) {
+            log.warn("每日限制触发，键: {}, 当前次数: {}, 最大允许: {}",
+                    dailyKey, currentCount, maxDaily);
+            return false;
+        }
+
+        // 增加计数
+        dailyLimitCache.put(dailyKey, currentCount + 1);
+        log.debug("每日限制检查通过，键: {}, 当前次数: {}/{}",
+                dailyKey, currentCount + 1, maxDaily);
+
+        return true;
+    }
+
+    /**
+     * 检查每日金额限制
+     *
+     * @param key 限制键
+     * @param amount 本次金额
+     * @param maxDailyAmount 每日最大金额
+     * @return 是否允许请求
+     */
+    public boolean checkDailyAmountLimit(String key, BigDecimal amount, BigDecimal maxDailyAmount) {
+        if (key == null || key.trim().isEmpty()) {
+            log.warn("每日金额限制键为空");
+            return false;
+        }
+
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            log.warn("金额无效: {}", amount);
+            return false;
+        }
+
+        String dailyKey = key + ":" + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+
+        // 获取当日累计金额
+        BigDecimal currentAmount = dailyAmountCache.getOrDefault(dailyKey, BigDecimal.ZERO);
+        BigDecimal newAmount = currentAmount.add(amount);
+
+        // 检查是否超限
+        if (newAmount.compareTo(maxDailyAmount) > 0) {
+            log.warn("每日金额限制触发，键: {}, 当前金额: {}, 本次金额: {}, 总计: {}, 最大允许: {}",
+                    dailyKey, currentAmount, amount, newAmount, maxDailyAmount);
+            return false;
+        }
+
+        // 更新累计金额
+        dailyAmountCache.put(dailyKey, newAmount);
+        log.debug("每日金额限制检查通过，键: {}, 累计金额: {}/{}",
+                dailyKey, newAmount, maxDailyAmount);
+
+        return true;
+    }
+
+    /**
+     * 清理过期的限制缓存
+     */
+    public void cleanExpiredLimitCache() {
+        String today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
+
+        // 清理每日限制缓存中的过期条目
+        dailyLimitCache.entrySet().removeIf(entry -> !entry.getKey().endsWith(today));
+
+        // 清理每日金额限制缓存中的过期条目
+        dailyAmountCache.entrySet().removeIf(entry -> !entry.getKey().endsWith(today));
+
+        log.debug("已清理过期的限制缓存");
+    }
+
+    /**
+     * 获取限制缓存统计信息
+     *
+     * @return 统计信息
+     */
+    public String getLimitCacheStats() {
+        return String.format("频率限制缓存: %d, 每日限制缓存: %d, 每日金额限制缓存: %d",
+                rateLimitCache.size(), dailyLimitCache.size(), dailyAmountCache.size());
     }
 }

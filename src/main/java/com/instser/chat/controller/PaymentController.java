@@ -6,10 +6,8 @@ import com.instser.chat.entity.UserOrder;
 import com.instser.chat.service.OrderService;
 import com.instser.chat.service.PackageService;
 import com.instser.chat.service.PaymentService;
-import com.instser.chat.vo.PackageVO;
-import com.instser.chat.vo.PaymentRequestVO;
-import com.instser.chat.vo.PaymentResponseVO;
-import com.instser.chat.vo.UserOrderVO;
+import com.instser.chat.service.PaymentSyncService;
+import com.instser.chat.vo.*;
 import com.instser.chat.vo.converter.VOConverter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -31,7 +29,7 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-@RequestMapping("/payment")
+@RequestMapping("/api/payment")
 @RequiredArgsConstructor
 @Validated
 @CrossOrigin(originPatterns = "*", allowedHeaders = "*", allowCredentials = "true")
@@ -40,19 +38,52 @@ public class PaymentController {
     private final PaymentService paymentService;
     private final OrderService orderService;
     private final PackageService packageService;
+    private final PaymentSyncService paymentSyncService;
 
     /**
-     * 获取套餐列表
+     * 获取套餐列表 - 返回前端兼容格式
      */
     @GetMapping("/packages")
-    public Result<List<PackageVO>> getPackages() {
+    public Result<List<FrontendPackageVO>> getPackages(@RequestParam(defaultValue = "CNY") String currency) {
         try {
             List<Package> packages = packageService.getEnabledPackages();
-            List<PackageVO> packageVOs = VOConverter.toPackageVOList(packages);
+            List<FrontendPackageVO> packageVOs = VOConverter.toFrontendPackageVOList(packages, currency);
             return Result.success(packageVOs);
         } catch (Exception e) {
             log.error("获取套餐列表失败", e);
             return Result.failed("获取套餐列表失败");
+        }
+    }
+
+    /**
+     * 获取套餐信息和支付方式 - 前端API兼容接口
+     */
+    @PostMapping("/package/info")
+    public Result<PackageInfoResponseVO> getPackageInfo(@Valid @RequestBody PackageInfoRequestVO request) {
+        try {
+            // 根据套餐ID获取套餐信息
+            Package packageEntity = packageService.getPackageByFrontendId(request.getPackageId());
+            if (packageEntity == null) {
+                return Result.failed("套餐不存在");
+            }
+
+            if (packageEntity.getIsEnabled() != 1) {
+                return Result.failed("套餐已下架");
+            }
+
+            // 转换为前端格式
+            FrontendPackageVO packageVO = VOConverter.toFrontendPackageVO(packageEntity, request.getCurrency());
+
+            // 获取可用支付方式
+            List<PaymentMethodVO> paymentMethods = paymentService.getAvailablePaymentMethods();
+
+            // 构建响应
+            PackageInfoResponseVO response = new PackageInfoResponseVO(packageVO, paymentMethods);
+
+            return Result.success(response, "获取套餐信息成功");
+        } catch (Exception e) {
+            log.error("获取套餐信息失败，packageId: {}", request.getPackageId(), e);
+            return Result.failed("获取套餐信息失败");
         }
     }
 
@@ -79,9 +110,9 @@ public class PaymentController {
         try {
             // 暂时使用固定用户ID，后续从JWT中获取
             paymentRequest.setUserId(1L);
-            
+
             PaymentResponseVO response = paymentService.createPayment(paymentRequest);
-            
+
             if (response.getSuccess()) {
                 return Result.success(response, "支付订单创建成功");
             } else {
@@ -94,24 +125,69 @@ public class PaymentController {
     }
 
     /**
-     * 查询支付状态
+     * 查询支付状态 - 返回简化格式
      */
     @GetMapping("/status/{orderNo}")
-    public Result<UserOrderVO> getPaymentStatus(@PathVariable String orderNo) {
+    public Result<PaymentStatusResponseVO> getPaymentStatus(@PathVariable String orderNo) {
         try {
             UserOrder order = paymentService.queryPaymentStatus(orderNo);
             if (order == null) {
                 return Result.failed("订单不存在");
             }
-            
-            // 获取套餐信息
-            Package packageInfo = packageService.getPackageById(order.getPackageId());
-            UserOrderVO orderVO = VOConverter.toUserOrderVO(order, packageInfo);
-            
-            return Result.success(orderVO);
+
+            // 构建简化的状态响应
+            PaymentStatusResponseVO response = new PaymentStatusResponseVO();
+            response.setOrderNo(orderNo);
+            response.setStatus(order.getPaymentStatus()); // 保持原始状态码
+            response.setMessage(getPaymentStatusMessage(order.getPaymentStatus()));
+
+            return Result.success(response);
         } catch (Exception e) {
             log.error("查询支付状态失败，订单号: {}", orderNo, e);
             return Result.failed("查询支付状态失败");
+        }
+    }
+
+    /**
+     * 获取支付状态描述信息
+     */
+    private String getPaymentStatusMessage(Integer paymentStatus) {
+        if (paymentStatus == null) {
+            return "状态未知";
+        }
+        switch (paymentStatus) {
+            case 0:
+                return "待支付";
+            case 1:
+                return "支付成功";
+            case 2:
+                return "已取消";
+            case 3:
+                return "已退款";
+            default:
+                return "状态未知";
+        }
+    }
+
+    /**
+     * 获取订单详细信息 - 返回完整格式
+     */
+    @GetMapping("/order/{orderNo}")
+    public Result<UserOrderVO> getOrderDetail(@PathVariable String orderNo) {
+        try {
+            UserOrder order = paymentService.queryPaymentStatus(orderNo);
+            if (order == null) {
+                return Result.failed("订单不存在");
+            }
+
+            // 获取套餐信息
+            Package packageInfo = packageService.getPackageById(order.getPackageId());
+            UserOrderVO orderVO = VOConverter.toUserOrderVO(order, packageInfo);
+
+            return Result.success(orderVO);
+        } catch (Exception e) {
+            log.error("获取订单详情失败，订单号: {}", orderNo, e);
+            return Result.failed("获取订单详情失败");
         }
     }
 
@@ -212,5 +288,70 @@ public class PaymentController {
         }
     }
 
+    /**
+     * 查询支付状态并同步最新状态
+     */
+    @GetMapping("/status/sync/{orderNo}")
+    public Result<PaymentStatusResponseVO> getPaymentStatusWithSync(@PathVariable String orderNo) {
+        try {
+            PaymentStatusResponseVO response = paymentService.queryAndSyncPaymentStatus(orderNo);
+            return Result.success(response, "查询支付状态成功");
+        } catch (Exception e) {
+            log.error("查询并同步支付状态失败，订单号: {}", orderNo, e);
+            return Result.failed("查询支付状态失败");
+        }
+    }
+
+    /**
+     * 手动同步单个订单状态
+     */
+    @PostMapping("/sync/{orderNo}")
+    public Result<String> syncOrderStatus(@PathVariable String orderNo) {
+        try {
+            boolean success = paymentSyncService.syncOrderStatus(orderNo);
+            if (success) {
+                return Result.success("订单状态同步成功");
+            } else {
+                return Result.failed("订单状态同步失败");
+            }
+        } catch (Exception e) {
+            log.error("同步订单状态失败，订单号: {}", orderNo, e);
+            return Result.failed("同步订单状态失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 手动触发批量状态同步
+     */
+    @PostMapping("/sync/batch")
+    public Result<Map<String, Object>> batchSyncOrders(@RequestParam(defaultValue = "50") int maxCount) {
+        try {
+            int syncCount = paymentSyncService.syncPendingOrders(maxCount);
+
+            Map<String, Object> result = new HashMap<>();
+            result.put("syncCount", syncCount);
+            result.put("maxCount", maxCount);
+            result.put("message", "批量同步完成");
+
+            return Result.success(result, "批量同步完成，同步订单数: " + syncCount);
+        } catch (Exception e) {
+            log.error("批量同步订单状态失败", e);
+            return Result.failed("批量同步失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 手动触发全量状态同步
+     */
+    @PostMapping("/sync/all")
+    public Result<PaymentSyncService.SyncResult> fullSyncOrders() {
+        try {
+            PaymentSyncService.SyncResult result = paymentSyncService.manualSyncAll();
+            return Result.success(result, "全量同步完成");
+        } catch (Exception e) {
+            log.error("全量同步订单状态失败", e);
+            return Result.failed("全量同步失败: " + e.getMessage());
+        }
+    }
 
 }

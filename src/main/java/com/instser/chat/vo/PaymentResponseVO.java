@@ -62,4 +62,14 @@ public class PaymentResponseVO {
      * 响应消息
      */
     private String message;
+
+    /**
+     * 订单创建时间 (ISO 8601格式)
+     */
+    private String createdTime;
+
+    /**
+     * 支付二维码图片URL
+     */
+    private String qrCodeUrl;
 }

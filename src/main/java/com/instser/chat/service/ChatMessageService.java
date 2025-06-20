@@ -67,4 +67,12 @@ public interface ChatMessageService extends IService<ChatMessage> {
      * @return 消息信息
      */
     ChatMessage getByMessageId(String messageId);
+
+    /**
+     * 获取会话消息数量
+     *
+     * @param sessionId 会话ID
+     * @return 消息数量
+     */
+    long getMessageCountBySession(String sessionId);
 }

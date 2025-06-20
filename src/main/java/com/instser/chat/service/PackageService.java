@@ -40,4 +40,12 @@ public interface PackageService extends IService<Package> {
      * 初始化默认套餐数据
      */
     void initDefaultPackages();
+
+    /**
+     * 根据前端套餐ID获取套餐（支持1-6的映射）
+     *
+     * @param frontendPackageId 前端套餐ID (1-6)
+     * @return 套餐信息
+     */
+    Package getPackageByFrontendId(Integer frontendPackageId);
 }

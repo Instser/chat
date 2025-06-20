@@ -240,6 +240,101 @@ public class VOConverter {
     }
 
     /**
+     * 套餐实体转前端套餐VO
+     */
+    public static FrontendPackageVO toFrontendPackageVO(Package packageEntity, String currency) {
+        if (packageEntity == null) {
+            return null;
+        }
+        FrontendPackageVO frontendPackageVO = new FrontendPackageVO();
+
+        // 基本信息映射
+        frontendPackageVO.setId(packageEntity.getId().intValue());
+        frontendPackageVO.setName(packageEntity.getPackageName());
+        frontendPackageVO.setDescription(packageEntity.getDescription());
+        frontendPackageVO.setCurrency(currency);
+
+        // 根据货币类型选择价格
+        if ("USD".equalsIgnoreCase(currency)) {
+            frontendPackageVO.setPrice(packageEntity.getPriceUsd());
+        } else {
+            frontendPackageVO.setPrice(packageEntity.getPriceCny());
+        }
+
+        // 直接映射有效期天数
+        frontendPackageVO.setPeriod(packageEntity.getValidityDays());
+
+        // 解析功能特性 (暂时使用模型权限作为功能特性)
+        if (packageEntity.getModelPermissions() != null) {
+            try {
+                ObjectMapper mapper = new ObjectMapper();
+                List<String> permissions = mapper.readValue(packageEntity.getModelPermissions(),
+                    new TypeReference<List<String>>() {});
+                frontendPackageVO.setFeatures(permissions);
+            } catch (Exception e) {
+                // 如果解析失败，提供默认功能特性
+                frontendPackageVO.setFeatures(getDefaultFeatures(packageEntity.getPackageType()));
+            }
+        } else {
+            frontendPackageVO.setFeatures(getDefaultFeatures(packageEntity.getPackageType()));
+        }
+
+        return frontendPackageVO;
+    }
+
+    /**
+     * 批量转换套餐列表为前端格式
+     */
+    public static List<FrontendPackageVO> toFrontendPackageVOList(List<Package> packages, String currency) {
+        if (packages == null) {
+            return null;
+        }
+
+        return packages.stream()
+                .map(pkg -> toFrontendPackageVO(pkg, currency))
+                .collect(Collectors.toList());
+    }
+
+
+
+
+
+    /**
+     * 获取默认功能特性
+     */
+    private static List<String> getDefaultFeatures(String packageType) {
+        List<String> features = new ArrayList<>();
+        if (packageType == null) {
+            return features;
+        }
+
+        switch (packageType.toLowerCase()) {
+            case "basic":
+                features.add("Basic AI models");
+                features.add("Limited messages");
+                features.add("Standard support");
+                break;
+            case "premium":
+                features.add("Advanced AI models");
+                features.add("Unlimited messages");
+                features.add("Priority support");
+                features.add("Chat history export");
+                break;
+            case "enterprise":
+                features.add("All AI models");
+                features.add("Unlimited messages");
+                features.add("24/7 support");
+                features.add("Custom integrations");
+                features.add("Team management");
+                break;
+            default:
+                features.add("Standard features");
+                break;
+        }
+        return features;
+    }
+
+    /**
      * 获取支付状态描述
      */
     private static String getPaymentStatusDesc(Integer paymentStatus) {

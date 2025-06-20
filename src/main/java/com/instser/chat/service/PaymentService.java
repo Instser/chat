@@ -3,7 +3,10 @@ package com.instser.chat.service;
 import com.instser.chat.entity.UserOrder;
 import com.instser.chat.vo.PaymentRequestVO;
 import com.instser.chat.vo.PaymentResponseVO;
+import com.instser.chat.vo.PaymentMethodVO;
+import com.instser.chat.vo.PaymentStatusResponseVO;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -29,6 +32,14 @@ public interface PaymentService {
      * @return 订单信息
      */
     UserOrder queryPaymentStatus(String orderNo);
+
+    /**
+     * 查询支付状态并同步最新状态
+     *
+     * @param orderNo 订单号
+     * @return 支付状态响应
+     */
+    PaymentStatusResponseVO queryAndSyncPaymentStatus(String orderNo);
 
     /**
      * 处理支付回调
@@ -70,4 +81,11 @@ public interface PaymentService {
      * @return 处理结果
      */
     boolean handleYiPayNotify(Map<String, String> notifyParams);
+
+    /**
+     * 获取可用的支付方式列表
+     *
+     * @return 支付方式列表
+     */
+    List<PaymentMethodVO> getAvailablePaymentMethods();
 }

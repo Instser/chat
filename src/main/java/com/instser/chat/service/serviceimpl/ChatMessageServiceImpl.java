@@ -1,5 +1,6 @@
 package com.instser.chat.service.serviceimpl;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.instser.chat.dao.ChatMessageDao;
 import com.instser.chat.entity.ChatMessage;
@@ -73,5 +74,12 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
     @Override
     public ChatMessage getByMessageId(String messageId) {
         return baseMapper.selectByMessageId(messageId);
+    }
+
+    @Override
+    public long getMessageCountBySession(String sessionId) {
+        LambdaQueryWrapper<ChatMessage> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ChatMessage::getSessionId, sessionId);
+        return this.count(wrapper);
     }
 }
