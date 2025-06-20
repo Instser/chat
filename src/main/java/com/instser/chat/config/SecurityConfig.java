@@ -174,6 +174,10 @@ public class SecurityConfig {
                 .requestMatchers("/", "/favicon.ico").permitAll()
                 .requestMatchers("/static/**", "/public/**").permitAll()
 
+                // 支付接口 - 临时允许无需认证（测试模式）
+                // TODO: 06-21 01:53 - 为了测试，暂时允许支付接口无需认证，后续需要重新启用认证
+                .requestMatchers("/payment/**").permitAll()
+
                 // 聊天接口 - 允许已认证用户访问，但排除SSE流式响应
                 .requestMatchers(HttpMethod.POST, "/chat").permitAll()  // 临时允许SSE流式响应绕过Spring Security
                 .requestMatchers("/chat/**").authenticated()

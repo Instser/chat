@@ -170,7 +170,7 @@ public class ChatApiController {
             // 直接在当前线程中调用AI服务，避免异步问题
             log.info("开始调用AI服务，模型：{}，用户：{}", model.getModelName(), userId);
             // 判断是否会生成标题（只有真正的AI响应且是第一次AI回复才会生成标题）
-            boolean willGenerateTitle = sessionId != null && isFirstAiResponse(messages);
+            boolean willGenerateTitle = sessionId != null && isFirstAiResponse(sessionId);
 
             // 直接调用AI服务，传入response对象进行直接写入，返回结果包含成功状态和是否为真实AI响应
             ChatResponseResult chatResult = streamChatDirectWithResult(messages, model, response, isDeepThink, sessionId, userId, willGenerateTitle);
@@ -692,16 +692,16 @@ public class ChatApiController {
 
     /**
      * 检测是否为首次AI响应
-     * 通过消息列表中用户消息的数量判断
+     * 通过检查数据库中该会话是否已有AI消息来判断
      */
-    private boolean isFirstAiResponse(List<Map<String, String>> messages) {
-        // 统计用户消息数量
-        long userMessageCount = messages.stream()
-            .filter(msg -> "user".equals(msg.get("role")))
-            .count();
+    private boolean isFirstAiResponse(String sessionId) {
+        if (sessionId == null || sessionId.trim().isEmpty()) {
+            return false;
+        }
 
-        // 如果只有1条用户消息，说明这是首次AI响应
-        return userMessageCount == 1;
+        // 检查数据库中该会话是否已有AI消息
+        // 如果没有AI消息，说明这是首次AI响应，应该生成标题
+        return !chatMessageService.hasAssistantMessage(sessionId);
     }
 
     /**

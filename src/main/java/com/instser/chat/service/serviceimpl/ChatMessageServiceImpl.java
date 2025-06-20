@@ -82,4 +82,9 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
         wrapper.eq(ChatMessage::getSessionId, sessionId);
         return this.count(wrapper);
     }
+
+    @Override
+    public boolean hasAssistantMessage(String sessionId) {
+        return baseMapper.hasAssistantMessage(sessionId);
+    }
 }

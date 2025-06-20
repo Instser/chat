@@ -75,4 +75,12 @@ public interface ChatMessageService extends IService<ChatMessage> {
      * @return 消息数量
      */
     long getMessageCountBySession(String sessionId);
+
+    /**
+     * 检查会话中是否已有AI消息
+     *
+     * @param sessionId 会话ID
+     * @return 是否已有AI消息
+     */
+    boolean hasAssistantMessage(String sessionId);
 }
