@@ -376,28 +376,5 @@ public class PaymentSecurityUtil {
         return true;
     }
 
-    /**
-     * 清理过期的限制缓存
-     */
-    public void cleanExpiredLimitCache() {
-        String today = LocalDate.now().format(DateTimeFormatter.ofPattern("yyyy-MM-dd"));
 
-        // 清理每日限制缓存中的过期条目
-        dailyLimitCache.entrySet().removeIf(entry -> !entry.getKey().endsWith(today));
-
-        // 清理每日金额限制缓存中的过期条目
-        dailyAmountCache.entrySet().removeIf(entry -> !entry.getKey().endsWith(today));
-
-        log.debug("已清理过期的限制缓存");
-    }
-
-    /**
-     * 获取限制缓存统计信息
-     *
-     * @return 统计信息
-     */
-    public String getLimitCacheStats() {
-        return String.format("频率限制缓存: %d, 每日限制缓存: %d, 每日金额限制缓存: %d",
-                rateLimitCache.size(), dailyLimitCache.size(), dailyAmountCache.size());
-    }
 }

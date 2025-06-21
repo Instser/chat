@@ -23,10 +23,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 /**
  * 易支付策略实现
@@ -373,7 +371,7 @@ public class YiPayStrategy implements PaymentStrategy {
             }
 
             // 生成签名
-            String generatedSign = generateYiPaySign(signParams);
+            String generatedSign = PaymentSecurityUtil.generateYiPaySign(signParams, yiPayConfig.getKey());
             boolean isValid = generatedSign.equals(callback.getSign());
 
             if (!isValid) {
@@ -434,41 +432,7 @@ public class YiPayStrategy implements PaymentStrategy {
         return params;
     }
 
-    /**
-     * 生成易支付签名
-     */
-    private String generateYiPaySign(Map<String, String> params) {
-        try {
-            // 过滤空值参数并排序
-            String signString = params.entrySet().stream()
-                .filter(entry -> StringUtils.hasText(entry.getValue()))
-                .sorted(Map.Entry.comparingByKey())
-                .map(entry -> entry.getKey() + "=" + entry.getValue())
-                .collect(Collectors.joining("&"));
 
-            // 添加密钥
-            signString += yiPayConfig.getKey();
-
-            log.debug("易支付签名原串: {}", signString);
-
-            // MD5加密
-            MessageDigest md = MessageDigest.getInstance("MD5");
-            byte[] digest = md.digest(signString.getBytes("UTF-8"));
-
-            StringBuilder sb = new StringBuilder();
-            for (byte b : digest) {
-                sb.append(String.format("%02x", b));
-            }
-
-            String generatedSign = sb.toString();
-            log.debug("易支付签名结果: {}", generatedSign);
-
-            return generatedSign;
-        } catch (Exception e) {
-            log.error("生成易支付签名异常", e);
-            return null;
-        }
-    }
 
     /**
      * 调用易支付API查询支付状态

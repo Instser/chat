@@ -107,43 +107,5 @@ public class QrCodeUtil {
         }
     }
 
-    /**
-     * 验证二维码URL是否有效
-     *
-     * @param qrCodeUrl 二维码URL
-     * @return 是否有效
-     */
-    public static boolean isValidQrCodeUrl(String qrCodeUrl) {
-        if (!StringUtils.hasText(qrCodeUrl)) {
-            return false;
-        }
-        
-        // 简单验证URL格式
-        return qrCodeUrl.startsWith("http://") || qrCodeUrl.startsWith("https://");
-    }
 
-    /**
-     * 获取二维码内容的预估尺寸
-     * 根据内容长度推荐合适的二维码尺寸
-     *
-     * @param content 二维码内容
-     * @return 推荐的尺寸字符串
-     */
-    public static String getRecommendedSize(String content) {
-        if (!StringUtils.hasText(content)) {
-            return DEFAULT_SIZE;
-        }
-        
-        int contentLength = content.length();
-        
-        if (contentLength <= 50) {
-            return "150x150";
-        } else if (contentLength <= 100) {
-            return "200x200";
-        } else if (contentLength <= 200) {
-            return "250x250";
-        } else {
-            return "300x300";
-        }
-    }
 }
