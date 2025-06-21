@@ -1,13 +1,22 @@
 # 当前工作内容
 
-**📅 最后更新**: 2025-06-21 01:53:00
+**📅 最后更新**: 2025-06-21 07:24:00
 **👤 更新人员**: Augment Agent
-**📊 文档版本**: v4.2
+**📊 文档版本**: v4.3
 
 ## 当前任务
-已完成支付系统测试模式配置：
+已完成聊天消息数据库保存功能优化：
 
-### 最新完成 (2025-06-21 01:53)
+### 最新完成 (2025-06-21 07:24)
+1. **用户消息自动保存** - ✅ 在chat方法中添加saveUserMessageToDatabase()，接收聊天请求时自动保存最后一条用户消息
+2. **AI响应完整保存** - ✅ 修改streamChatDirectWithResult()方法，收集完整AI响应内容并保存到数据库
+3. **流式响应内容收集** - ✅ 修改processCompleteJson()方法返回类型，收集每个分块的AI响应内容
+4. **ChatResponseResult扩展** - ✅ 添加aiResponseContent字段，支持传递完整AI响应内容
+5. **API方法迁移** - ✅ 将/api/chats/{chatId}/messages的addMessage方法移除，作为addMessageToChat子函数添加到ChatApiController
+6. **数据库保存优化** - ✅ 创建saveAiResponseToDatabase()方法，在AI响应完毕后保存完整响应内容
+7. **消息保存时序** - ✅ 确保用户消息在AI响应前保存，AI响应在流式传输完成后保存
+
+### 之前完成 (2025-06-21 01:53)
 1. **支付频率限制停用** - ✅ 在PaymentServiceImpl中添加testMode开关，临时停用频率限制验证
 2. **用户权限验证停用** - ✅ 在测试模式下跳过用户权限验证，保留基本金额验证
 3. **支付接口认证停用** - ✅ 在SecurityConfig中临时允许/payment/**接口无需认证
@@ -94,7 +103,20 @@
    - 订单表支持多种支付方式 (alipay/wechat/paypal等)
    - 缺少支付相关的实体类、服务类和控制器
 
-## 最近变更 (2025-06-21 01:53)
+## 最近变更 (2025-06-21 07:24)
+- **聊天消息数据库保存功能优化**: 完成聊天消息数据库保存功能的全面优化
+  - 修改ChatApiController.chat()方法，在接收聊天请求时调用saveUserMessageToDatabase()
+  - 从前端消息列表中提取最后一条用户消息，自动保存到数据库中
+  - 扩展streamChatDirectWithResult()方法，添加aiResponseContent收集器
+  - 修改processCompleteJson()方法返回类型为String，返回处理的AI内容片段
+  - 在流式响应过程中收集所有AI响应内容片段，组成完整响应
+  - 创建saveAiResponseToDatabase()方法，在AI响应完成后保存完整内容
+  - 扩展ChatResponseResult类，添加aiResponseContent字段和相应构造函数
+  - 将ApiController中的addMessage方法移除，作为addMessageToChat子函数迁移到ChatApiController
+  - 添加必要的导入语句，修正VOConverter的包路径为vo.converter.VOConverter
+  - 确保消息保存时序：用户消息先保存，AI响应后保存，维护对话完整性
+
+## 历史变更 (2025-06-21 01:53)
 - **支付系统测试模式配置**: 完成支付系统测试模式配置的全面实现
   - 在PaymentServiceImpl.validatePaymentSecurity()方法中添加testMode开关
   - 临时停用validatePaymentRateLimit()和validateUserPermissions()验证
@@ -325,3 +347,4 @@
 | 2025-06-20 23:25:00 | v4.0 | 实现流式响应get_title参数，告知前端是否会自动生成标题 | Augment Agent |
 | 2025-06-20 23:35:00 | v4.1 | 优化为单个title字段设计，同时表示标题状态和内容 | Augment Agent |
 | 2025-06-21 01:53:00 | v4.2 | 配置支付系统测试模式，停用频率限制和用户权限验证 | Augment Agent |
+| 2025-06-21 07:24:00 | v4.3 | 优化聊天消息数据库保存，实现用户消息和AI响应的完整保存 | Augment Agent |

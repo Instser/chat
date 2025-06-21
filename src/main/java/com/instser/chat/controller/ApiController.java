@@ -380,43 +380,7 @@ public class ApiController {
 
 
 
-    /**
-     * 添加新消息到聊天
-     */
-    @PostMapping("/chats/{chatId}/messages")
-    public Result<ChatMessageVO> addMessage(@PathVariable @NotBlank String chatId,
-                                           @RequestBody Map<String, Object> request,
-                                           Authentication authentication) {
-        Long userId = getCurrentUserId(authentication);
-        String role = (String) request.get("role");
-        String content = (String) request.get("content");
 
-        if (role == null || role.trim().isEmpty()) {
-            return Result.validateFailed("消息角色不能为空");
-        }
-        if (content == null || content.trim().isEmpty()) {
-            return Result.validateFailed("消息内容不能为空");
-        }
-
-        // 先验证聊天是否属于当前用户
-        ChatSession chatSession = chatSessionService.getSessionInfo(chatId);
-        if (chatSession == null) {
-            return Result.failed("聊天不存在");
-        }
-        if (!chatSession.getUserId().equals(userId)) {
-            return Result.failed("无权访问此聊天");
-        }
-
-        Long messageId = chatMessageService.sendMessage(chatId, role, content, userId);
-        ChatMessage chatMessage = chatMessageService.getById(messageId);
-
-        if (chatMessage == null) {
-            return Result.failed("添加消息失败");
-        }
-
-        ChatMessageVO chatMessageVO = VOConverter.toChatMessageVO(chatMessage);
-        return Result.success(chatMessageVO, "添加消息成功");
-    }
 
 
     /**

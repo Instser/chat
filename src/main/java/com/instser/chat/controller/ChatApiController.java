@@ -11,6 +11,8 @@ import com.instser.chat.service.ChatMessageService;
 import com.instser.chat.service.ChatSessionService;
 import com.instser.chat.service.ChatLimitService;
 import com.instser.chat.service.OpenAiService;
+import com.instser.chat.vo.ChatMessageVO;
+import com.instser.chat.vo.converter.VOConverter;
 import com.instser.chat.vo.ChatLimitVO;
 
 import lombok.RequiredArgsConstructor;
@@ -108,6 +110,11 @@ public class ChatApiController {
                 return;
             }
 
+            // 保存用户消息到数据库 - 在AI响应之前先保存用户消息
+            if (sessionId != null) {
+                saveUserMessageToDatabase(messages, sessionId, Long.valueOf(userIdObj.toString()));
+            }
+
             // 硬编码使用ID为1的模型（已配置为qwen3-235b-a22b）
             Long modelId = 2L;
             userId = Long.valueOf(userIdObj.toString());
@@ -170,7 +177,7 @@ public class ChatApiController {
             // 直接在当前线程中调用AI服务，避免异步问题
             log.info("开始调用AI服务，模型：{}，用户：{}", model.getModelName(), userId);
             // 判断是否会生成标题（只有真正的AI响应且是第一次AI回复才会生成标题）
-            boolean willGenerateTitle = sessionId != null && isFirstAiResponse(sessionId);
+            boolean willGenerateTitle = sessionId != null && isFirstAiResponse(messages);
 
             // 直接调用AI服务，传入response对象进行直接写入，返回结果包含成功状态和是否为真实AI响应
             ChatResponseResult chatResult = streamChatDirectWithResult(messages, model, response, isDeepThink, sessionId, userId, willGenerateTitle);
@@ -182,6 +189,11 @@ public class ChatApiController {
                     log.info("用户{}聊天使用次数记录成功", userId);
                 } else {
                     log.warn("用户{}聊天使用次数记录失败", userId);
+                }
+
+                // 保存AI响应到数据库
+                if (sessionId != null && chatResult.getAiResponseContent() != null && !chatResult.getAiResponseContent().trim().isEmpty()) {
+                    saveAiResponseToDatabase(sessionId, userId, model, chatResult.getAiResponseContent());
                 }
 
                 // 标题生成已在流式响应中完成，这里不需要再次生成
@@ -284,6 +296,8 @@ public class ChatApiController {
         // 用于跟踪是否有AI内容被成功发送和是否为真实AI响应
         final boolean[] hasContentSent = {false};
         final boolean[] isRealAiResponse = {false};
+        // 用于收集完整的AI响应内容
+        final StringBuilder aiResponseContent = new StringBuilder();
 
         try {
             // 添加系统提示词到消息列表开头
@@ -410,10 +424,11 @@ public class ChatApiController {
                                 String bufferedJson = jsonBuffer.toString();
                                 if (isValidJson(bufferedJson)) {
                                     // JSON完整，可以解析
-                                    boolean contentSent = processCompleteJson(bufferedJson, response);
-                                    if (contentSent) {
+                                    String contentSent = processCompleteJson(bufferedJson, response);
+                                    if (contentSent != null) {
                                         hasContentSent[0] = true;
                                         isRealAiResponse[0] = true; // 标记为真实AI响应
+                                        aiResponseContent.append(contentSent); // 收集AI响应内容
                                     }
                                     // 清空缓冲区
                                     jsonBuffer.setLength(0);
@@ -428,10 +443,11 @@ public class ChatApiController {
                                 // 再次尝试解析
                                 String bufferedJson = jsonBuffer.toString();
                                 if (isValidJson(bufferedJson)) {
-                                    boolean contentSent = processCompleteJson(bufferedJson, response);
-                                    if (contentSent) {
+                                    String contentSent = processCompleteJson(bufferedJson, response);
+                                    if (contentSent != null) {
                                         hasContentSent[0] = true;
                                         isRealAiResponse[0] = true; // 标记为真实AI响应
+                                        aiResponseContent.append(contentSent); // 收集AI响应内容
                                     }
                                     jsonBuffer.setLength(0);
                                 }
@@ -469,8 +485,8 @@ public class ChatApiController {
                     })
                     .blockLast(); // 阻塞等待完成
 
-            // 返回聊天响应结果，包含标题生成信息
-            return new ChatResponseResult(hasContentSent[0], isRealAiResponse[0], willGenerateTitle);
+            // 返回聊天响应结果，包含标题生成信息和AI响应内容
+            return new ChatResponseResult(hasContentSent[0], isRealAiResponse[0], willGenerateTitle, aiResponseContent.toString());
 
         } catch (Exception e) {
             log.error("直接流式聊天异常", e);
@@ -489,11 +505,11 @@ public class ChatApiController {
                 saveErrorResponseToDatabase(sessionId, userId, model, errorContent);
 
                 // 异常情况下返回错误响应结果，有内容发送但不是真实AI响应，不生成标题
-                return new ChatResponseResult(true, false, false);
+                return new ChatResponseResult(true, false, false, "");
             } catch (IOException ioException) {
                 log.error("发送异常消息失败", ioException);
                 // 如果连错误消息都发送失败，返回完全失败的结果
-                return new ChatResponseResult(false, false, false);
+                return new ChatResponseResult(false, false, false, "");
             }
         }
     }
@@ -538,9 +554,9 @@ public class ChatApiController {
 
     /**
      * 处理完整的JSON数据 - 支持快速单字符响应
-     * @return true-成功发送了AI内容，false-没有发送内容
+     * @return 发送的AI内容，null表示没有发送内容
      */
-    private boolean processCompleteJson(String jsonData, HttpServletResponse response) {
+    private String processCompleteJson(String jsonData, HttpServletResponse response) {
         try {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode jsonNode = mapper.readTree(jsonData);
@@ -573,18 +589,18 @@ public class ChatApiController {
                                 // 传统块发送模式
                                 sendContentAsBlock(cleanContent, response, mapper);
                             }
-                            // 成功发送了内容
-                            return true;
+                            // 返回发送的内容
+                            return cleanContent;
                         }
                     }
                 }
             }
             // 没有发送内容
-            return false;
+            return null;
         } catch (Exception e) {
             log.error("处理完整JSON数据失败: {}", e.getMessage());
             // 处理失败，没有发送内容
-            return false;
+            return null;
         }
     }
 
@@ -692,16 +708,16 @@ public class ChatApiController {
 
     /**
      * 检测是否为首次AI响应
-     * 通过检查数据库中该会话是否已有AI消息来判断
+     * 通过消息列表中用户消息的数量判断
      */
-    private boolean isFirstAiResponse(String sessionId) {
-        if (sessionId == null || sessionId.trim().isEmpty()) {
-            return false;
-        }
+    private boolean isFirstAiResponse(List<Map<String, String>> messages) {
+        // 统计用户消息数量
+        long userMessageCount = messages.stream()
+            .filter(msg -> "user".equals(msg.get("role")))
+            .count();
 
-        // 检查数据库中该会话是否已有AI消息
-        // 如果没有AI消息，说明这是首次AI响应，应该生成标题
-        return !chatMessageService.hasAssistantMessage(sessionId);
+        // 如果只有1条用户消息，说明这是首次AI响应
+        return userMessageCount == 1;
     }
 
     /**
@@ -912,17 +928,27 @@ public class ChatApiController {
         private final boolean hasContentSent;
         private final boolean isRealAiResponse;
         private final boolean willGenerateTitle;
+        private final String aiResponseContent;
 
         public ChatResponseResult(boolean hasContentSent, boolean isRealAiResponse) {
             this.hasContentSent = hasContentSent;
             this.isRealAiResponse = isRealAiResponse;
             this.willGenerateTitle = false;
+            this.aiResponseContent = "";
         }
 
         public ChatResponseResult(boolean hasContentSent, boolean isRealAiResponse, boolean willGenerateTitle) {
             this.hasContentSent = hasContentSent;
             this.isRealAiResponse = isRealAiResponse;
             this.willGenerateTitle = willGenerateTitle;
+            this.aiResponseContent = "";
+        }
+
+        public ChatResponseResult(boolean hasContentSent, boolean isRealAiResponse, boolean willGenerateTitle, String aiResponseContent) {
+            this.hasContentSent = hasContentSent;
+            this.isRealAiResponse = isRealAiResponse;
+            this.willGenerateTitle = willGenerateTitle;
+            this.aiResponseContent = aiResponseContent != null ? aiResponseContent : "";
         }
 
         public boolean hasContentSent() {
@@ -935,6 +961,10 @@ public class ChatApiController {
 
         public boolean willGenerateTitle() {
             return willGenerateTitle;
+        }
+
+        public String getAiResponseContent() {
+            return aiResponseContent;
         }
     }
 
@@ -1094,6 +1124,91 @@ public class ChatApiController {
             log.error("调用AI服务生成标题失败", e);
             return null;
         }
+    }
+
+    /**
+     * 保存用户消息到数据库
+     * 从消息列表中提取最后一条用户消息并保存到数据库
+     */
+    private void saveUserMessageToDatabase(List<Map<String, String>> messages, String sessionId, Long userId) {
+        try {
+            if (messages == null || messages.isEmpty() || sessionId == null || userId == null) {
+                log.warn("无法保存用户消息到数据库，缺少必要参数");
+                return;
+            }
+
+            // 从消息列表中找到最后一条用户消息
+            String lastUserMessage = null;
+            for (int i = messages.size() - 1; i >= 0; i--) {
+                Map<String, String> message = messages.get(i);
+                if ("user".equals(message.get("role"))) {
+                    lastUserMessage = message.get("content");
+                    break;
+                }
+            }
+
+            if (lastUserMessage != null && !lastUserMessage.trim().isEmpty()) {
+                // 保存用户消息到数据库
+                chatMessageService.sendMessage(sessionId, "user", lastUserMessage, userId);
+                log.info("用户消息已保存到数据库，会话ID：{}，用户ID：{}，内容长度：{}", sessionId, userId, lastUserMessage.length());
+            } else {
+                log.warn("未找到有效的用户消息，跳过保存");
+            }
+        } catch (Exception e) {
+            log.error("保存用户消息到数据库失败", e);
+        }
+    }
+
+    /**
+     * 保存AI响应到数据库
+     * 将完整的AI响应内容保存到数据库
+     */
+    private void saveAiResponseToDatabase(String sessionId, Long userId, AiModel model, String aiResponseContent) {
+        try {
+            if (sessionId != null && userId != null && model != null && aiResponseContent != null && !aiResponseContent.trim().isEmpty()) {
+                // 保存AI响应到数据库
+                chatMessageService.sendMessage(sessionId, "assistant", aiResponseContent, userId);
+                log.info("AI响应已保存到数据库，会话ID：{}，用户ID：{}，内容长度：{}", sessionId, userId, aiResponseContent.length());
+            } else {
+                log.warn("无法保存AI响应到数据库，缺少必要参数：sessionId={}, userId={}, model={}, contentLength={}",
+                        sessionId, userId, model != null ? model.getModelName() : "null",
+                        aiResponseContent != null ? aiResponseContent.length() : 0);
+            }
+        } catch (Exception e) {
+            log.error("保存AI响应到数据库失败", e);
+        }
+    }
+
+    /**
+     * 添加新消息到聊天 - 从ApiController迁移的子函数
+     * 用于验证和保存消息到数据库
+     */
+    private Result<ChatMessageVO> addMessageToChat(String chatId, String role, String content, Long userId) {
+        if (role == null || role.trim().isEmpty()) {
+            return Result.validateFailed("消息角色不能为空");
+        }
+        if (content == null || content.trim().isEmpty()) {
+            return Result.validateFailed("消息内容不能为空");
+        }
+
+        // 先验证聊天是否属于当前用户
+        ChatSession chatSession = chatSessionService.getSessionInfo(chatId);
+        if (chatSession == null) {
+            return Result.failed("聊天不存在");
+        }
+        if (!chatSession.getUserId().equals(userId)) {
+            return Result.failed("无权访问此聊天");
+        }
+
+        Long messageId = chatMessageService.sendMessage(chatId, role, content, userId);
+        ChatMessage chatMessage = chatMessageService.getById(messageId);
+
+        if (chatMessage == null) {
+            return Result.failed("添加消息失败");
+        }
+
+        ChatMessageVO chatMessageVO = VOConverter.toChatMessageVO(chatMessage);
+        return Result.success(chatMessageVO, "添加消息成功");
     }
 
     /**

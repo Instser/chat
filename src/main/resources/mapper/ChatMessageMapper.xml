@@ -53,14 +53,4 @@
         LIMIT 1
     </select>
 
-    <!-- 检查会话中是否已有AI消息 -->
-    <select id="hasAssistantMessage" resultType="boolean">
-        SELECT COUNT(1) > 0
-        FROM t_chat_message
-        WHERE session_id = #{sessionId}
-          AND role = 'assistant'
-          AND deleted = 0
-        LIMIT 1
-    </select>
-
 </mapper>

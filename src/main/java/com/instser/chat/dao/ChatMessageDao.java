@@ -40,12 +40,4 @@ public interface ChatMessageDao extends BaseMapper<ChatMessage> {
      * @return 消息信息
      */
     ChatMessage selectByMessageId(@Param("messageId") String messageId);
-
-    /**
-     * 检查会话中是否已有AI消息
-     *
-     * @param sessionId 会话ID
-     * @return 是否已有AI消息
-     */
-    boolean hasAssistantMessage(@Param("sessionId") String sessionId);
 }
