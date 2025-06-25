@@ -308,6 +308,8 @@ public class ChatServiceImpl implements ChatService {
 
             // 添加JSON数据缓冲区，用于处理分片数据
             StringBuilder jsonBuffer = new StringBuilder();
+            // 添加行缓冲区，用于处理被分割的行
+            StringBuilder lineBuffer = new StringBuilder();
 
             // 构建请求体
             Map<String, Object> requestBody = new HashMap<>();
@@ -326,6 +328,9 @@ public class ChatServiceImpl implements ChatService {
 
             log.info("调用AI API: {}, 模型: {}", model.getBaseUrl(), model.getModelCode());
 
+            // 判断是否为Google Gemini API
+            boolean isGeminiApi = model.getBaseUrl().contains("generativelanguage.googleapis.com");
+
             // 发送流式请求并处理响应
             webClient.post()
                     .uri(model.getBaseUrl())
@@ -342,13 +347,29 @@ public class ChatServiceImpl implements ChatService {
                         return chunk.replaceAll("[\uFFFD\u0000]", "");
                     })
                     .flatMap(chunk -> {
-                        String[] lines = chunk.split("\n");
+                        // 将chunk添加到行缓冲区
+                        lineBuffer.append(chunk);
+
+                        // 按换行符分割，但保留最后一个不完整的行
+                        String bufferedContent = lineBuffer.toString();
+                        String[] lines = bufferedContent.split("\n", -1);
                         List<String> validLines = new ArrayList<>();
-                        for (String line : lines) {
-                            if (!line.trim().isEmpty()) {
+
+                        // 处理除最后一行外的所有行（这些都是完整的行）
+                        for (int i = 0; i < lines.length - 1; i++) {
+                            String line = lines[i].trim();
+                            if (!line.isEmpty()) {
                                 validLines.add(line);
                             }
                         }
+
+                        // 最后一行可能不完整，保留在缓冲区中
+                        String lastLine = lines[lines.length - 1];
+                        lineBuffer.setLength(0);
+                        if (!lastLine.isEmpty()) {
+                            lineBuffer.append(lastLine);
+                        }
+
                         return Flux.fromIterable(validLines);
                     })
                     .doOnNext(line -> {
@@ -369,7 +390,7 @@ public class ChatServiceImpl implements ChatService {
                                 // 尝试解析完整的JSON
                                 String bufferedJson = jsonBuffer.toString();
                                 if (isValidJson(bufferedJson)) {
-                                    String contentSent = processCompleteJson(bufferedJson, response);
+                                    String contentSent = processCompleteJson(bufferedJson, response, isGeminiApi);
                                     if (contentSent != null) {
                                         hasContentSent[0] = true;
                                         isRealAiResponse[0] = true;
@@ -377,10 +398,38 @@ public class ChatServiceImpl implements ChatService {
                                     }
                                     jsonBuffer.setLength(0);
                                 }
+                            } else if (!line.trim().isEmpty() && jsonBuffer.length() > 0) {
+                                // 处理跨行的JSON片段（不以data:开头但缓冲区有数据）
+                                log.debug("处理跨行JSON片段: [{}]", line);
+
+                                // 防止缓冲区无限增长
+                                if (jsonBuffer.length() > 10000) {
+                                    log.warn("JSON缓冲区过大，清空重新开始: {}", jsonBuffer.length());
+                                    jsonBuffer.setLength(0);
+                                    return;
+                                }
+
+                                jsonBuffer.append(line.trim());
+
+                                // 尝试解析完整的JSON
+                                String bufferedJson = jsonBuffer.toString();
+                                if (isValidJson(bufferedJson)) {
+                                    log.debug("跨行JSON重组成功，长度: {}", bufferedJson.length());
+                                    String contentSent = processCompleteJson(bufferedJson, response, isGeminiApi);
+                                    if (contentSent != null) {
+                                        hasContentSent[0] = true;
+                                        isRealAiResponse[0] = true;
+                                        aiResponseContent.append(contentSent);
+                                    }
+                                    jsonBuffer.setLength(0);
+                                } else {
+                                    log.debug("跨行JSON仍不完整，继续等待: 当前长度 {}", bufferedJson.length());
+                                }
                             }
                         } catch (Exception e) {
-                            log.error("处理流式数据失败: {}", e.getMessage());
-                            jsonBuffer.setLength(0);
+                            log.error("处理流式数据失败: {}, 缓冲区内容: [{}]", e.getMessage(), jsonBuffer.toString());
+                            // 不要立即清空缓冲区，给跨行JSON一个机会
+                            // jsonBuffer.setLength(0);
                         }
                     })
                     .doOnError(error -> {
@@ -401,6 +450,57 @@ public class ChatServiceImpl implements ChatService {
                     })
                     .doOnComplete(() -> {
                         log.info("AI API流式响应处理完成");
+
+                        // 处理剩余的行缓冲区数据
+                        if (lineBuffer.length() > 0) {
+                            String remainingLine = lineBuffer.toString().trim();
+                            if (!remainingLine.isEmpty()) {
+                                log.info("处理流完成时剩余的行数据: [{}]", remainingLine);
+                                try {
+                                    // 处理剩余的行数据
+                                    if (remainingLine.startsWith("data: ")) {
+                                        if (remainingLine.equals("data: [DONE]")) {
+                                            log.info("收到AI响应完成标记（来自剩余数据）");
+                                            handleStreamCompletion(response, willGenerateTitle, isRealAiResponse[0], request);
+                                        } else {
+                                            String jsonData = remainingLine.substring(6).trim();
+                                            jsonBuffer.append(jsonData);
+
+                                            String bufferedJson = jsonBuffer.toString();
+                                            if (isValidJson(bufferedJson)) {
+                                                String contentSent = processCompleteJson(bufferedJson, response, isGeminiApi);
+                                                if (contentSent != null) {
+                                                    hasContentSent[0] = true;
+                                                    isRealAiResponse[0] = true;
+                                                    aiResponseContent.append(contentSent);
+                                                }
+                                            }
+                                        }
+                                    } else if (jsonBuffer.length() > 0) {
+                                        // 处理跨行的JSON片段
+                                        jsonBuffer.append(remainingLine);
+                                        String bufferedJson = jsonBuffer.toString();
+                                        if (isValidJson(bufferedJson)) {
+                                            String contentSent = processCompleteJson(bufferedJson, response, isGeminiApi);
+                                            if (contentSent != null) {
+                                                hasContentSent[0] = true;
+                                                isRealAiResponse[0] = true;
+                                                aiResponseContent.append(contentSent);
+                                            }
+                                        }
+                                    }
+                                } catch (Exception e) {
+                                    log.error("处理剩余行数据失败: {}", e.getMessage());
+                                }
+                            }
+                            lineBuffer.setLength(0);
+                        }
+
+                        // 清理JSON缓冲区
+                        if (jsonBuffer.length() > 0) {
+                            log.warn("流完成时JSON缓冲区仍有数据，长度: {}, 内容: [{}]", jsonBuffer.length(), jsonBuffer.toString());
+                            jsonBuffer.setLength(0);
+                        }
                     })
                     .onErrorReturn("")
                     .blockLast();
@@ -499,10 +599,15 @@ public class ChatServiceImpl implements ChatService {
     /**
      * 处理完整的JSON数据
      */
-    private String processCompleteJson(String jsonData, HttpServletResponse response) {
+    private String processCompleteJson(String jsonData, HttpServletResponse response, boolean isGeminiApi) {
         try {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode jsonNode = mapper.readTree(jsonData);
+
+            if (isGeminiApi) {
+                log.debug("处理Google Gemini API响应: {}", jsonData.length() > 200 ? jsonData.substring(0, 200) + "..." : jsonData);
+            }
+
             JsonNode choices = jsonNode.get("choices");
 
             if (choices != null && choices.isArray() && choices.size() > 0) {
@@ -513,6 +618,10 @@ public class ChatServiceImpl implements ChatService {
                         String cleanContent = cleanContent(content);
 
                         if (!cleanContent.isEmpty()) {
+                            if (isGeminiApi) {
+                                log.debug("Google Gemini API内容: [{}]", cleanContent.length() > 50 ? cleanContent.substring(0, 50) + "..." : cleanContent);
+                            }
+
                             if (ENABLE_SMART_CHUNKING) {
                                 sendContentBySmartChunking(cleanContent, response, mapper);
                             } else {
@@ -525,7 +634,7 @@ public class ChatServiceImpl implements ChatService {
             }
             return null;
         } catch (Exception e) {
-            log.error("处理完整JSON数据失败: {}", e.getMessage());
+            log.error("处理完整JSON数据失败: {}, JSON内容: {}", e.getMessage(), jsonData.length() > 100 ? jsonData.substring(0, 100) + "..." : jsonData);
             return null;
         }
     }

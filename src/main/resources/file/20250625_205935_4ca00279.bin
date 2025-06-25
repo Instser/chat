@@ -1,0 +1,103 @@
+# 后端接口对接说明
+
+一、统一说明
+• 所有接口均返回统一结构：
+
+```
+{ "code": 200, "data": { … }, "message": "OK" }
+```
+
+
+
+二、文件上传 API
+
+1. URL
+
+```
+POST /api/files/upload
+```
+
+1. 请求头
+
+```
+Content-Type: multipart/form-data
+```
+
+1. 表单字段
+   | 名称 | 类型 | 说明 | |------|------|---------------------| | files | File | 可重复出现，支持多文件 |
+2. 成功响应
+
+```
+{
+  "code": 200,
+  "data": {
+    "success": true,
+    "filesId": "123,124,130",      // 逗号分隔的文件 ID
+    "files": [
+      {
+        "name": "123",             // 文件 ID
+        "originalName": "demo.pdf",
+        "size": 102400,
+        "type": "application/pdf",
+        "uploadedAt": "2025-06-25T07:30:00Z"
+      }
+    ],
+    "message": "Upload succeed"
+  },
+  "message": "OK"
+}
+```
+
+字段说明
+
+| 字段       | 类型   | 说明                           |
+| :--------- | :----- | :----------------------------- |
+| filesId    | string | 上传成功文件 ID 列表，逗号分隔 |
+| files.name | string | 单个文件 ID                    |
+| url        | *无*   | 前端已不再使用，后端无需返回   |
+
+三、聊天 API
+
+```
+POST /api/chat
+```
+
+1. 请求头
+
+```
+Content-Type: application/json
+```
+
+1. 请求体
+
+```
+{
+  "sessionId": "chat-001",
+  "messages": [
+    { "role": "user", "content": "请总结附件内容" }
+  ],
+  "filesId": "123,124,130",         // 上一步上传返回的 filesId
+  "deepThinking": false,
+  "modelId": "1",
+  "userId": "u-789"
+}
+```
+
+说明
+
+| 字段      | 类型   | 说明                                 |
+| :-------- | :----- | :----------------------------------- |
+| filesId   | string | 可选；若存在，则解析关联这些附件     |
+| messages  | array  | OpenAI Chat 格式：`role` + `content` |
+| sessionId | string | 会话标识，用于多轮对话上下文         |
+
+四、错误码建议
+
+| code  | HTTP | 含义                |
+| :---- | :--- | :------------------ |
+| 200   | 200  | 成功                |
+| 40001 | 400  | 参数错误            |
+| 40100 | 401  | 未授权 / Token 失效 |
+| 50000 | 500  | 服务器内部错误      |
+
+请按以上规范实现后端接口，即可与当前前端代码无缝对接。
