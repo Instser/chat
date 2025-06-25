@@ -140,12 +140,7 @@ yipay:
   # 默认支付方式（alipay、wxpay、qqpay等）
   default-type: ${YIPAY_DEFAULT_TYPE:alipay}
 
-# AI模型配置
-ai:
-  # 默认API配置
-  default:
-    base-url: ${AI_BASE_URL:https://generativelanguage.googleapis.com/v1beta/openai/chat/completions/}
-    api-key: ${AI_API_KEY:your-google-api-key}
+
 
 # JWT配置
 jwt:

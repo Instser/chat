@@ -31,7 +31,6 @@ public class SimpleAiTest {
             messages.add(message);
             
             requestBody.put("messages", messages);
-            requestBody.put("reasoning_effort", "none");
 
             // 创建WebClient
             WebClient webClient = WebClient.builder()
