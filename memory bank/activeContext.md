@@ -1,13 +1,23 @@
 # 当前工作内容
 
-**📅 最后更新**: 2025-06-21 10:07:00
+**📅 最后更新**: 2025-06-25 09:01:00
 **👤 更新人员**: Augment Agent
-**📊 文档版本**: v5.1
+**📊 文档版本**: v5.2
 
 ## 当前任务
-已完成标题生成阻塞问题修复：
+已完成标题生成模型固定化修改：
 
-### 最新完成 (2025-06-21 10:07)
+### 最新完成 (2025-06-25 09:01)
+1. **标题生成模型固定化** - ✅ 修改CHAT接口中的自动生成标题逻辑，固定使用ID为1L的模型进行标题生成
+2. **方法签名优化** - ✅ 修改generateTitleSyncInBackground()、generateTitleSync()、generateTitleSimple()和generateTitleAsync()方法，移除model参数
+3. **内部模型获取** - ✅ 在各标题生成方法内部通过aiModelService.getById(1L)获取固定模型，确保标题生成独立于聊天请求使用的模型
+4. **模型可用性验证** - ✅ 添加标题生成模型的可用性检查，当ID为1L的模型不可用时跳过标题生成
+5. **日志优化** - ✅ 更新日志记录，明确显示使用固定模型进行标题生成的信息
+6. **未使用方法清理** - ✅ 移除generateTitleAsync()、generateTitleSync()、generateTitleSimple()和callAiForTitleAsync()、callAiForTitleSync()等未使用的标题生成方法
+7. **导入语句清理** - ✅ 清理不再使用的reactor.core.publisher.Mono和reactor.core.scheduler.Schedulers导入
+8. **编译验证** - ✅ 确保所有修改能够正常编译，功能逻辑保持完整
+
+### 历史完成 (2025-06-21 10:07)
 1. **阻塞问题诊断** - ✅ 识别出在响应式线程中使用WebClient.block()导致的IllegalStateException异常
 2. **HTTP客户端替换** - ✅ 创建callAiForTitleWithHttpClient()方法，使用RestTemplate替代WebClient避免阻塞
 3. **后台线程执行** - ✅ 使用CompletableFuture.supplyAsync()在后台线程中执行标题生成，避免阻塞响应式线程
@@ -442,3 +452,4 @@
 | 2025-06-21 07:24:00 | v4.3 | 优化聊天消息数据库保存，实现用户消息和AI响应的完整保存 | Augment Agent |
 | 2025-06-21 08:47:00 | v4.4 | 修复聊天标题生成阻塞问题，改为异步响应式编程 | Augment Agent |
 | 2025-06-21 09:03:00 | v4.5 | 清理项目中未使用和重复的方法，优化代码结构 | Augment Agent |
+| 2025-06-25 09:01:00 | v5.2 | 修改CHAT接口标题生成逻辑，固定使用ID为1L的模型 | Augment Agent |

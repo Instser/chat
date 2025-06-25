@@ -44,8 +44,6 @@ import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
-import reactor.core.scheduler.Schedulers;
 import com.fasterxml.jackson.databind.JsonNode;
 
 /**
@@ -95,6 +93,7 @@ public class ChatApiController {
         String sessionId = null;
         Long userId = null;
         AiModel model = null;
+        Long modelId = null;
 
         try {
             @SuppressWarnings("unchecked")
@@ -102,6 +101,7 @@ public class ChatApiController {
             Object userIdObj = request.get("userId");
             Object deepThinkingObj = request.get("deepThinking");
             sessionId = (String) request.get("sessionId"); // 提取sessionId
+            Object modelIdObj = request.get("modelId");
 
             if (messages == null || messages.isEmpty()) {
                 response.getWriter().write("3:\"消息列表不能为空\"\n");
@@ -115,14 +115,20 @@ public class ChatApiController {
                 return;
             }
 
+            if (modelIdObj == null) {
+                response.getWriter().write("3:\"Ai模型ID不能为空\"\n");
+                response.getWriter().flush();
+                return;
+            }
             // 保存用户消息到数据库 - 在AI响应之前先保存用户消息
             if (sessionId != null) {
                 saveUserMessageToDatabase(messages, sessionId, Long.valueOf(userIdObj.toString()));
             }
 
-            // 硬编码使用ID为1的模型（已配置为qwen3-235b-a22b）
-            Long modelId = 1L;
+            // // 硬编码使用ID为1的模型（已配置为qwen3-235b-a22b）
+            // Long modelId = 1L;
             userId = Long.valueOf(userIdObj.toString());
+            modelId = Long.valueOf(modelIdObj.toString());
 
             // 获取模型配置
             model = aiModelService.getById(modelId);
@@ -400,9 +406,10 @@ public class ChatApiController {
                                             log.info("开始生成标题，会话ID: {}", sessionId);
                                             try {
                                                 // 使用CompletableFuture在后台线程中生成标题，等待完成
+                                                // 固定使用ID为1L的模型进行标题生成
                                                 CompletableFuture<String> titleFuture = CompletableFuture.supplyAsync(() -> {
                                                     try {
-                                                        return generateTitleSyncInBackground(sessionId, messages, model);
+                                                        return generateTitleSyncInBackground(sessionId, messages);
                                                     } catch (Exception e) {
                                                         log.error("后台标题生成失败", e);
                                                         return null;
@@ -1014,148 +1021,9 @@ public class ChatApiController {
         return buildCompletionData(willGenerateTitle, isRealAiResponse, null);
     }
 
-    /**
-     * 异步生成标题并保存到数据库
-     * @param sessionId 会话ID
-     * @param messages 消息列表
-     * @param model AI模型
-     * @return Mono<String> 生成的标题，失败时返回null
-     */
-    private Mono<String> generateTitleAsync(String sessionId, List<Map<String, String>> messages, AiModel model) {
-        return Mono.fromCallable(() -> {
-            // 构建对话内容
-            String conversationContent = buildConversationContent(messages);
-            if (conversationContent == null || conversationContent.trim().isEmpty()) {
-                log.warn("无法构建对话内容，跳过标题生成");
-                return null;
-            }
 
-            // 构建标题生成提示词
-            String titlePrompt = buildTitlePrompt(conversationContent);
 
-            // 构建标题生成消息列表
-            List<Map<String, String>> titleMessages = new ArrayList<>();
-            Map<String, String> titleMessage = new HashMap<>();
-            titleMessage.put("role", "user");
-            titleMessage.put("content", titlePrompt);
-            titleMessages.add(titleMessage);
 
-            return titleMessages;
-        })
-        .flatMap(titleMessages -> {
-            if (titleMessages == null) {
-                return Mono.<String>just(null);
-            }
-            // 调用AI服务生成标题（异步）
-            return callAiForTitleAsync(titleMessages, model);
-        })
-        .map(rawTitle -> {
-            if (rawTitle == null || rawTitle.trim().isEmpty()) {
-                log.warn("AI服务返回空标题");
-                return null;
-            }
-
-            // 清理标题
-            String cleanedTitle = cleanTitle(rawTitle);
-            log.info("标题生成成功: {} -> {}", rawTitle, cleanedTitle);
-            return cleanedTitle;
-        })
-        .doOnNext(cleanedTitle -> {
-            if (cleanedTitle != null) {
-                // 异步保存标题到数据库
-                CompletableFuture.runAsync(() -> {
-                    try {
-                        chatSessionService.updateSessionTitle(sessionId, cleanedTitle);
-                        log.info("标题已异步保存到数据库: {}", cleanedTitle);
-                    } catch (Exception e) {
-                        log.error("异步保存标题失败", e);
-                    }
-                });
-            }
-        })
-        .doOnError(error -> log.error("异步生成标题失败", error))
-        .onErrorReturn("New Chat") // 不能使用null，必须提供非空的回退值
-        .subscribeOn(Schedulers.boundedElastic()); // 在弹性线程池中执行
-    }
-
-    /**
-     * 异步调用AI服务生成标题
-     * @param titleMessages 标题生成消息列表
-     * @param model AI模型
-     * @return Mono<String> 生成的原始标题，失败时返回null
-     */
-    private Mono<String> callAiForTitleAsync(List<Map<String, String>> titleMessages, AiModel model) {
-        log.info("开始异步调用AI服务生成标题，模型: {}, URL: {}", model.getModelCode(), model.getBaseUrl());
-
-        // 构建请求体
-        Map<String, Object> requestBody = new HashMap<>();
-        requestBody.put("model", model.getModelCode());
-        requestBody.put("messages", titleMessages);
-        requestBody.put("stream", false); // 非流式请求
-        requestBody.put("max_tokens", 50); // 限制标题长度
-        requestBody.put("temperature", 0.7); // 适中的创造性
-
-        log.info("AI标题生成请求体构建完成，消息数量: {}", titleMessages.size());
-
-        // 创建WebClient
-        WebClient webClient = WebClient.builder()
-                .defaultHeader("Authorization", "Bearer " + model.getApiKey())
-                .defaultHeader("Content-Type", "application/json; charset=UTF-8")
-                .build();
-
-        log.info("WebClient创建完成，开始发送请求到: {}", model.getBaseUrl());
-
-        // 发送异步请求并获取响应
-        return webClient.post()
-                .uri(model.getBaseUrl())
-                .contentType(MediaType.APPLICATION_JSON)
-                .bodyValue(requestBody)
-                .retrieve()
-                .bodyToMono(String.class)
-                .timeout(Duration.ofSeconds(10)) // 10秒超时
-                .map(responseBody -> {
-                    log.info("收到AI服务响应，响应长度: {}字符", responseBody != null ? responseBody.length() : 0);
-
-                    if (responseBody == null || responseBody.trim().isEmpty()) {
-                        log.warn("AI服务返回空响应");
-                        return null;
-                    }
-
-                    try {
-                        // 解析响应
-                        ObjectMapper mapper = new ObjectMapper();
-                        JsonNode responseJson = mapper.readTree(responseBody);
-                        log.info("AI服务响应JSON解析成功");
-
-                        JsonNode choices = responseJson.get("choices");
-                        log.info("choices节点: {}", choices != null ? "存在" : "不存在");
-
-                        if (choices != null && choices.isArray() && choices.size() > 0) {
-                            log.info("choices数组长度: {}", choices.size());
-                            JsonNode message = choices.get(0).get("message");
-                            log.info("message节点: {}", message != null ? "存在" : "不存在");
-
-                            if (message != null && message.has("content")) {
-                                String title = message.get("content").asText();
-                                log.info("AI服务返回标题: [{}]", title);
-                                return title;
-                            } else {
-                                log.warn("message节点不存在或没有content字段");
-                            }
-                        } else {
-                            log.warn("choices节点为空或不是数组");
-                        }
-
-                        log.warn("AI服务响应格式异常，完整响应: {}", responseBody);
-                        return null;
-                    } catch (Exception e) {
-                        log.error("解析AI服务响应失败，响应内容: {}", responseBody, e);
-                        return null;
-                    }
-                })
-                .doOnError(error -> log.error("异步调用AI服务生成标题失败", error))
-                .onErrorReturn("AI_SERVICE_ERROR"); // 不能使用null，使用错误标识
-    }
 
     /**
      * 保存用户消息到数据库
@@ -1233,16 +1101,25 @@ public class ChatApiController {
 
     /**
      * 在后台线程中同步生成标题（避免阻塞响应式线程）
+     * 固定使用ID为1L的模型进行标题生成
      * @param sessionId 会话ID
      * @param messages 消息列表
-     * @param model AI模型
      * @return 生成的标题，失败时返回null
      */
-    private String generateTitleSyncInBackground(String sessionId, List<Map<String, String>> messages, AiModel model) {
+    private String generateTitleSyncInBackground(String sessionId, List<Map<String, String>> messages) {
         log.info("=== 开始后台同步标题生成流程 ===");
-        log.info("会话ID: {}, 模型: {}, 消息数量: {}", sessionId, model.getModelName(), messages.size());
+        log.info("会话ID: {}, 消息数量: {}", sessionId, messages.size());
 
         try {
+            // 步骤0: 获取固定的标题生成模型（ID为1L）
+            log.info("步骤0: 获取固定的标题生成模型（ID为1L）");
+            AiModel titleModel = aiModelService.getById(1L);
+            if (titleModel == null || titleModel.getIsAvailable() != 1) {
+                log.error("标题生成模型（ID=1L）不可用，跳过标题生成");
+                return null;
+            }
+            log.info("标题生成模型: {}", titleModel.getModelName());
+
             // 步骤1: 构建对话内容
             log.info("步骤1: 构建对话内容");
             String conversationContent = buildConversationContent(messages);
@@ -1258,8 +1135,8 @@ public class ChatApiController {
             log.info("标题提示词构建成功，长度: {}字符", titlePrompt.length());
 
             // 步骤3: 调用AI服务生成标题（使用HTTP客户端而不是WebClient.block()）
-            log.info("步骤3: 调用AI服务生成标题");
-            String rawTitle = callAiForTitleWithHttpClient(titlePrompt, model);
+            log.info("步骤3: 调用AI服务生成标题，使用模型: {}", titleModel.getModelName());
+            String rawTitle = callAiForTitleWithHttpClient(titlePrompt, titleModel);
             if (rawTitle == null || rawTitle.trim().isEmpty()) {
                 log.warn("AI服务返回空标题");
                 return null;
@@ -1293,126 +1170,9 @@ public class ChatApiController {
         }
     }
 
-    /**
-     * 同步生成标题方法（在主线程中调用，返回生成的标题）
-     * @param sessionId 会话ID
-     * @param messages 消息列表
-     * @param model AI模型
-     * @return 生成的标题，失败时返回null
-     */
-    private String generateTitleSync(String sessionId, List<Map<String, String>> messages, AiModel model) {
-        log.info("=== 开始同步标题生成流程 ===");
-        log.info("会话ID: {}, 模型: {}, 消息数量: {}", sessionId, model.getModelName(), messages.size());
 
-        try {
-            // 步骤1: 构建对话内容
-            log.info("步骤1: 构建对话内容");
-            String conversationContent = buildConversationContent(messages);
-            if (conversationContent == null || conversationContent.trim().isEmpty()) {
-                log.warn("无法构建对话内容，跳过标题生成");
-                return null;
-            }
-            log.info("对话内容构建成功，长度: {}字符", conversationContent.length());
 
-            // 步骤2: 构建标题生成提示词
-            log.info("步骤2: 构建标题生成提示词");
-            String titlePrompt = buildTitlePrompt(conversationContent);
-            log.info("标题提示词构建成功，长度: {}字符", titlePrompt.length());
 
-            // 步骤3: 调用AI服务生成标题
-            log.info("步骤3: 调用AI服务生成标题");
-            String rawTitle = callAiForTitleSync(titlePrompt, model);
-            if (rawTitle == null || rawTitle.trim().isEmpty()) {
-                log.warn("AI服务返回空标题");
-                return null;
-            }
-            log.info("AI服务返回原始标题: [{}]", rawTitle);
-
-            // 步骤4: 清理标题
-            log.info("步骤4: 清理标题");
-            String cleanedTitle = cleanTitle(rawTitle);
-            log.info("标题清理完成: [{}] -> [{}]", rawTitle, cleanedTitle);
-
-            // 步骤5: 保存标题到数据库
-            if (cleanedTitle != null && !cleanedTitle.equals("New Chat")) {
-                log.info("步骤5: 保存标题到数据库");
-                boolean saved = chatSessionService.updateSessionTitle(sessionId, cleanedTitle);
-                if (saved) {
-                    log.info("标题保存到数据库成功: {}", cleanedTitle);
-                } else {
-                    log.error("标题保存到数据库失败: {}", cleanedTitle);
-                }
-            } else {
-                log.warn("标题为空或为默认标题，不保存到数据库: [{}]", cleanedTitle);
-            }
-
-            log.info("=== 同步标题生成流程完成，最终标题: [{}] ===", cleanedTitle);
-            return cleanedTitle;
-
-        } catch (Exception e) {
-            log.error("同步标题生成过程中发生异常", e);
-            return null;
-        }
-    }
-
-    /**
-     * 简化的标题生成方法（同步执行，在后台线程中调用）
-     * @param sessionId 会话ID
-     * @param messages 消息列表
-     * @param model AI模型
-     */
-    private void generateTitleSimple(String sessionId, List<Map<String, String>> messages, AiModel model) {
-        log.info("=== 开始简化标题生成流程 ===");
-        log.info("会话ID: {}, 模型: {}, 消息数量: {}", sessionId, model.getModelName(), messages.size());
-
-        try {
-            // 步骤1: 构建对话内容
-            log.info("步骤1: 构建对话内容");
-            String conversationContent = buildConversationContent(messages);
-            if (conversationContent == null || conversationContent.trim().isEmpty()) {
-                log.warn("无法构建对话内容，跳过标题生成");
-                return;
-            }
-            log.info("对话内容构建成功，长度: {}字符", conversationContent.length());
-
-            // 步骤2: 构建标题生成提示词
-            log.info("步骤2: 构建标题生成提示词");
-            String titlePrompt = buildTitlePrompt(conversationContent);
-            log.info("标题提示词构建成功，长度: {}字符", titlePrompt.length());
-
-            // 步骤3: 调用AI服务生成标题
-            log.info("步骤3: 调用AI服务生成标题");
-            String rawTitle = callAiForTitleSync(titlePrompt, model);
-            if (rawTitle == null || rawTitle.trim().isEmpty()) {
-                log.warn("AI服务返回空标题");
-                return;
-            }
-            log.info("AI服务返回原始标题: [{}]", rawTitle);
-
-            // 步骤4: 清理标题
-            log.info("步骤4: 清理标题");
-            String cleanedTitle = cleanTitle(rawTitle);
-            log.info("标题清理完成: [{}] -> [{}]", rawTitle, cleanedTitle);
-
-            // 步骤5: 保存标题到数据库
-            if (cleanedTitle != null && !cleanedTitle.equals("New Chat")) {
-                log.info("步骤5: 保存标题到数据库");
-                boolean saved = chatSessionService.updateSessionTitle(sessionId, cleanedTitle);
-                if (saved) {
-                    log.info("标题保存到数据库成功: {}", cleanedTitle);
-                } else {
-                    log.error("标题保存到数据库失败: {}", cleanedTitle);
-                }
-            } else {
-                log.warn("标题为空或为默认标题，不保存到数据库: [{}]", cleanedTitle);
-            }
-
-            log.info("=== 标题生成流程完成，最终标题: [{}] ===", cleanedTitle);
-
-        } catch (Exception e) {
-            log.error("标题生成过程中发生异常", e);
-        }
-    }
 
     /**
      * 使用HTTP客户端调用AI服务生成标题（避免WebClient阻塞问题）
@@ -1496,84 +1256,6 @@ public class ChatApiController {
         }
     }
 
-    /**
-     * 同步调用AI服务生成标题
-     * @param titlePrompt 标题生成提示词
-     * @param model AI模型
-     * @return 生成的原始标题，失败时返回null
-     */
-    private String callAiForTitleSync(String titlePrompt, AiModel model) {
-        try {
-            log.info("开始同步调用AI服务生成标题");
 
-            // 构建请求体
-            Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("model", model.getModelCode());
-
-            List<Map<String, String>> titleMessages = new ArrayList<>();
-            Map<String, String> titleMessage = new HashMap<>();
-            titleMessage.put("role", "user");
-            titleMessage.put("content", titlePrompt);
-            titleMessages.add(titleMessage);
-
-            requestBody.put("messages", titleMessages);
-            requestBody.put("stream", false); // 非流式请求
-            requestBody.put("max_tokens", 50); // 限制标题长度
-            requestBody.put("temperature", 0.7); // 适中的创造性
-
-            log.info("AI标题生成请求体构建完成");
-
-            // 创建WebClient
-            WebClient webClient = WebClient.builder()
-                    .defaultHeader("Authorization", "Bearer " + model.getApiKey())
-                    .defaultHeader("Content-Type", "application/json; charset=UTF-8")
-                    .build();
-
-            log.info("开始发送同步请求到: {}", model.getBaseUrl());
-
-            // 发送同步请求并获取响应
-            String responseBody = webClient.post()
-                    .uri(model.getBaseUrl())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .bodyValue(requestBody)
-                    .retrieve()
-                    .bodyToMono(String.class)
-                    .timeout(Duration.ofSeconds(10)) // 10秒超时
-                    .block(); // 同步阻塞获取结果
-
-            log.info("收到AI服务响应，响应长度: {}字符", responseBody != null ? responseBody.length() : 0);
-
-            if (responseBody == null || responseBody.trim().isEmpty()) {
-                log.warn("AI服务返回空响应");
-                return null;
-            }
-
-            // 解析响应
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode responseJson = mapper.readTree(responseBody);
-            log.info("AI服务响应JSON解析成功");
-
-            JsonNode choices = responseJson.get("choices");
-            if (choices != null && choices.isArray() && choices.size() > 0) {
-                JsonNode message = choices.get(0).get("message");
-                if (message != null && message.has("content")) {
-                    String title = message.get("content").asText();
-                    log.info("AI服务返回标题: [{}]", title);
-                    return title;
-                } else {
-                    log.warn("message节点不存在或没有content字段");
-                }
-            } else {
-                log.warn("choices节点为空或不是数组");
-            }
-
-            log.warn("AI服务响应格式异常，完整响应: {}", responseBody);
-            return null;
-
-        } catch (Exception e) {
-            log.error("同步调用AI服务生成标题失败", e);
-            return null;
-        }
-    }
 
 }
