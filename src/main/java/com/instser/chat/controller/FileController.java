@@ -64,6 +64,8 @@ public class FileController {
 
             // 校验存储完成性
             List<String> validatedFileIds = new ArrayList<>();
+            List<Map<String, Object>> validatedFiles = new ArrayList<>();
+
             for (FileUpload fileUpload : uploadedFiles) {
                 if (fileUpload != null && fileUpload.getFileId() != null) {
                     // 从数据库重新查询验证文件是否正确存储
@@ -74,6 +76,13 @@ public class FileController {
                         verifiedFile.getStatus() == FileUpload.Status.AVAILABLE) {
 
                         validatedFileIds.add(fileUpload.getFileId());
+
+                        // 构建文件信息
+                        Map<String, Object> fileInfo = new HashMap<>();
+                        fileInfo.put("fileId", fileUpload.getFileId());
+                        fileInfo.put("fileName", fileUpload.getFileName());
+                        validatedFiles.add(fileInfo);
+
                         log.info("文件存储校验成功：文件ID={}, 文件名={}, 用户ID={}",
                                 fileUpload.getFileId(), fileUpload.getFileName(), userId);
                     } else {
@@ -88,15 +97,14 @@ public class FileController {
                 return Result.failed("文件上传失败，没有文件成功存储");
             }
 
-            // 构建响应，只返回文件ID
+            // 构建响应，按照指定格式
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
-            response.put("fileIds", validatedFileIds);
-            response.put("uploadCount", validatedFileIds.size());
-            response.put("totalCount", files.length);
-            response.put("message", String.format("文件上传成功，共上传%d个文件", validatedFileIds.size()));
+            response.put("filesId", String.join(",", validatedFileIds)); // 逗号分隔的文件ID
+            response.put("files", validatedFiles); // 文件详细信息数组
+            response.put("message", "Upload succeed");
 
-            return Result.success(response, "文件上传成功");
+            return Result.success(response, "OK");
 
         } catch (Exception e) {
             log.error("文件上传失败", e);
