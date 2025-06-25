@@ -824,60 +824,32 @@ public class ChatApiController {
     }
 
     /**
-     * 清理英文标题内容
+     * 清理标题内容 - 移除长度校验，直接返回生成的标题
      */
     private String cleanTitle(String title) {
         log.info("开始清理标题，原始标题: [{}]", title);
 
-        if (title == null) {
-            log.warn("标题为null，返回默认标题");
+        if (title == null || title.trim().isEmpty()) {
+            log.warn("标题为null或空，返回默认标题");
             return "New Chat";
         }
 
-        // 移除引号、特殊符号和多余空格
+        // 基础清理：移除引号和多余空格
         String cleaned = title.trim()
             .replaceAll("^[\"']+|[\"']+$", "") // 移除开头和结尾的引号
-            .replaceAll("[^a-zA-Z0-9\\s]", "") // 移除非英文字母、数字和空格的字符
             .replaceAll("\\s+", " ") // 合并多个空格
             .trim();
 
-        log.info("标题清理后: [{}]", cleaned);
+        log.info("标题清理完成: [{}] -> [{}]", title, cleaned);
 
-        // 验证是否为有效的英文标题（3-8个单词）
-        String[] words = cleaned.split("\\s+");
-        log.info("标题单词数量: {}, 单词列表: {}", words.length, String.join(", ", words));
-
-        if (words.length < 3 || words.length > 8 || cleaned.isEmpty()) {
-            log.warn("标题单词数量不符合要求（3-8个单词），实际: {}个，返回默认标题", words.length);
+        // 如果清理后为空，返回默认标题
+        if (cleaned.isEmpty()) {
+            log.warn("清理后标题为空，返回默认标题");
             return "New Chat";
         }
 
-        // 确保每个单词都是有效的英文单词（至少包含一个字母）
-        for (String word : words) {
-            if (!word.matches(".*[a-zA-Z].*")) {
-                log.warn("发现无效单词: [{}]，返回默认标题", word);
-                return "New Chat";
-            }
-        }
-
-        // 首字母大写处理
-        StringBuilder result = new StringBuilder();
-        for (int i = 0; i < words.length; i++) {
-            if (i > 0) {
-                result.append(" ");
-            }
-            String word = words[i].toLowerCase();
-            if (word.length() > 0) {
-                result.append(Character.toUpperCase(word.charAt(0)));
-                if (word.length() > 1) {
-                    result.append(word.substring(1));
-                }
-            }
-        }
-
-        String finalTitle = result.toString();
-        log.info("标题验证通过，最终标题: [{}]", finalTitle);
-        return finalTitle;
+        // 直接返回清理后的标题，不进行长度和内容校验
+        return cleaned;
     }
 
     /**
