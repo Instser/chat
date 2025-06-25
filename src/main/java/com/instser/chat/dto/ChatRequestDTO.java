@@ -40,6 +40,11 @@ public class ChatRequestDTO {
     private Boolean deepThinking;
 
     /**
+     * 文件ID列表（逗号分隔的字符串）
+     */
+    private String filesId;
+
+    /**
      * 从Map构建ChatRequestDTO
      *
      * @param requestMap 请求Map
@@ -78,7 +83,10 @@ public class ChatRequestDTO {
                 dto.setDeepThinking(((Number) deepThinkingObj).intValue() == 1);
             }
         }
-        
+
+        // 设置文件ID列表
+        dto.setFilesId((String) requestMap.get("filesId"));
+
         return dto;
     }
 }

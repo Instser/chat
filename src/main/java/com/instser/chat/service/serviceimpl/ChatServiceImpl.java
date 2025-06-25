@@ -46,6 +46,7 @@ public class ChatServiceImpl implements ChatService {
     private final ChatSessionService chatSessionService;
     private final AiModelService aiModelService;
     private final ChatLimitService chatLimitService;
+    private final FileUploadService fileUploadService;
 
     // 智能分块响应配置
     private static final boolean ENABLE_SMART_CHUNKING = true;
@@ -94,6 +95,10 @@ public class ChatServiceImpl implements ChatService {
 
             log.info("用户{}聊天权限验证通过，套餐：{}，限制类型：{}",
                     request.getUserId(), limitCheck.getPackageName(), limitCheck.getLimitType());
+
+            // 处理文件内容并附加到用户消息中
+            List<Map<String, String>> processedMessages = processFilesContent(request.getMessages(), request.getFilesId(), request.getUserId());
+            request.setMessages(processedMessages);
 
             // 保存用户消息到数据库
             if (request.getSessionId() != null) {
@@ -878,5 +883,97 @@ public class ChatServiceImpl implements ChatService {
             log.error("使用HTTP客户端调用AI服务生成标题失败", e);
             return null;
         }
+    }
+
+    @Override
+    public List<Map<String, String>> processFilesContent(List<Map<String, String>> messages, String filesId, Long userId) {
+        // 如果没有文件ID或消息列表为空，直接返回原消息列表
+        if (filesId == null || filesId.trim().isEmpty() || messages == null || messages.isEmpty()) {
+            return messages;
+        }
+
+        try {
+            // 解析文件ID列表
+            String[] fileIds = filesId.split(",");
+            if (fileIds.length == 0) {
+                return messages;
+            }
+
+            // 获取文件内容
+            StringBuilder fileContentBuilder = new StringBuilder();
+            fileContentBuilder.append("以下是文件内容：[");
+
+            boolean hasValidFiles = false;
+            for (int i = 0; i < fileIds.length; i++) {
+                String fileId = fileIds[i].trim();
+                if (fileId.isEmpty()) {
+                    continue;
+                }
+
+                try {
+                    // 获取文件信息和内容
+                    String fileContent = fileUploadService.getFileContent(fileId, userId);
+                    if (fileContent != null && !fileContent.trim().isEmpty()) {
+                        // 获取文件名
+                        com.instser.chat.entity.FileUpload fileUpload = fileUploadService.getByFileId(fileId);
+                        String fileName = fileUpload != null ? fileUpload.getFileName() : "unknown";
+
+                        if (hasValidFiles) {
+                            fileContentBuilder.append(",");
+                        }
+
+                        // 构建文件内容格式：{"fileId_123_name":"fileId_123_content"}
+                        fileContentBuilder.append("{\"fileId_").append(fileId).append("_").append(fileName)
+                                         .append("\":\"").append(escapeJsonString(fileContent)).append("\"}");
+
+                        hasValidFiles = true;
+                        log.info("成功获取文件内容，文件ID：{}，文件名：{}，内容长度：{}", fileId, fileName, fileContent.length());
+                    } else {
+                        log.warn("文件内容为空或无法获取，文件ID：{}", fileId);
+                    }
+                } catch (Exception e) {
+                    log.error("获取文件内容失败，文件ID：{}", fileId, e);
+                }
+            }
+
+            fileContentBuilder.append("]");
+
+            // 如果有有效的文件内容，则附加到最后一条用户消息中
+            if (hasValidFiles) {
+                // 找到最后一条用户消息
+                for (int i = messages.size() - 1; i >= 0; i--) {
+                    Map<String, String> message = messages.get(i);
+                    if ("user".equals(message.get("role"))) {
+                        String originalContent = message.get("content");
+                        String newContent = originalContent + "。" + fileContentBuilder.toString();
+                        message.put("content", newContent);
+
+                        log.info("已将文件内容附加到用户消息中，原始内容长度：{}，附加后长度：{}",
+                                originalContent.length(), newContent.length());
+                        break;
+                    }
+                }
+            }
+
+            return messages;
+
+        } catch (Exception e) {
+            log.error("处理文件内容失败", e);
+            return messages; // 出错时返回原消息列表
+        }
+    }
+
+    /**
+     * 转义JSON字符串中的特殊字符
+     */
+    private String escapeJsonString(String str) {
+        if (str == null) {
+            return "";
+        }
+        return str.replace("\\", "\\\\")
+                  .replace("\"", "\\\"")
+                  .replace("\n", "\\n")
+                  .replace("\r", "\\r")
+                  .replace("\t", "\\t");
     }
 }

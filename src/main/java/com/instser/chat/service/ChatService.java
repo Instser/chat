@@ -88,4 +88,14 @@ public interface ChatService {
      * @return true表示是首次AI响应
      */
     boolean isFirstAiResponse(List<Map<String, String>> messages);
+
+    /**
+     * 处理文件内容并附加到用户消息中
+     *
+     * @param messages 消息列表
+     * @param filesId 文件ID列表（逗号分隔）
+     * @param userId 用户ID
+     * @return 处理后的消息列表
+     */
+    List<Map<String, String>> processFilesContent(List<Map<String, String>> messages, String filesId, Long userId);
 }

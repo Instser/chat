@@ -162,18 +162,32 @@ DESCRIBE `t_file_upload`;
 -- 7.2 查看表的索引信息
 SHOW INDEX FROM `t_file_upload`;
 
--- 7.3 查看表的约束信息
-SELECT 
+-- 7.3 查看表的外键约束信息
+SELECT
     CONSTRAINT_NAME,
-    CONSTRAINT_TYPE,
     TABLE_NAME,
     COLUMN_NAME,
     REFERENCED_TABLE_NAME,
     REFERENCED_COLUMN_NAME
-FROM information_schema.KEY_COLUMN_USAGE 
-WHERE TABLE_SCHEMA = DATABASE() 
+FROM information_schema.KEY_COLUMN_USAGE
+WHERE TABLE_SCHEMA = DATABASE()
 AND TABLE_NAME = 't_file_upload'
 AND REFERENCED_TABLE_NAME IS NOT NULL;
+
+-- 7.4 查看表的所有约束类型信息
+SELECT
+    tc.CONSTRAINT_NAME,
+    tc.CONSTRAINT_TYPE,
+    tc.TABLE_NAME,
+    kcu.COLUMN_NAME,
+    kcu.REFERENCED_TABLE_NAME,
+    kcu.REFERENCED_COLUMN_NAME
+FROM information_schema.TABLE_CONSTRAINTS tc
+LEFT JOIN information_schema.KEY_COLUMN_USAGE kcu
+    ON tc.CONSTRAINT_NAME = kcu.CONSTRAINT_NAME
+    AND tc.TABLE_SCHEMA = kcu.TABLE_SCHEMA
+WHERE tc.TABLE_SCHEMA = DATABASE()
+AND tc.TABLE_NAME = 't_file_upload';
 
 -- ====================================================================
 -- 第八步：性能测试查询（验证索引效果）
