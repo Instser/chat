@@ -45,7 +45,7 @@ public class FileController {
     /**
      * 文件上传接口
      */
-    @PostMapping("/upload")
+    @PostMapping("/files/upload")
     public Result<Map<String, Object>> uploadFiles(
             @RequestParam("files") MultipartFile[] files,
             @RequestParam(value = "sessionId", required = false) String sessionId,

@@ -41,10 +41,9 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
     @Value("${server.servlet.context-path:}")
     private String contextPath;
 
-    // 允许的文件类型
+    // 允许的文件类型（注意：所有text/*格式都被允许，这里只列出其他类型）
     private static final Set<String> ALLOWED_FILE_TYPES = Set.of(
         "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp",
-        "text/plain", "text/csv",
         "application/pdf",
         "application/msword",
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
@@ -403,7 +402,19 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
 
     @Override
     public boolean isFileTypeAllowed(String fileType) {
-        return fileType != null && ALLOWED_FILE_TYPES.contains(fileType.toLowerCase());
+        if (fileType == null) {
+            return false;
+        }
+
+        String lowerCaseType = fileType.toLowerCase();
+
+        // 支持所有text格式
+        if (lowerCaseType.startsWith("text/")) {
+            return true;
+        }
+
+        // 支持其他预定义的文件类型
+        return ALLOWED_FILE_TYPES.contains(lowerCaseType);
     }
 
     @Override

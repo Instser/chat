@@ -18,32 +18,75 @@ SET FOREIGN_KEY_CHECKS = 0;
 -- 第二步：修改表结构
 -- ====================================================================
 
--- 2.1 删除file_url字段
-ALTER TABLE `t_file_upload` DROP COLUMN `file_url`;
+-- 2.1 删除file_url字段（如果存在）
+-- 先检查字段是否存在，避免删除不存在的字段导致错误
+SET @sql = (SELECT IF(
+    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+     AND TABLE_NAME = 't_file_upload'
+     AND COLUMN_NAME = 'file_url') > 0,
+    'ALTER TABLE `t_file_upload` DROP COLUMN `file_url`',
+    'SELECT "file_url字段不存在，跳过删除操作" AS message'
+));
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- 2.2 增加message_id字段（关联到聊天消息）
-ALTER TABLE `t_file_upload` 
-ADD COLUMN `message_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '关联的消息ID' 
-AFTER `session_id`;
+SET @sql = (SELECT IF(
+    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+     AND TABLE_NAME = 't_file_upload'
+     AND COLUMN_NAME = 'message_id') = 0,
+    'ALTER TABLE `t_file_upload` ADD COLUMN `message_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT ''关联的消息ID'' AFTER `session_id`',
+    'SELECT "message_id字段已存在，跳过添加操作" AS message'
+));
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- 2.3 增加content字段（存储大量文件内容）
-ALTER TABLE `t_file_upload` 
-ADD COLUMN `content` longtext COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '文件内容（用于存储文本文件或小文件的完整内容）' 
-AFTER `storage_path`;
+SET @sql = (SELECT IF(
+    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+     AND TABLE_NAME = 't_file_upload'
+     AND COLUMN_NAME = 'content') = 0,
+    'ALTER TABLE `t_file_upload` ADD COLUMN `content` longtext COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT ''文件内容（用于存储文本文件或小文件的完整内容）'' AFTER `storage_path`',
+    'SELECT "content字段已存在，跳过添加操作" AS message'
+));
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- ====================================================================
 -- 第三步：添加索引和外键约束
 -- ====================================================================
 
--- 3.1 为message_id字段添加索引
-ALTER TABLE `t_file_upload` 
-ADD INDEX `idx_message_id` (`message_id`) USING BTREE COMMENT '消息ID索引';
+-- 3.1 为message_id字段添加索引（如果不存在）
+SET @sql = (SELECT IF(
+    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE()
+     AND TABLE_NAME = 't_file_upload'
+     AND INDEX_NAME = 'idx_message_id') = 0,
+    'ALTER TABLE `t_file_upload` ADD INDEX `idx_message_id` (`message_id`) USING BTREE COMMENT ''消息ID索引''',
+    'SELECT "idx_message_id索引已存在，跳过创建操作" AS message'
+));
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- 3.2 添加message_id外键约束（关联到t_chat_message表）
-ALTER TABLE `t_file_upload` 
-ADD CONSTRAINT `fk_file_message` 
-FOREIGN KEY (`message_id`) REFERENCES `t_chat_message` (`message_id`) 
-ON DELETE SET NULL ON UPDATE CASCADE;
+SET @sql = (SELECT IF(
+    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE
+     WHERE TABLE_SCHEMA = DATABASE()
+     AND TABLE_NAME = 't_file_upload'
+     AND CONSTRAINT_NAME = 'fk_file_message') = 0,
+    'ALTER TABLE `t_file_upload` ADD CONSTRAINT `fk_file_message` FOREIGN KEY (`message_id`) REFERENCES `t_chat_message` (`message_id`) ON DELETE SET NULL ON UPDATE CASCADE',
+    'SELECT "fk_file_message外键约束已存在，跳过创建操作" AS message'
+));
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- 3.3 为content字段添加全文索引（用于文件内容搜索，可选）
 -- 注意：只有在需要搜索文件内容时才添加此索引
@@ -60,19 +103,43 @@ ALTER TABLE `t_file_upload` COMMENT = '文件上传表 - 支持文件内容存�
 -- ====================================================================
 
 -- 5.1 添加复合索引：用户ID + 消息ID + 删除标志
-ALTER TABLE `t_file_upload` 
-ADD INDEX `idx_user_message_deleted` (`user_id`, `message_id`, `deleted`) USING BTREE 
-COMMENT '用户消息文件查询优化索引';
+SET @sql = (SELECT IF(
+    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE()
+     AND TABLE_NAME = 't_file_upload'
+     AND INDEX_NAME = 'idx_user_message_deleted') = 0,
+    'ALTER TABLE `t_file_upload` ADD INDEX `idx_user_message_deleted` (`user_id`, `message_id`, `deleted`) USING BTREE COMMENT ''用户消息文件查询优化索引''',
+    'SELECT "idx_user_message_deleted索引已存在，跳过创建操作" AS message'
+));
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- 5.2 添加复合索引：会话ID + 消息ID + 创建时间
-ALTER TABLE `t_file_upload` 
-ADD INDEX `idx_session_message_time` (`session_id`, `message_id`, `create_time`) USING BTREE 
-COMMENT '会话文件时间查询优化索引';
+SET @sql = (SELECT IF(
+    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE()
+     AND TABLE_NAME = 't_file_upload'
+     AND INDEX_NAME = 'idx_session_message_time') = 0,
+    'ALTER TABLE `t_file_upload` ADD INDEX `idx_session_message_time` (`session_id`, `message_id`, `create_time`) USING BTREE COMMENT ''会话文件时间查询优化索引''',
+    'SELECT "idx_session_message_time索引已存在，跳过创建操作" AS message'
+));
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- 5.3 添加复合索引：文件类型 + 状态 + 创建时间
-ALTER TABLE `t_file_upload` 
-ADD INDEX `idx_type_status_time` (`file_type`, `status`, `create_time`) USING BTREE 
-COMMENT '文件类型状态查询优化索引';
+SET @sql = (SELECT IF(
+    (SELECT COUNT(*) FROM INFORMATION_SCHEMA.STATISTICS
+     WHERE TABLE_SCHEMA = DATABASE()
+     AND TABLE_NAME = 't_file_upload'
+     AND INDEX_NAME = 'idx_type_status_time') = 0,
+    'ALTER TABLE `t_file_upload` ADD INDEX `idx_type_status_time` (`file_type`, `status`, `create_time`) USING BTREE COMMENT ''文件类型状态查询优化索引''',
+    'SELECT "idx_type_status_time索引已存在，跳过创建操作" AS message'
+));
+PREPARE stmt FROM @sql;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
 
 -- ====================================================================
 -- 第六步：数据迁移和清理（如果需要）
