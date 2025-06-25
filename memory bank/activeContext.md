@@ -1,13 +1,21 @@
 # 当前工作内容
 
-**📅 最后更新**: 2025-06-25 22:25:00
+**📅 最后更新**: 2025-06-25 22:45:00
 **👤 更新人员**: Augment Agent
-**📊 文档版本**: v7.4
+**📊 文档版本**: v7.5
 
 ## 当前任务
-已完成OpenAiServiceImpl清除和代码优化：
+已完成Chat消息接口filesName字段支持功能：
 
-### 最新完成 (2025-06-25 22:25)
+### 最新完成 (2025-06-25 22:45)
+1. **ChatMessageVO扩展** - ✅ 在ChatMessageVO中添加filesName字段，支持逗号分隔的文件名列表
+2. **VOConverter转换器扩展** - ✅ 添加支持文件名查询的转换方法，自动查询关联文件并设置文件名
+3. **批量转换方法** - ✅ 新增toChatMessageVOList方法，支持批量转换时包含文件名信息
+4. **ApiController接口修改** - ✅ 修改getChatMessages接口，使用新的转换方法包含文件名信息
+5. **文件关联查询** - ✅ 通过FileUploadService.getByMessageId()查询消息关联的文件
+6. **响应格式优化** - ✅ 实现用户要求的响应格式，filesName字段包含逗号分隔的文件名
+
+### 历史完成 (2025-06-25 22:25)
 1. **OpenAiServiceImpl清除** - ✅ 完全删除未使用的OpenAiServiceImpl类和相关文件
 2. **接口清理** - ✅ 删除OpenAiService接口，因为没有任何地方使用
 3. **测试文件清理** - ✅ 删除OpenAiServiceTest.java测试文件
@@ -592,3 +600,8 @@
 | 2025-06-25 18:20:00 | v6.8 | 修复SQL文件执行错误，添加动态检查机制确保幂等性执行 | Augment Agent |
 | 2025-06-25 19:45:00 | v6.9 | 实现Chat接口文件内容支持，添加filesId参数和智能文件内容处理 | Augment Agent |
 | 2025-06-25 20:38:00 | v7.0 | 修复Google Gemini API流式传输中断问题，添加跨行JSON重组机制 | Augment Agent |
+| 2025-06-25 21:15:00 | v7.1 | 修复Google Gemini API字符丢失问题，添加行缓冲区和数据重组机制 | Augment Agent |
+| 2025-06-25 21:30:00 | v7.2 | 实现文件上传临时文件自动清理，优化存储管理和异常处理 | Augment Agent |
+| 2025-06-25 22:06:00 | v7.3 | 优化AI请求日志记录，添加详细请求信息和提示词截取显示 | Augment Agent |
+| 2025-06-25 22:25:00 | v7.4 | 完成OpenAiServiceImpl清除和代码优化，移除未使用代码简化项目结构 | Augment Agent |
+| 2025-06-25 22:45:00 | v7.5 | 实现Chat消息接口filesName字段支持，获取消息时自动包含关联文件名列表 | Augment Agent |

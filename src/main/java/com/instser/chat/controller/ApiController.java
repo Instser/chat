@@ -8,6 +8,7 @@ import com.instser.chat.security.UserDetailsServiceImpl;
 import com.instser.chat.service.AiModelService;
 import com.instser.chat.service.ChatMessageService;
 import com.instser.chat.service.ChatSessionService;
+import com.instser.chat.service.FileUploadService;
 import com.instser.chat.vo.AiModelVO;
 import com.instser.chat.vo.ChatMessageVO;
 import com.instser.chat.vo.ChatSessionVO;
@@ -38,6 +39,7 @@ public class ApiController {
     private final ChatSessionService chatSessionService;
     private final ChatMessageService chatMessageService;
     private final AiModelService aiModelService;
+    private final FileUploadService fileUploadService;
 
     // ==================== 认证相关接口已迁移到AuthController ====================
 
@@ -225,7 +227,7 @@ public class ApiController {
         }
 
         List<ChatMessage> allMessages = chatMessageService.getSessionMessages(chatId);
-        List<ChatMessageVO> allMessageVOs = VOConverter.toChatMessageVOList(allMessages);
+        List<ChatMessageVO> allMessageVOs = VOConverter.toChatMessageVOList(allMessages, fileUploadService);
 
         // 如果没有分页参数，返回所有消息（保持向后兼容）
         if (limit == null && offset == null) {

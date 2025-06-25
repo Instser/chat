@@ -80,4 +80,9 @@ public class ChatMessageVO implements Serializable {
      * 更新时间
      */
     private LocalDateTime updateTime;
+
+    /**
+     * 关联的文件名列表（逗号分隔）
+     */
+    private String filesName;
 }

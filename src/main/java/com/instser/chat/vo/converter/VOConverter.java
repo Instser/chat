@@ -5,9 +5,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.instser.chat.entity.AiModel;
 import com.instser.chat.entity.ChatMessage;
 import com.instser.chat.entity.ChatSession;
+import com.instser.chat.entity.FileUpload;
 import com.instser.chat.entity.Package;
 import com.instser.chat.entity.User;
 import com.instser.chat.entity.UserOrder;
+import com.instser.chat.service.FileUploadService;
 import com.instser.chat.vo.*;
 import org.springframework.beans.BeanUtils;
 
@@ -107,6 +109,35 @@ public class VOConverter {
     }
 
     /**
+     * 聊天消息实体转VO（包含文件名信息）
+     */
+    public static ChatMessageVO toChatMessageVO(ChatMessage chatMessage, FileUploadService fileUploadService) {
+        ChatMessageVO chatMessageVO = toChatMessageVO(chatMessage);
+        if (chatMessageVO != null && fileUploadService != null) {
+            // 查询关联的文件并设置文件名列表
+            List<FileUpload> files = fileUploadService.getByMessageId(chatMessage.getMessageId());
+            if (files != null && !files.isEmpty()) {
+                String filesName = files.stream()
+                        .map(FileUpload::getFileName)
+                        .collect(Collectors.joining(", "));
+                chatMessageVO.setFilesName(filesName);
+            }
+        }
+        return chatMessageVO;
+    }
+
+    /**
+     * 聊天消息实体转VO（包含模型信息和文件名信息）
+     */
+    public static ChatMessageVO toChatMessageVO(ChatMessage chatMessage, AiModel aiModel, FileUploadService fileUploadService) {
+        ChatMessageVO chatMessageVO = toChatMessageVO(chatMessage, fileUploadService);
+        if (chatMessageVO != null && aiModel != null) {
+            chatMessageVO.setModel(toAiModelVO(aiModel));
+        }
+        return chatMessageVO;
+    }
+
+    /**
      * 批量转换用户列表
      */
     public static List<UserVO> toUserVOList(List<User> users) {
@@ -151,6 +182,18 @@ public class VOConverter {
         }
         return chatMessages.stream()
                 .map(VOConverter::toChatMessageVO)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * 批量转换聊天消息列表（包含文件名信息）
+     */
+    public static List<ChatMessageVO> toChatMessageVOList(List<ChatMessage> chatMessages, FileUploadService fileUploadService) {
+        if (chatMessages == null) {
+            return null;
+        }
+        return chatMessages.stream()
+                .map(chatMessage -> toChatMessageVO(chatMessage, fileUploadService))
                 .collect(Collectors.toList());
     }
 
