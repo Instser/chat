@@ -6,9 +6,7 @@ import com.instser.chat.security.UserDetailsServiceImpl;
 import com.instser.chat.service.FileUploadService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
+
 import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -65,6 +63,7 @@ public class FileController {
             // 校验存储完成性
             List<String> validatedFileIds = new ArrayList<>();
             List<Map<String, Object>> validatedFiles = new ArrayList<>();
+            List<FileUpload> failedFiles = new ArrayList<>();
 
             for (FileUpload fileUpload : uploadedFiles) {
                 if (fileUpload != null && fileUpload.getFileId() != null) {
@@ -88,8 +87,15 @@ public class FileController {
                     } else {
                         log.error("文件存储校验失败：文件ID={}, 文件名={}, 用户ID={}",
                                 fileUpload.getFileId(), fileUpload.getFileName(), userId);
+                        failedFiles.add(fileUpload);
                     }
                 }
+            }
+
+            // 清理验证失败的文件的临时文件
+            if (!failedFiles.isEmpty()) {
+                fileUploadService.cleanupTempFiles(failedFiles);
+                log.info("清理了 {} 个验证失败的临时文件", failedFiles.size());
             }
 
             // 检查是否有文件上传成功

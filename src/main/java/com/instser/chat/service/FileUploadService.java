@@ -221,4 +221,18 @@ public interface FileUploadService extends IService<FileUpload> {
      * @return 是否在限制范围内
      */
     boolean isFileSizeAllowed(Long fileSize);
+
+    /**
+     * 清理临时文件
+     *
+     * @param fileUpload 文件上传记录
+     */
+    void cleanupTempFile(FileUpload fileUpload);
+
+    /**
+     * 批量清理临时文件
+     *
+     * @param fileUploads 文件上传记录列表
+     */
+    void cleanupTempFiles(List<FileUpload> fileUploads);
 }

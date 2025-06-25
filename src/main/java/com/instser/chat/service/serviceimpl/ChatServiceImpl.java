@@ -306,6 +306,9 @@ public class ChatServiceImpl implements ChatService {
 
             log.info("使用{}提示词，消息总数: {}", isDeepThink ? "深度思考" : "默认", messagesWithPrompt.size());
 
+            // 记录详细的AI请求信息
+            logAiRequestDetails(messagesWithPrompt, model, request.getUserId());
+
             // 添加JSON数据缓冲区，用于处理分片数据
             StringBuilder jsonBuffer = new StringBuilder();
             // 添加行缓冲区，用于处理被分割的行
@@ -327,9 +330,6 @@ public class ChatServiceImpl implements ChatService {
                     .build();
 
             log.info("调用AI API: {}, 模型: {}", model.getBaseUrl(), model.getModelCode());
-
-            // 判断是否为Google Gemini API
-            boolean isGeminiApi = model.getBaseUrl().contains("generativelanguage.googleapis.com");
 
             // 发送流式请求并处理响应
             webClient.post()
@@ -390,7 +390,7 @@ public class ChatServiceImpl implements ChatService {
                                 // 尝试解析完整的JSON
                                 String bufferedJson = jsonBuffer.toString();
                                 if (isValidJson(bufferedJson)) {
-                                    String contentSent = processCompleteJson(bufferedJson, response, isGeminiApi);
+                                    String contentSent = processCompleteJson(bufferedJson, response);
                                     if (contentSent != null) {
                                         hasContentSent[0] = true;
                                         isRealAiResponse[0] = true;
@@ -415,7 +415,7 @@ public class ChatServiceImpl implements ChatService {
                                 String bufferedJson = jsonBuffer.toString();
                                 if (isValidJson(bufferedJson)) {
                                     log.debug("跨行JSON重组成功，长度: {}", bufferedJson.length());
-                                    String contentSent = processCompleteJson(bufferedJson, response, isGeminiApi);
+                                    String contentSent = processCompleteJson(bufferedJson, response);
                                     if (contentSent != null) {
                                         hasContentSent[0] = true;
                                         isRealAiResponse[0] = true;
@@ -468,7 +468,7 @@ public class ChatServiceImpl implements ChatService {
 
                                             String bufferedJson = jsonBuffer.toString();
                                             if (isValidJson(bufferedJson)) {
-                                                String contentSent = processCompleteJson(bufferedJson, response, isGeminiApi);
+                                                String contentSent = processCompleteJson(bufferedJson, response);
                                                 if (contentSent != null) {
                                                     hasContentSent[0] = true;
                                                     isRealAiResponse[0] = true;
@@ -481,7 +481,7 @@ public class ChatServiceImpl implements ChatService {
                                         jsonBuffer.append(remainingLine);
                                         String bufferedJson = jsonBuffer.toString();
                                         if (isValidJson(bufferedJson)) {
-                                            String contentSent = processCompleteJson(bufferedJson, response, isGeminiApi);
+                                            String contentSent = processCompleteJson(bufferedJson, response);
                                             if (contentSent != null) {
                                                 hasContentSent[0] = true;
                                                 isRealAiResponse[0] = true;
@@ -599,14 +599,12 @@ public class ChatServiceImpl implements ChatService {
     /**
      * 处理完整的JSON数据
      */
-    private String processCompleteJson(String jsonData, HttpServletResponse response, boolean isGeminiApi) {
+    private String processCompleteJson(String jsonData, HttpServletResponse response) {
         try {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode jsonNode = mapper.readTree(jsonData);
 
-            if (isGeminiApi) {
-                log.debug("处理Google Gemini API响应: {}", jsonData.length() > 200 ? jsonData.substring(0, 200) + "..." : jsonData);
-            }
+            log.debug("处理AI API响应: {}", jsonData.length() > 200 ? jsonData.substring(0, 200) + "..." : jsonData);
 
             JsonNode choices = jsonNode.get("choices");
 
@@ -618,9 +616,7 @@ public class ChatServiceImpl implements ChatService {
                         String cleanContent = cleanContent(content);
 
                         if (!cleanContent.isEmpty()) {
-                            if (isGeminiApi) {
-                                log.debug("Google Gemini API内容: [{}]", cleanContent.length() > 50 ? cleanContent.substring(0, 50) + "..." : cleanContent);
-                            }
+                            log.debug("AI响应内容: [{}]", cleanContent.length() > 50 ? cleanContent.substring(0, 50) + "..." : cleanContent);
 
                             if (ENABLE_SMART_CHUNKING) {
                                 sendContentBySmartChunking(cleanContent, response, mapper);
@@ -937,6 +933,9 @@ public class ChatServiceImpl implements ChatService {
             requestBody.put("max_tokens", 50);
             requestBody.put("temperature", 0.7);
 
+            // 记录详细的AI标题生成请求信息
+            logAiTitleRequestDetails(titleMessages, model);
+
             log.info("AI标题生成请求体构建完成");
 
             // 使用RestTemplate进行HTTP调用
@@ -1084,5 +1083,81 @@ public class ChatServiceImpl implements ChatService {
                   .replace("\n", "\\n")
                   .replace("\r", "\\r")
                   .replace("\t", "\\t");
+    }
+
+    /**
+     * 记录详细的AI请求信息
+     */
+    private void logAiRequestDetails(List<Map<String, String>> messages, AiModel model, Long userId) {
+        try {
+            log.info("=== AI请求详细信息 ===");
+            log.info("用户ID: {}", userId);
+            log.info("模型: {} ({})", model.getModelCode(), model.getBaseUrl());
+            log.info("消息总数: {}", messages.size());
+
+            // 记录每条消息的详细信息
+            for (int i = 0; i < messages.size(); i++) {
+                Map<String, String> message = messages.get(i);
+                String role = message.get("role");
+                String content = message.get("content");
+
+                if (content != null) {
+                    String truncatedContent = truncateContent(content);
+                    log.info("消息[{}] - 角色: {}, 内容: {}", i + 1, role, truncatedContent);
+                } else {
+                    log.info("消息[{}] - 角色: {}, 内容: null", i + 1, role);
+                }
+            }
+
+            log.info("=== AI请求信息结束 ===");
+        } catch (Exception e) {
+            log.warn("记录AI请求详细信息失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 记录详细的AI标题生成请求信息
+     */
+    private void logAiTitleRequestDetails(List<Map<String, String>> messages, AiModel model) {
+        try {
+            log.info("=== AI标题生成请求详细信息 ===");
+            log.info("模型: {} ({})", model.getModelCode(), model.getBaseUrl());
+            log.info("消息总数: {}", messages.size());
+
+            // 记录每条消息的详细信息
+            for (int i = 0; i < messages.size(); i++) {
+                Map<String, String> message = messages.get(i);
+                String role = message.get("role");
+                String content = message.get("content");
+
+                if (content != null) {
+                    String truncatedContent = truncateContent(content);
+                    log.info("标题生成消息[{}] - 角色: {}, 提示词: {}", i + 1, role, truncatedContent);
+                } else {
+                    log.info("标题生成消息[{}] - 角色: {}, 提示词: null", i + 1, role);
+                }
+            }
+
+            log.info("=== AI标题生成请求信息结束 ===");
+        } catch (Exception e) {
+            log.warn("记录AI标题生成请求详细信息失败: {}", e.getMessage());
+        }
+    }
+
+    /**
+     * 截取内容，保留前15和后15个字符
+     */
+    private String truncateContent(String content) {
+        if (content == null) {
+            return "null";
+        }
+
+        if (content.length() <= 30) {
+            return content;
+        }
+
+        String prefix = content.substring(0, 15);
+        String suffix = content.substring(content.length() - 15);
+        return prefix + "..." + suffix + " (总长度: " + content.length() + "字符)";
     }
 }

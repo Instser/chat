@@ -122,13 +122,35 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
             fileUpload.setContent(fileContent); // 保存完整文件内容
             fileUpload.setStatus(FileUpload.Status.AVAILABLE);
 
-            // 保存到数据库
-            save(fileUpload);
+            try {
+                // 保存到数据库
+                save(fileUpload);
 
-            log.info("文件上传成功：用户ID={}, 文件ID={}, 原始文件名={}, 存储文件名={}", 
-                    userId, fileId, originalFilename, uniqueFilename);
+                // 数据库保存成功后，删除临时文件
+                try {
+                    Files.deleteIfExists(filePath);
+                    log.info("临时文件删除成功：{}", filePath.toString());
+                } catch (IOException deleteException) {
+                    log.warn("删除临时文件失败，但不影响文件上传：{}, 错误：{}",
+                            filePath.toString(), deleteException.getMessage());
+                }
 
-            return fileUpload;
+                log.info("文件上传成功：用户ID={}, 文件ID={}, 原始文件名={}, 存储文件名={}",
+                        userId, fileId, originalFilename, uniqueFilename);
+
+                return fileUpload;
+
+            } catch (Exception dbException) {
+                // 数据库保存失败时，清理临时文件
+                try {
+                    Files.deleteIfExists(filePath);
+                    log.info("数据库保存失败，临时文件清理成功：{}", filePath.toString());
+                } catch (IOException deleteException) {
+                    log.warn("数据库保存失败，临时文件清理也失败：{}, 错误：{}",
+                            filePath.toString(), deleteException.getMessage());
+                }
+                throw dbException;
+            }
 
         } catch (IOException e) {
             log.error("文件上传失败：{}", e.getMessage(), e);
@@ -531,6 +553,43 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
     @Deprecated
     private boolean shouldStoreContent(String fileType, Long fileSize) {
         return true; // 现在所有文件都存储内容到content字段
+    }
+
+    /**
+     * 清理临时文件
+     *
+     * @param fileUpload 文件上传记录
+     */
+    public void cleanupTempFile(FileUpload fileUpload) {
+        if (fileUpload == null || fileUpload.getStoragePath() == null) {
+            return;
+        }
+
+        try {
+            Path tempFilePath = Paths.get(fileUpload.getStoragePath());
+            if (Files.exists(tempFilePath)) {
+                Files.delete(tempFilePath);
+                log.info("临时文件清理成功：{}", tempFilePath.toString());
+            }
+        } catch (IOException e) {
+            log.warn("清理临时文件失败：{}, 错误：{}",
+                    fileUpload.getStoragePath(), e.getMessage());
+        }
+    }
+
+    /**
+     * 批量清理临时文件
+     *
+     * @param fileUploads 文件上传记录列表
+     */
+    public void cleanupTempFiles(List<FileUpload> fileUploads) {
+        if (fileUploads == null || fileUploads.isEmpty()) {
+            return;
+        }
+
+        for (FileUpload fileUpload : fileUploads) {
+            cleanupTempFile(fileUpload);
+        }
     }
 
     /**
