@@ -9,6 +9,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -81,5 +82,58 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
         LambdaQueryWrapper<ChatMessage> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(ChatMessage::getSessionId, sessionId);
         return this.count(wrapper);
+    }
+
+    @Override
+    public int deleteMessagesFromPoint(String messageId, String sessionId) {
+        try {
+            // 获取指定消息
+            ChatMessage targetMessage = getByMessageId(messageId);
+            if (targetMessage == null) {
+                log.warn("未找到要删除的消息，messageId：{}", messageId);
+                return 0;
+            }
+
+            if (!targetMessage.getSessionId().equals(sessionId)) {
+                log.warn("消息不属于指定会话，messageId：{}，sessionId：{}", messageId, sessionId);
+                return 0;
+            }
+
+            // 获取该会话的所有消息，按创建时间排序
+            List<ChatMessage> allMessages = getSessionMessages(sessionId);
+
+            // 找到目标消息的位置，删除该消息及之后的所有消息
+            boolean foundTarget = false;
+            List<Long> messagesToDelete = new ArrayList<>();
+
+            for (ChatMessage message : allMessages) {
+                if (message.getMessageId().equals(messageId)) {
+                    foundTarget = true;
+                }
+                if (foundTarget) {
+                    messagesToDelete.add(message.getId());
+                }
+            }
+
+            if (messagesToDelete.isEmpty()) {
+                log.warn("未找到要删除的消息范围，messageId：{}", messageId);
+                return 0;
+            }
+
+            // 执行删除
+            boolean deleted = this.removeByIds(messagesToDelete);
+            if (deleted) {
+                log.info("成功删除{}条消息，起始messageId：{}，sessionId：{}",
+                        messagesToDelete.size(), messageId, sessionId);
+                return messagesToDelete.size();
+            } else {
+                log.error("删除消息失败，messageId：{}，sessionId：{}", messageId, sessionId);
+                return 0;
+            }
+
+        } catch (Exception e) {
+            log.error("删除指定消息及之后消息失败，messageId：{}，sessionId：{}", messageId, sessionId, e);
+            return 0;
+        }
     }
 }

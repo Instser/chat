@@ -75,4 +75,13 @@ public interface ChatMessageService extends IService<ChatMessage> {
      * @return 消息数量
      */
     long getMessageCountBySession(String sessionId);
+
+    /**
+     * 删除指定消息及之后的所有消息
+     *
+     * @param messageId 起始消息ID（UUID）
+     * @param sessionId 会话ID
+     * @return 删除的消息数量
+     */
+    int deleteMessagesFromPoint(String messageId, String sessionId);
 }

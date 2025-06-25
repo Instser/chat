@@ -14,6 +14,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -39,6 +40,30 @@ public class PaymentController {
     private final OrderService orderService;
     private final PackageService packageService;
     private final PaymentSyncService paymentSyncService;
+
+    /**
+     * 获取当前认证用户ID
+     */
+    private Long getCurrentUserId(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return null;
+        }
+        try {
+            // 检查是否是CustomUserDetails类型
+            Object principal = authentication.getPrincipal();
+            if (principal instanceof com.instser.chat.security.UserDetailsServiceImpl.CustomUserDetails) {
+                com.instser.chat.security.UserDetailsServiceImpl.CustomUserDetails userDetails =
+                    (com.instser.chat.security.UserDetailsServiceImpl.CustomUserDetails) principal;
+                return userDetails.getUserId();
+            }
+            // 如果不是CustomUserDetails，返回null表示认证失败
+            log.warn("认证主体不是CustomUserDetails类型：{}", principal.getClass().getName());
+            return null;
+        } catch (Exception e) {
+            log.warn("获取用户ID失败", e);
+            return null;
+        }
+    }
 
     /**
      * 获取套餐列表 - 返回前端兼容格式
@@ -106,10 +131,14 @@ public class PaymentController {
      * 创建支付订单
      */
     @PostMapping("/create")
-    public Result<PaymentResponseVO> createPayment(@Valid @RequestBody PaymentRequestVO paymentRequest) {
+    public Result<PaymentResponseVO> createPayment(@Valid @RequestBody PaymentRequestVO paymentRequest, Authentication authentication) {
         try {
-            // 暂时使用固定用户ID，后续从JWT中获取
-            paymentRequest.setUserId(1L);
+            Long userId = getCurrentUserId(authentication);
+            if (userId == null) {
+                return Result.unauthorized("用户未认证");
+            }
+
+            paymentRequest.setUserId(userId);
 
             PaymentResponseVO response = paymentService.createPayment(paymentRequest);
 

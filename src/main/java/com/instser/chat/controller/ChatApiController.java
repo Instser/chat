@@ -85,8 +85,12 @@ public class ChatApiController {
      * 创建新会话
      */
     @PostMapping("/sessions")
-    public Result<Map<String, String>> createSession(@RequestBody Map<String, Object> request) {
-        Long userId = 1L; // 暂时使用固定用户ID，后续可以从JWT中获取
+    public Result<Map<String, String>> createSession(@RequestBody Map<String, Object> request, Authentication authentication) {
+        Long userId = getCurrentUserId(authentication);
+        if (userId == null) {
+            return Result.unauthorized("用户未认证");
+        }
+
         String modelCode = (String) request.getOrDefault("model", "qwen3-235b-a22b");
 
         AiModel model = aiModelService.getModelByCode(modelCode);
@@ -102,8 +106,12 @@ public class ChatApiController {
      * 获取会话列表
      */
     @GetMapping("/sessions")
-    public Result<List<ChatSession>> getSessions() {
-        Long userId = 1L; // 暂时使用固定用户ID
+    public Result<List<ChatSession>> getSessions(Authentication authentication) {
+        Long userId = getCurrentUserId(authentication);
+        if (userId == null) {
+            return Result.unauthorized("用户未认证");
+        }
+
         List<ChatSession> sessions = chatSessionService.getUserSessions(userId);
         return Result.success(sessions);
     }
@@ -127,6 +135,85 @@ public class ChatApiController {
             return Result.failed("会话删除失败");
         }
         return Result.success(null, "会话删除成功");
+    }
+
+    /**
+     * 重新生成AI回复
+     */
+    @PostMapping(value = "/retry", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public void retryChat(@RequestBody Map<String, Object> request, Authentication authentication,
+                         HttpServletRequest httpRequest, HttpServletResponse response) {
+        log.info("收到重新生成请求：{}, 认证信息：{}", request, authentication);
+
+        // 动态设置跨域头
+        setCorsHeaders(httpRequest, response);
+
+        try {
+            // 提取参数
+            String chatId = (String) request.get("chatId");
+            String messageId = (String) request.get("messageId");
+
+            if (chatId == null || chatId.trim().isEmpty()) {
+                writeErrorResponse(response, "chatId不能为空");
+                return;
+            }
+
+            if (messageId == null || messageId.trim().isEmpty()) {
+                writeErrorResponse(response, "messageId不能为空");
+                return;
+            }
+
+            // 调用ChatService处理重新生成逻辑
+            chatService.processRetryChat(chatId, messageId, authentication, response);
+
+        } catch (Exception e) {
+            log.error("重新生成接口异常", e);
+            try {
+                writeErrorResponse(response, "请求错误");
+            } catch (Exception ex) {
+                log.error("发送错误响应失败", ex);
+            }
+        }
+    }
+
+    /**
+     * 获取当前认证用户ID
+     */
+    private Long getCurrentUserId(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return null;
+        }
+        try {
+            // 检查是否是CustomUserDetails类型
+            Object principal = authentication.getPrincipal();
+            if (principal instanceof com.instser.chat.security.UserDetailsServiceImpl.CustomUserDetails) {
+                com.instser.chat.security.UserDetailsServiceImpl.CustomUserDetails userDetails =
+                    (com.instser.chat.security.UserDetailsServiceImpl.CustomUserDetails) principal;
+                return userDetails.getUserId();
+            }
+            // 如果不是CustomUserDetails，返回null表示认证失败
+            log.warn("认证主体不是CustomUserDetails类型：{}", principal.getClass().getName());
+            return null;
+        } catch (Exception e) {
+            log.warn("获取用户ID失败", e);
+            return null;
+        }
+    }
+
+    /**
+     * 写入错误响应
+     */
+    private void writeErrorResponse(HttpServletResponse response, String errorMessage) {
+        try {
+            response.setContentType("text/event-stream; charset=UTF-8");
+            response.setCharacterEncoding("UTF-8");
+            response.setHeader("Cache-Control", "no-cache");
+            response.setHeader("Connection", "keep-alive");
+            response.getWriter().write("3:\"" + errorMessage + "\"\n");
+            response.getWriter().flush();
+        } catch (Exception e) {
+            log.error("写入错误响应失败", e);
+        }
     }
 
     /**

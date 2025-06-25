@@ -82,6 +82,16 @@ public interface ChatService {
     String generateSessionTitle(String sessionId, List<Map<String, String>> messages);
 
     /**
+     * 处理重新生成AI回复请求
+     *
+     * @param chatId 会话ID
+     * @param messageId 要重新生成的AI消息ID
+     * @param authentication 认证信息
+     * @param response HTTP响应对象
+     */
+    void processRetryChat(String chatId, String messageId, Authentication authentication, HttpServletResponse response);
+
+    /**
      * 检查是否为首次AI响应
      *
      * @param messages 消息列表

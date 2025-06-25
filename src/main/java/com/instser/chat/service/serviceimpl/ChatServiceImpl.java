@@ -6,6 +6,7 @@ import com.instser.chat.constants.PromptConstants;
 import com.instser.chat.dto.ChatRequestDTO;
 import com.instser.chat.dto.ChatResponseDTO;
 import com.instser.chat.entity.AiModel;
+import com.instser.chat.entity.ChatMessage;
 import com.instser.chat.service.*;
 import com.instser.chat.vo.ChatLimitVO;
 import jakarta.servlet.http.HttpServletResponse;
@@ -1159,5 +1160,198 @@ public class ChatServiceImpl implements ChatService {
         String prefix = content.substring(0, 15);
         String suffix = content.substring(content.length() - 15);
         return prefix + "..." + suffix + " (总长度: " + content.length() + "字符)";
+    }
+
+    /**
+     * 获取当前认证用户ID
+     */
+    private Long getCurrentUserId(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            log.warn("认证信息为空或未认证");
+            return null;
+        }
+        try {
+            // 检查是否是CustomUserDetails类型
+            Object principal = authentication.getPrincipal();
+            log.debug("认证主体类型：{}", principal != null ? principal.getClass().getName() : "null");
+            if (principal instanceof com.instser.chat.security.UserDetailsServiceImpl.CustomUserDetails) {
+                com.instser.chat.security.UserDetailsServiceImpl.CustomUserDetails userDetails =
+                    (com.instser.chat.security.UserDetailsServiceImpl.CustomUserDetails) principal;
+                Long userId = userDetails.getUserId();
+                log.debug("从认证信息中获取到用户ID：{}", userId);
+                return userId;
+            }
+            // 如果不是CustomUserDetails，返回null表示认证失败
+            log.warn("认证主体不是CustomUserDetails类型：{}", principal.getClass().getName());
+            return null;
+        } catch (Exception e) {
+            log.warn("获取用户ID失败", e);
+            return null;
+        }
+    }
+
+    @Override
+    public void processRetryChat(String chatId, String messageId, Authentication authentication, HttpServletResponse response) {
+        log.info("开始处理重新生成请求，chatId：{}，messageId：{}", chatId, messageId);
+
+        try {
+            // 设置响应头
+            setStreamResponseHeaders(response);
+
+            // 获取当前用户ID
+            Long userId = getCurrentUserId(authentication);
+            log.info("重新生成请求 - 获取到的用户ID：{}", userId);
+            if (userId == null) {
+                writeErrorResponse(response, "用户未认证");
+                return;
+            }
+
+            // 验证用户权限
+            String permissionError = validateUserPermission(authentication, userId);
+            if (permissionError != null) {
+                writeErrorResponse(response, permissionError);
+                return;
+            }
+
+            // 验证会话是否存在且属于当前用户
+            var chatSession = chatSessionService.getSessionInfo(chatId);
+            log.info("重新生成请求 - 会话信息：{}", chatSession != null ?
+                String.format("sessionId=%s, userId=%s", chatSession.getSessionId(), chatSession.getUserId()) : "null");
+            if (chatSession == null) {
+                writeErrorResponse(response, "会话不存在");
+                return;
+            }
+            if (!chatSession.getUserId().equals(userId)) {
+                log.warn("重新生成请求 - 用户ID不匹配：当前用户ID={}，会话用户ID={}", userId, chatSession.getUserId());
+                writeErrorResponse(response, "无权访问此会话");
+                return;
+            }
+
+            // 验证消息是否存在且属于指定会话
+            var targetMessage = chatMessageService.getByMessageId(messageId);
+            if (targetMessage == null) {
+                writeErrorResponse(response, "消息不存在");
+                return;
+            }
+            if (!targetMessage.getSessionId().equals(chatId)) {
+                writeErrorResponse(response, "消息不属于此会话");
+                return;
+            }
+            if (!"assistant".equals(targetMessage.getRole())) {
+                writeErrorResponse(response, "只能重新生成AI消息");
+                return;
+            }
+
+            // 删除指定AI消息及之后的所有消息
+            int deletedCount = chatMessageService.deleteMessagesFromPoint(messageId, chatId);
+            if (deletedCount == 0) {
+                writeErrorResponse(response, "删除消息失败");
+                return;
+            }
+
+            log.info("成功删除{}条消息，准备重新生成AI回复", deletedCount);
+
+            // 获取删除后的会话消息，构建新的聊天请求
+            List<ChatMessage> remainingMessages = chatMessageService.getSessionMessages(chatId);
+            if (remainingMessages.isEmpty()) {
+                writeErrorResponse(response, "会话中没有可用的消息");
+                return;
+            }
+
+            // 找到最后一条用户消息
+            ChatMessage lastUserMessage = null;
+            for (int i = remainingMessages.size() - 1; i >= 0; i--) {
+                ChatMessage message = remainingMessages.get(i);
+                if ("user".equals(message.getRole())) {
+                    lastUserMessage = message;
+                    break;
+                }
+            }
+
+            if (lastUserMessage == null) {
+                writeErrorResponse(response, "未找到用户消息");
+                return;
+            }
+
+            // 构建消息列表用于AI请求
+            List<Map<String, String>> messages = new ArrayList<>();
+            for (ChatMessage message : remainingMessages) {
+                Map<String, String> msgMap = new HashMap<>();
+                msgMap.put("role", message.getRole());
+                msgMap.put("content", message.getContent());
+                messages.add(msgMap);
+            }
+
+            // 获取模型信息
+            AiModel model = aiModelService.getById(chatSession.getModelId());
+            if (model == null || model.getIsAvailable() != 1) {
+                writeErrorResponse(response, "AI模型不可用");
+                return;
+            }
+
+            // 验证用户聊天权限和套餐限制
+            ChatLimitVO limitCheck = chatLimitService.validateChatPermission(userId);
+            if (!limitCheck.getCanChat()) {
+                String errorMessage = limitCheck.getLimitReason() != null ?
+                    limitCheck.getLimitReason() : "聊天权限验证失败";
+                writeErrorResponse(response, errorMessage);
+                return;
+            }
+
+            // 构建ChatRequestDTO
+            ChatRequestDTO retryRequest = new ChatRequestDTO();
+            retryRequest.setMessages(messages);
+            retryRequest.setUserId(userId);
+            retryRequest.setModelId(model.getId());
+            retryRequest.setSessionId(chatId);
+            retryRequest.setDeepThinking(false); // 重新生成时使用默认模式
+
+            // 判断是否需要生成标题（如果删除后只剩一条用户消息，则需要生成标题）
+            boolean willGenerateTitle = isFirstAiResponse(messages);
+            log.info("重新生成请求 - 是否需要生成标题：{}，用户消息数量：{}", willGenerateTitle,
+                messages.stream().filter(msg -> "user".equals(msg.get("role"))).count());
+
+            // 调用AI服务进行流式响应
+            ChatResponseDTO result = streamChatWithAI(retryRequest, model, response, willGenerateTitle);
+
+            // 处理响应结果
+            if (result.isRealAiResponse()) {
+                // 记录使用次数
+                boolean recordSuccess = chatLimitService.recordChatUsage(userId);
+                if (recordSuccess) {
+                    log.info("用户{}重新生成聊天使用次数记录成功", userId);
+                } else {
+                    log.warn("用户{}重新生成聊天使用次数记录失败", userId);
+                }
+
+                // 保存AI响应到数据库
+                if (result.getAiResponseContent() != null && !result.getAiResponseContent().trim().isEmpty()) {
+                    saveAiResponse(chatId, userId, model.getId(), result.getAiResponseContent());
+                }
+
+                log.info("用户{}重新生成AI响应成功", userId);
+            } else if (result.isHasContentSent()) {
+                // 有内容发送（错误响应），但不记录使用次数
+                log.info("用户{}重新生成收到错误响应，已保存聊天记录但不记录使用次数", userId);
+            }
+
+        } catch (Exception e) {
+            log.error("处理重新生成请求异常", e);
+            try {
+                String errorContent = "请求错误";
+                writeErrorResponse(response, errorContent);
+
+                // 保存错误响应到数据库
+                var chatSession = chatSessionService.getSessionInfo(chatId);
+                if (chatSession != null) {
+                    AiModel model = aiModelService.getById(chatSession.getModelId());
+                    if (model != null) {
+                        saveErrorResponse(chatId, chatSession.getUserId(), model.getId(), errorContent);
+                    }
+                }
+            } catch (Exception ex) {
+                log.error("发送重新生成错误消息失败", ex);
+            }
+        }
     }
 }
