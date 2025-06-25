@@ -92,6 +92,17 @@ public interface ChatService {
     void processRetryChat(String chatId, String messageId, Authentication authentication, HttpServletResponse response);
 
     /**
+     * 处理编辑用户消息并重新生成AI回复请求
+     *
+     * @param chatId 会话ID
+     * @param messageId 要编辑的用户消息ID
+     * @param newContent 新的消息内容
+     * @param authentication 认证信息
+     * @param response HTTP响应对象
+     */
+    void processEditResendChat(String chatId, String messageId, String newContent, Authentication authentication, HttpServletResponse response);
+
+    /**
      * 检查是否为首次AI响应
      *
      * @param messages 消息列表

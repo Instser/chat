@@ -177,6 +177,51 @@ public class ChatApiController {
     }
 
     /**
+     * 编辑用户消息并重新生成AI回复
+     */
+    @PostMapping(value = "/edit-resend", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public void editResendChat(@RequestBody Map<String, Object> request, Authentication authentication,
+                              HttpServletRequest httpRequest, HttpServletResponse response) {
+        log.info("收到编辑重发请求：{}, 认证信息：{}", request, authentication);
+
+        // 动态设置跨域头
+        setCorsHeaders(httpRequest, response);
+
+        try {
+            // 提取参数
+            String chatId = (String) request.get("chatId");
+            String messageId = (String) request.get("messageId");
+            String newContent = (String) request.get("newContent");
+
+            if (chatId == null || chatId.trim().isEmpty()) {
+                writeErrorResponse(response, "chatId不能为空");
+                return;
+            }
+
+            if (messageId == null || messageId.trim().isEmpty()) {
+                writeErrorResponse(response, "messageId不能为空");
+                return;
+            }
+
+            if (newContent == null || newContent.trim().isEmpty()) {
+                writeErrorResponse(response, "newContent不能为空");
+                return;
+            }
+
+            // 调用ChatService处理编辑重发逻辑
+            chatService.processEditResendChat(chatId, messageId, newContent, authentication, response);
+
+        } catch (Exception e) {
+            log.error("编辑重发接口异常", e);
+            try {
+                writeErrorResponse(response, "请求错误");
+            } catch (Exception ex) {
+                log.error("发送错误响应失败", ex);
+            }
+        }
+    }
+
+    /**
      * 获取当前认证用户ID
      */
     private Long getCurrentUserId(Authentication authentication) {

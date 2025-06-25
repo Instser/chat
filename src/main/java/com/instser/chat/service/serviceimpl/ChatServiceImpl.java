@@ -1354,4 +1354,173 @@ public class ChatServiceImpl implements ChatService {
             }
         }
     }
+
+    @Override
+    public void processEditResendChat(String chatId, String messageId, String newContent, Authentication authentication, HttpServletResponse response) {
+        log.info("开始处理编辑重发请求，chatId：{}，messageId：{}，newContent长度：{}", chatId, messageId, newContent.length());
+
+        try {
+            // 设置响应头
+            setStreamResponseHeaders(response);
+
+            // 获取当前用户ID
+            Long userId = getCurrentUserId(authentication);
+            log.info("编辑重发请求 - 获取到的用户ID：{}", userId);
+            if (userId == null) {
+                writeErrorResponse(response, "用户未认证");
+                return;
+            }
+
+            // 验证用户权限
+            String permissionError = validateUserPermission(authentication, userId);
+            if (permissionError != null) {
+                writeErrorResponse(response, permissionError);
+                return;
+            }
+
+            // 验证会话是否存在且属于当前用户
+            var chatSession = chatSessionService.getSessionInfo(chatId);
+            log.info("编辑重发请求 - 会话信息：{}", chatSession != null ?
+                String.format("sessionId=%s, userId=%s", chatSession.getSessionId(), chatSession.getUserId()) : "null");
+            if (chatSession == null) {
+                writeErrorResponse(response, "会话不存在");
+                return;
+            }
+            if (!chatSession.getUserId().equals(userId)) {
+                log.warn("编辑重发请求 - 用户ID不匹配：当前用户ID={}，会话用户ID={}", userId, chatSession.getUserId());
+                writeErrorResponse(response, "无权访问此会话");
+                return;
+            }
+
+            // 验证消息是否存在且属于指定会话
+            var targetMessage = chatMessageService.getByMessageId(messageId);
+            if (targetMessage == null) {
+                writeErrorResponse(response, "消息不存在");
+                return;
+            }
+            if (!targetMessage.getSessionId().equals(chatId)) {
+                writeErrorResponse(response, "消息不属于此会话");
+                return;
+            }
+            if (!"user".equals(targetMessage.getRole())) {
+                writeErrorResponse(response, "只能编辑用户消息");
+                return;
+            }
+
+            // 删除指定用户消息及之后的所有消息
+            int deletedCount = chatMessageService.deleteMessagesFromPoint(messageId, chatId);
+            if (deletedCount == 0) {
+                writeErrorResponse(response, "删除消息失败");
+                return;
+            }
+
+            log.info("成功删除{}条消息，准备保存新的用户消息", deletedCount);
+
+            // 保存新的用户消息
+            ChatMessage newUserMessage = new ChatMessage();
+            newUserMessage.setMessageId(java.util.UUID.randomUUID().toString());
+            newUserMessage.setSessionId(chatId);
+            newUserMessage.setRole("user");
+            newUserMessage.setContent(newContent);
+            newUserMessage.setMessageType("text");
+            newUserMessage.setUserId(userId);
+            newUserMessage.setModelId(chatSession.getModelId());
+            newUserMessage.setStatus(1); // 成功状态
+
+            boolean saved = chatMessageService.save(newUserMessage);
+            if (!saved) {
+                writeErrorResponse(response, "保存用户消息失败");
+                return;
+            }
+
+            log.info("成功保存新的用户消息，messageId：{}", newUserMessage.getMessageId());
+
+            // 获取更新后的会话消息，构建新的聊天请求
+            List<ChatMessage> remainingMessages = chatMessageService.getSessionMessages(chatId);
+            if (remainingMessages.isEmpty()) {
+                writeErrorResponse(response, "会话中没有可用的消息");
+                return;
+            }
+
+            // 构建消息列表用于AI请求
+            List<Map<String, String>> messages = new ArrayList<>();
+            for (ChatMessage message : remainingMessages) {
+                Map<String, String> msgMap = new HashMap<>();
+                msgMap.put("role", message.getRole());
+                msgMap.put("content", message.getContent());
+                messages.add(msgMap);
+            }
+
+            // 获取模型信息
+            AiModel model = aiModelService.getById(chatSession.getModelId());
+            if (model == null || model.getIsAvailable() != 1) {
+                writeErrorResponse(response, "AI模型不可用");
+                return;
+            }
+
+            // 验证用户聊天权限和套餐限制
+            ChatLimitVO limitCheck = chatLimitService.validateChatPermission(userId);
+            if (!limitCheck.getCanChat()) {
+                String errorMessage = limitCheck.getLimitReason() != null ?
+                    limitCheck.getLimitReason() : "聊天权限验证失败";
+                writeErrorResponse(response, errorMessage);
+                return;
+            }
+
+            // 构建ChatRequestDTO
+            ChatRequestDTO editResendRequest = new ChatRequestDTO();
+            editResendRequest.setMessages(messages);
+            editResendRequest.setUserId(userId);
+            editResendRequest.setModelId(model.getId());
+            editResendRequest.setSessionId(chatId);
+            editResendRequest.setDeepThinking(false); // 编辑重发时使用默认模式
+
+            // 判断是否需要生成标题（如果编辑的是第一条用户消息，则需要生成标题）
+            boolean willGenerateTitle = isFirstAiResponse(messages);
+            log.info("编辑重发请求 - 是否需要生成标题：{}，用户消息数量：{}", willGenerateTitle,
+                messages.stream().filter(msg -> "user".equals(msg.get("role"))).count());
+
+            // 调用AI服务进行流式响应
+            ChatResponseDTO result = streamChatWithAI(editResendRequest, model, response, willGenerateTitle);
+
+            // 处理响应结果
+            if (result.isRealAiResponse()) {
+                // 记录使用次数
+                boolean recordSuccess = chatLimitService.recordChatUsage(userId);
+                if (recordSuccess) {
+                    log.info("用户{}编辑重发聊天使用次数记录成功", userId);
+                } else {
+                    log.warn("用户{}编辑重发聊天使用次数记录失败", userId);
+                }
+
+                // 保存AI响应到数据库
+                if (result.getAiResponseContent() != null && !result.getAiResponseContent().trim().isEmpty()) {
+                    saveAiResponse(chatId, userId, model.getId(), result.getAiResponseContent());
+                }
+
+                log.info("用户{}编辑重发AI响应成功", userId);
+            } else if (result.isHasContentSent()) {
+                // 有内容发送（错误响应），但不记录使用次数
+                log.info("用户{}编辑重发收到错误响应，已保存聊天记录但不记录使用次数", userId);
+            }
+
+        } catch (Exception e) {
+            log.error("处理编辑重发请求异常", e);
+            try {
+                String errorContent = "请求错误";
+                writeErrorResponse(response, errorContent);
+
+                // 保存错误响应到数据库
+                var chatSession = chatSessionService.getSessionInfo(chatId);
+                if (chatSession != null) {
+                    AiModel model = aiModelService.getById(chatSession.getModelId());
+                    if (model != null) {
+                        saveErrorResponse(chatId, chatSession.getUserId(), model.getId(), errorContent);
+                    }
+                }
+            } catch (Exception ex) {
+                log.error("发送编辑重发错误消息失败", ex);
+            }
+        }
+    }
 }
