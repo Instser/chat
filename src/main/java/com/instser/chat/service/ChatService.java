@@ -49,8 +49,9 @@ public interface ChatService {
      * @param messages 消息列表
      * @param sessionId 会话ID
      * @param userId 用户ID
+     * @return 保存的消息ID，失败时返回null
      */
-    void saveUserMessage(List<Map<String, String>> messages, String sessionId, Long userId);
+    String saveUserMessage(List<Map<String, String>> messages, String sessionId, Long userId);
 
     /**
      * 保存AI响应到数据库

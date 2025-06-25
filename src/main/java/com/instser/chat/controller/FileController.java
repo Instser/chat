@@ -46,8 +46,6 @@ public class FileController {
     @PostMapping("/files/upload")
     public Result<Map<String, Object>> uploadFiles(
             @RequestParam("files") MultipartFile[] files,
-            @RequestParam(value = "sessionId", required = false) String sessionId,
-            @RequestParam(value = "messageId", required = false) String messageId,
             Authentication authentication) {
 
         if (files == null || files.length == 0) {
@@ -57,8 +55,8 @@ public class FileController {
         Long userId = getCurrentUserId(authentication);
 
         try {
-            // 使用服务层进行文件上传
-            List<FileUpload> uploadedFiles = fileUploadService.uploadFiles(files, userId, sessionId, messageId);
+            // 使用服务层进行文件上传（不传递sessionId和messageId，这些将在chat成功后更新）
+            List<FileUpload> uploadedFiles = fileUploadService.uploadFiles(files, userId, null, null);
 
             // 校验存储完成性
             List<String> validatedFileIds = new ArrayList<>();

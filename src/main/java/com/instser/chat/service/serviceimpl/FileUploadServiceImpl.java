@@ -372,6 +372,41 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
     }
 
     @Override
+    public boolean updateFileAssociation(String fileId, String messageId, String sessionId, Long userId) {
+        try {
+            FileUpload fileUpload = getByFileId(fileId);
+            if (fileUpload == null) {
+                log.warn("文件不存在，无法更新关联信息，文件ID：{}", fileId);
+                return false;
+            }
+
+            // 验证文件所有权
+            if (!fileUpload.getUserId().equals(userId)) {
+                log.warn("用户{}无权更新文件{}的关联信息", userId, fileId);
+                return false;
+            }
+
+            // 更新关联信息
+            fileUpload.setMessageId(messageId);
+            fileUpload.setSessionId(sessionId);
+
+            boolean updated = updateById(fileUpload);
+            if (updated) {
+                log.info("文件关联信息更新成功，文件ID：{}，消息ID：{}，会话ID：{}，用户ID：{}",
+                        fileId, messageId, sessionId, userId);
+            } else {
+                log.warn("文件关联信息更新失败，文件ID：{}，用户ID：{}", fileId, userId);
+            }
+
+            return updated;
+
+        } catch (Exception e) {
+            log.error("更新文件关联信息时发生异常，文件ID：{}，用户ID：{}", fileId, userId, e);
+            return false;
+        }
+    }
+
+    @Override
     public boolean updateFileStatus(String fileId, Integer status) {
         FileUpload fileUpload = getByFileId(fileId);
         if (fileUpload == null) {

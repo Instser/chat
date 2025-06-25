@@ -102,8 +102,9 @@ public class ChatServiceImpl implements ChatService {
             request.setMessages(processedMessages);
 
             // 保存用户消息到数据库
+            String userMessageId = null;
             if (request.getSessionId() != null) {
-                saveUserMessage(request.getMessages(), request.getSessionId(), request.getUserId());
+                userMessageId = saveUserMessage(request.getMessages(), request.getSessionId(), request.getUserId());
             }
 
             // 判断是否会生成标题
@@ -125,6 +126,11 @@ public class ChatServiceImpl implements ChatService {
                 // 保存AI响应到数据库
                 if (request.getSessionId() != null && result.getAiResponseContent() != null && !result.getAiResponseContent().trim().isEmpty()) {
                     saveAiResponse(request.getSessionId(), request.getUserId(), model.getId(), result.getAiResponseContent());
+                }
+
+                // AI响应成功后，更新文件的关联信息
+                if (userMessageId != null && request.getFilesId() != null && !request.getFilesId().trim().isEmpty()) {
+                    updateFilesAssociation(request.getFilesId(), userMessageId, request.getSessionId(), request.getUserId());
                 }
 
                 log.info("用户{}AI响应成功", request.getUserId());
@@ -190,11 +196,11 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
-    public void saveUserMessage(List<Map<String, String>> messages, String sessionId, Long userId) {
+    public String saveUserMessage(List<Map<String, String>> messages, String sessionId, Long userId) {
         try {
             if (messages == null || messages.isEmpty() || sessionId == null || userId == null) {
                 log.warn("无法保存用户消息到数据库，缺少必要参数");
-                return;
+                return null;
             }
 
             // 从消息列表中找到最后一条用户消息
@@ -208,13 +214,70 @@ public class ChatServiceImpl implements ChatService {
             }
 
             if (lastUserMessage != null && !lastUserMessage.trim().isEmpty()) {
-                chatMessageService.sendMessage(sessionId, "user", lastUserMessage, userId);
-                log.info("用户消息已保存到数据库，会话ID：{}，用户ID：{}，内容长度：{}", sessionId, userId, lastUserMessage.length());
+                Long messageDbId = chatMessageService.sendMessage(sessionId, "user", lastUserMessage, userId);
+                if (messageDbId != null) {
+                    // 获取刚创建的消息以获取messageId
+                    ChatMessage savedMessage = chatMessageService.getById(messageDbId);
+                    if (savedMessage != null) {
+                        log.info("用户消息已保存到数据库，会话ID：{}，用户ID：{}，消息ID：{}，内容长度：{}",
+                                sessionId, userId, savedMessage.getMessageId(), lastUserMessage.length());
+                        return savedMessage.getMessageId();
+                    }
+                }
             } else {
                 log.warn("未找到有效的用户消息，跳过保存");
             }
         } catch (Exception e) {
             log.error("保存用户消息到数据库失败", e);
+        }
+        return null;
+    }
+
+    /**
+     * 更新文件的关联信息（在AI响应成功后调用）
+     *
+     * @param filesId 文件ID列表（逗号分隔）
+     * @param messageId 消息ID
+     * @param sessionId 会话ID
+     * @param userId 用户ID
+     */
+    private void updateFilesAssociation(String filesId, String messageId, String sessionId, Long userId) {
+        try {
+            if (filesId == null || filesId.trim().isEmpty() || messageId == null || sessionId == null || userId == null) {
+                log.warn("无法更新文件关联信息，缺少必要参数");
+                return;
+            }
+
+            // 解析文件ID列表
+            String[] fileIds = filesId.split(",");
+            int successCount = 0;
+            int totalCount = fileIds.length;
+
+            for (String fileId : fileIds) {
+                fileId = fileId.trim();
+                if (fileId.isEmpty()) {
+                    continue;
+                }
+
+                try {
+                    // 更新文件的messageId和sessionId
+                    boolean updated = fileUploadService.updateFileAssociation(fileId, messageId, sessionId, userId);
+                    if (updated) {
+                        successCount++;
+                        log.info("文件{}关联信息已更新，消息ID：{}，会话ID：{}，用户ID：{}", fileId, messageId, sessionId, userId);
+                    } else {
+                        log.warn("文件{}关联信息更新失败，用户ID：{}", fileId, userId);
+                    }
+                } catch (Exception e) {
+                    log.error("文件{}关联信息更新时发生异常，用户ID：{}", fileId, userId, e);
+                }
+            }
+
+            log.info("文件关联信息更新完成，成功：{}/{}，消息ID：{}，会话ID：{}，用户ID：{}",
+                    successCount, totalCount, messageId, sessionId, userId);
+
+        } catch (Exception e) {
+            log.error("更新文件关联信息失败", e);
         }
     }
 

@@ -11,7 +11,7 @@
  Target Server Version : 50743 (5.7.43-log)
  File Encoding         : 65001
 
- Date: 25/06/2025 16:54:16
+ Date: 25/06/2025 23:58:58
 */
 
 SET NAMES utf8mb4;
@@ -72,7 +72,7 @@ CREATE TABLE `t_chat_message` (
   CONSTRAINT `fk_message_model` FOREIGN KEY (`model_id`) REFERENCES `t_ai_model` (`id`),
   CONSTRAINT `fk_message_session` FOREIGN KEY (`session_id`) REFERENCES `t_chat_session` (`session_id`),
   CONSTRAINT `fk_message_user` FOREIGN KEY (`user_id`) REFERENCES `t_user` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=1937796478589292547 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='聊天消息表';
+) ENGINE=InnoDB AUTO_INCREMENT=1937902860731408387 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='聊天消息表';
 
 -- ----------------------------
 -- Table structure for t_chat_session
@@ -98,7 +98,7 @@ CREATE TABLE `t_chat_session` (
   KEY `idx_chat_session_user_active` (`user_id`,`last_active_time`,`deleted`),
   CONSTRAINT `fk_session_model` FOREIGN KEY (`model_id`) REFERENCES `t_ai_model` (`id`),
   CONSTRAINT `fk_session_user` FOREIGN KEY (`user_id`) REFERENCES `t_user` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=1937796447052320771 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='聊天会话表';
+) ENGINE=InnoDB AUTO_INCREMENT=1937900835314573315 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='聊天会话表';
 
 -- ----------------------------
 -- Table structure for t_file_upload
@@ -109,11 +109,12 @@ CREATE TABLE `t_file_upload` (
   `file_id` varchar(64) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文件ID（UUID）',
   `user_id` bigint(20) NOT NULL COMMENT '用户ID',
   `session_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '关联的会话ID',
+  `message_id` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL COMMENT '关联的消息ID',
   `file_name` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文件名',
   `file_type` varchar(50) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文件类型（MIME类型）',
   `file_size` bigint(20) NOT NULL COMMENT '文件大小（字节）',
-  `file_url` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '文件URL',
   `storage_path` varchar(255) COLLATE utf8mb4_unicode_ci NOT NULL COMMENT '存储路径',
+  `content` longtext COLLATE utf8mb4_unicode_ci COMMENT '文件内容（用于存储文本文件或小文件的完整内容）',
   `status` tinyint(4) DEFAULT '1' COMMENT '状态（0-处理中，1-可用，2-失败）',
   `create_time` datetime DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
@@ -122,9 +123,14 @@ CREATE TABLE `t_file_upload` (
   UNIQUE KEY `uk_file_id` (`file_id`) USING BTREE,
   KEY `idx_user_id` (`user_id`) USING BTREE,
   KEY `idx_session_id` (`session_id`) USING BTREE,
+  KEY `idx_message_id` (`message_id`) USING BTREE COMMENT '消息ID索引',
+  KEY `idx_user_message_deleted` (`user_id`,`message_id`,`deleted`) USING BTREE COMMENT '用户消息文件查询优化索引',
+  KEY `idx_session_message_time` (`session_id`,`message_id`,`create_time`) USING BTREE COMMENT '会话文件时间查询优化索引',
+  KEY `idx_type_status_time` (`file_type`,`status`,`create_time`) USING BTREE COMMENT '文件类型状态查询优化索引',
+  CONSTRAINT `fk_file_message` FOREIGN KEY (`message_id`) REFERENCES `t_chat_message` (`message_id`) ON DELETE SET NULL ON UPDATE CASCADE,
   CONSTRAINT `fk_file_session` FOREIGN KEY (`session_id`) REFERENCES `t_chat_session` (`session_id`),
   CONSTRAINT `fk_file_user` FOREIGN KEY (`user_id`) REFERENCES `t_user` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='文件上传表';
+) ENGINE=InnoDB AUTO_INCREMENT=38 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='文件上传表 - 支持文件内容存储和消息关联';
 
 -- ----------------------------
 -- Table structure for t_package
@@ -220,7 +226,7 @@ CREATE TABLE `t_user_daily_usage` (
   KEY `idx_last_chat_time` (`last_chat_time`),
   CONSTRAINT `fk_daily_usage_package` FOREIGN KEY (`package_id`) REFERENCES `t_package` (`id`) ON DELETE CASCADE ON UPDATE CASCADE,
   CONSTRAINT `fk_daily_usage_user` FOREIGN KEY (`user_id`) REFERENCES `t_user` (`id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB AUTO_INCREMENT=283 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='用户每日使用记录表';
+) ENGINE=InnoDB AUTO_INCREMENT=366 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci ROW_FORMAT=DYNAMIC COMMENT='用户每日使用记录表';
 
 -- ----------------------------
 -- Table structure for t_user_order

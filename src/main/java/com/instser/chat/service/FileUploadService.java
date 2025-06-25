@@ -181,6 +181,17 @@ public interface FileUploadService extends IService<FileUpload> {
     boolean isFileOwnedByUser(String fileId, Long userId);
 
     /**
+     * 更新文件的关联信息（messageId和sessionId）
+     *
+     * @param fileId    文件ID
+     * @param messageId 消息ID
+     * @param sessionId 会话ID
+     * @param userId    用户ID（用于权限验证）
+     * @return 是否更新成功
+     */
+    boolean updateFileAssociation(String fileId, String messageId, String sessionId, Long userId);
+
+    /**
      * 更新文件状态
      *
      * @param fileId 文件ID
