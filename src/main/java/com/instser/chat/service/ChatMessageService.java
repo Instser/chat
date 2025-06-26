@@ -109,4 +109,14 @@ public interface ChatMessageService extends IService<ChatMessage> {
      * @return 删除的消息数量
      */
     int deleteMessagesFromPoint(String messageId, String sessionId);
+
+    /**
+     * 删除指定消息及之后的所有消息（用于edit-resend场景，保留指定文件）
+     *
+     * @param messageId 起始消息ID（UUID）
+     * @param sessionId 会话ID
+     * @param preserveFileIds 需要保留的文件ID列表（不删除这些文件）
+     * @return 删除的消息数量
+     */
+    int deleteMessagesFromPointWithFilePreservation(String messageId, String sessionId, List<String> preserveFileIds);
 }

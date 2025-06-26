@@ -79,7 +79,7 @@ public interface FileUploadService extends IService<FileUpload> {
     String getFileIdsByMessageId(String messageId);
 
     /**
-     * 根据消息ID删除关联的文件（逻辑删除）
+     * 根据消息ID删除关联的文件（物理删除）
      *
      * @param messageId 消息ID
      * @param userId 用户ID（用于权限验证）
@@ -88,7 +88,7 @@ public interface FileUploadService extends IService<FileUpload> {
     int deleteFilesByMessageId(String messageId, Long userId);
 
     /**
-     * 根据消息ID列表批量删除关联的文件（逻辑删除）
+     * 根据消息ID列表批量删除关联的文件（物理删除）
      *
      * @param messageIds 消息ID列表
      * @param userId 用户ID（用于权限验证）
@@ -97,7 +97,17 @@ public interface FileUploadService extends IService<FileUpload> {
     int deleteFilesByMessageIds(List<String> messageIds, Long userId);
 
     /**
-     * 根据会话ID删除关联的文件（逻辑删除）
+     * 根据消息ID列表批量删除关联的文件（物理删除），支持跳过指定文件
+     *
+     * @param messageIds 消息ID列表
+     * @param userId 用户ID（用于权限验证）
+     * @param skipFileIds 需要跳过删除的文件ID列表（用于edit-resend场景）
+     * @return 删除的文件数量
+     */
+    int deleteFilesByMessageIds(List<String> messageIds, Long userId, List<String> skipFileIds);
+
+    /**
+     * 根据会话ID删除关联的文件（物理删除）
      *
      * @param sessionId 会话ID
      * @param userId 用户ID（用于权限验证）
@@ -106,7 +116,7 @@ public interface FileUploadService extends IService<FileUpload> {
     int deleteFilesBySessionId(String sessionId, Long userId);
 
     /**
-     * 删除文件（逻辑删除）
+     * 删除文件（物理删除）
      *
      * @param fileId 文件ID
      * @param userId 用户ID（用于权限验证）

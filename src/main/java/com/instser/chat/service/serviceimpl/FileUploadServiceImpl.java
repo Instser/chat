@@ -230,16 +230,17 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
                 return 0;
             }
 
-            // 验证文件所有权并执行逻辑删除
+            // 验证文件所有权并执行物理删除
             int deletedCount = 0;
             for (FileUpload file : files) {
                 if (file.getUserId().equals(userId)) {
-                    file.setDeleted(1);
-                    file.setUpdateTime(LocalDateTime.now());
-                    boolean updated = this.updateById(file);
-                    if (updated) {
+                    // 执行物理删除
+                    boolean deleted = deleteFilePhysicallyInternal(file);
+                    if (deleted) {
                         deletedCount++;
-                        log.info("文件{}已标记为删除，关联消息：{}", file.getFileId(), messageId);
+                        log.info("文件{}已物理删除，关联消息：{}", file.getFileId(), messageId);
+                    } else {
+                        log.warn("文件{}物理删除失败，关联消息：{}", file.getFileId(), messageId);
                     }
                 } else {
                     log.warn("文件{}不属于用户{}，跳过删除", file.getFileId(), userId);
@@ -257,21 +258,78 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
 
     @Override
     public int deleteFilesByMessageIds(List<String> messageIds, Long userId) {
+        return deleteFilesByMessageIds(messageIds, userId, null);
+    }
+
+    @Override
+    public int deleteFilesByMessageIds(List<String> messageIds, Long userId, List<String> skipFileIds) {
         if (messageIds == null || messageIds.isEmpty() || userId == null) {
             log.warn("批量删除文件失败，参数不完整：messageIds={}, userId={}", messageIds, userId);
             return 0;
         }
 
+        // 将跳过的文件ID转换为Set以提高查找效率
+        Set<String> skipFileIdSet = skipFileIds != null ? new HashSet<>(skipFileIds) : new HashSet<>();
+
         int totalDeleted = 0;
         for (String messageId : messageIds) {
             if (messageId != null && !messageId.trim().isEmpty()) {
-                int deleted = deleteFilesByMessageId(messageId, userId);
+                int deleted = deleteFilesByMessageIdWithSkip(messageId, userId, skipFileIdSet);
                 totalDeleted += deleted;
             }
         }
 
-        log.info("批量删除消息关联文件完成，消息数量：{}，删除文件数量：{}", messageIds.size(), totalDeleted);
+        log.info("批量删除消息关联文件完成，消息数量：{}，删除文件数量：{}，跳过文件数量：{}",
+                messageIds.size(), totalDeleted, skipFileIdSet.size());
         return totalDeleted;
+    }
+
+    /**
+     * 根据消息ID删除关联的文件，支持跳过指定文件
+     *
+     * @param messageId 消息ID
+     * @param userId 用户ID
+     * @param skipFileIds 需要跳过的文件ID集合
+     * @return 删除的文件数量
+     */
+    private int deleteFilesByMessageIdWithSkip(String messageId, Long userId, Set<String> skipFileIds) {
+        try {
+            // 获取该消息关联的所有文件
+            List<FileUpload> files = fileUploadDao.selectByMessageId(messageId);
+            if (files == null || files.isEmpty()) {
+                log.info("消息{}没有关联的文件，跳过删除", messageId);
+                return 0;
+            }
+
+            // 验证文件所有权并执行物理删除
+            int deletedCount = 0;
+            for (FileUpload file : files) {
+                if (file.getUserId().equals(userId)) {
+                    // 检查是否需要跳过此文件
+                    if (skipFileIds.contains(file.getFileId())) {
+                        log.info("跳过删除文件{}，关联消息：{}", file.getFileId(), messageId);
+                        continue;
+                    }
+
+                    // 执行物理删除
+                    boolean deleted = deleteFilePhysicallyInternal(file);
+                    if (deleted) {
+                        deletedCount++;
+                        log.info("文件{}已物理删除，关联消息：{}", file.getFileId(), messageId);
+                    } else {
+                        log.warn("文件{}物理删除失败，关联消息：{}", file.getFileId(), messageId);
+                    }
+                } else {
+                    log.warn("文件{}不属于用户{}，跳过删除", file.getFileId(), userId);
+                }
+            }
+
+            return deletedCount;
+
+        } catch (Exception e) {
+            log.error("删除消息{}关联的文件失败", messageId, e);
+            return 0;
+        }
     }
 
     @Override
@@ -289,16 +347,17 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
                 return 0;
             }
 
-            // 验证文件所有权并执行逻辑删除
+            // 验证文件所有权并执行物理删除
             int deletedCount = 0;
             for (FileUpload file : files) {
                 if (file.getUserId().equals(userId)) {
-                    file.setDeleted(1);
-                    file.setUpdateTime(LocalDateTime.now());
-                    boolean updated = this.updateById(file);
-                    if (updated) {
+                    // 执行物理删除
+                    boolean deleted = deleteFilePhysicallyInternal(file);
+                    if (deleted) {
                         deletedCount++;
-                        log.info("文件{}已标记为删除，关联会话：{}", file.getFileId(), sessionId);
+                        log.info("文件{}已物理删除，关联会话：{}", file.getFileId(), sessionId);
+                    } else {
+                        log.warn("文件{}物理删除失败，关联会话：{}", file.getFileId(), sessionId);
                     }
                 } else {
                     log.warn("文件{}不属于用户{}，跳过删除", file.getFileId(), userId);
@@ -326,8 +385,41 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
             throw new IllegalArgumentException("无权删除此文件");
         }
 
-        // 逻辑删除
-        return removeById(fileUpload.getId());
+        // 物理删除
+        return deleteFilePhysicallyInternal(fileUpload);
+    }
+
+    /**
+     * 内部物理删除方法
+     *
+     * @param fileUpload 文件实体
+     * @return 是否删除成功
+     */
+    private boolean deleteFilePhysicallyInternal(FileUpload fileUpload) {
+        try {
+            // 删除磁盘文件（如果存在）
+            if (fileUpload.getStoragePath() != null && !fileUpload.getStoragePath().trim().isEmpty()) {
+                Path filePath = Paths.get(fileUpload.getStoragePath());
+                if (Files.exists(filePath)) {
+                    Files.delete(filePath);
+                    log.info("磁盘文件删除成功：{}", filePath.toString());
+                }
+            }
+
+            // 删除数据库记录（物理删除，不使用逻辑删除）
+            boolean deleted = fileUploadDao.deleteById(fileUpload.getId()) > 0;
+            if (deleted) {
+                log.info("数据库记录删除成功，文件ID：{}", fileUpload.getFileId());
+            }
+            return deleted;
+
+        } catch (IOException e) {
+            log.error("删除磁盘文件失败，文件ID：{}，路径：{}", fileUpload.getFileId(), fileUpload.getStoragePath(), e);
+            return false;
+        } catch (Exception e) {
+            log.error("删除文件失败，文件ID：{}", fileUpload.getFileId(), e);
+            return false;
+        }
     }
 
     @Override
@@ -342,20 +434,8 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
             throw new IllegalArgumentException("无权删除此文件");
         }
 
-        try {
-            // 删除磁盘文件
-            Path filePath = Paths.get(fileUpload.getStoragePath());
-            if (Files.exists(filePath)) {
-                Files.delete(filePath);
-            }
-
-            // 删除数据库记录
-            return removeById(fileUpload.getId());
-
-        } catch (IOException e) {
-            log.error("删除磁盘文件失败：{}", e.getMessage(), e);
-            return false;
-        }
+        // 使用内部物理删除方法
+        return deleteFilePhysicallyInternal(fileUpload);
     }
 
     @Override

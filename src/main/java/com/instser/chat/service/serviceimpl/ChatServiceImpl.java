@@ -1830,18 +1830,28 @@ public class ChatServiceImpl implements ChatService {
             String originalFilesId = fileUploadService.getFileIdsByMessageId(messageId);
             log.info("被编辑消息的原始文件关联：{}", originalFilesId);
 
-            // 删除指定用户消息及之后的所有消息
-            int deletedCount = chatMessageService.deleteMessagesFromPoint(messageId, sessionId);
-            if (deletedCount == 0) {
-                writeErrorResponse(response, "删除消息失败");
-                return;
+            // edit-resend场景不会传入filesId，只需要处理原有的文件关联
+            boolean hasAttachments = originalFilesId != null && !originalFilesId.trim().isEmpty();
+
+            // 先删除指定用户消息及之后的所有消息，但保留文件关联（如果有的话）
+            if (hasAttachments) {
+                // 如果有文件关联，使用特殊的删除方法保留文件
+                List<String> preserveFileIds = Arrays.asList(originalFilesId.split(","));
+                int deletedCount = chatMessageService.deleteMessagesFromPointWithFilePreservation(messageId, sessionId, preserveFileIds);
+                if (deletedCount == 0) {
+                    writeErrorResponse(response, "删除消息失败");
+                    return;
+                }
+                log.info("成功删除{}条消息（保留文件）", deletedCount);
+            } else {
+                // 没有文件关联，正常删除
+                int deletedCount = chatMessageService.deleteMessagesFromPoint(messageId, sessionId);
+                if (deletedCount == 0) {
+                    writeErrorResponse(response, "删除消息失败");
+                    return;
+                }
+                log.info("成功删除{}条消息", deletedCount);
             }
-
-            log.info("成功删除{}条消息，准备保存新的用户消息", deletedCount);
-
-            // 确定最终的文件关联：优先使用前端传入的filesId，如果没有则使用原始消息的文件关联
-            String finalFilesId = (filesId != null && !filesId.trim().isEmpty()) ? filesId : originalFilesId;
-            boolean hasAttachments = finalFilesId != null && !finalFilesId.trim().isEmpty();
 
             // 保存新的用户原始消息（不包含文件内容）
             ChatMessage newUserMessage = new ChatMessage();
@@ -1865,10 +1875,23 @@ public class ChatServiceImpl implements ChatService {
 
             log.info("成功保存新的用户消息，messageId：{}，附件：{}", newUserMessage.getMessageId(), hasAttachments ? "有" : "无");
 
-            // 如果有附件，强制更新文件关联信息（edit-resend场景需要强制更新）
+            // 如果有附件，将保留的文件关联转移到新消息
             if (hasAttachments) {
-                updateFilesAssociation(finalFilesId, newUserMessage.getMessageId(), sessionId, userId);
-                log.info("edit-resend场景：文件关联已转移到新消息，文件ID：{}，新消息ID：{}", finalFilesId, newUserMessage.getMessageId());
+                log.info("edit-resend场景：开始转移文件关联，原始文件ID：{}，新消息ID：{}",
+                        originalFilesId, newUserMessage.getMessageId());
+
+                updateFilesAssociation(originalFilesId, newUserMessage.getMessageId(), sessionId, userId);
+
+                // 验证文件关联是否成功转移
+                String updatedFilesId = fileUploadService.getFileIdsByMessageId(newUserMessage.getMessageId());
+                log.info("edit-resend场景：文件关联转移完成，新消息关联的文件ID：{}，预期文件ID：{}",
+                        updatedFilesId, originalFilesId);
+
+                if (updatedFilesId == null || !updatedFilesId.equals(originalFilesId)) {
+                    log.error("edit-resend场景：文件关联转移失败！预期：{}，实际：{}", originalFilesId, updatedFilesId);
+                } else {
+                    log.info("edit-resend场景：文件关联转移成功验证通过");
+                }
             }
 
             // 获取更新后的会话消息，构建新的聊天请求
@@ -1888,7 +1911,7 @@ public class ChatServiceImpl implements ChatService {
             }
 
             // 如果最后一条用户消息有附件，需要附加文件内容供AI处理
-            log.debug("检查编辑重发消息附件，hasAttachments: {}, finalFilesId: {}", hasAttachments, finalFilesId);
+            log.debug("检查编辑重发消息附件，hasAttachments: {}, originalFilesId: {}", hasAttachments, originalFilesId);
 
             if (hasAttachments && !messages.isEmpty()) {
                 // 找到最后一条用户消息
@@ -1896,21 +1919,21 @@ public class ChatServiceImpl implements ChatService {
                     Map<String, String> msg = messages.get(i);
                     if ("user".equals(msg.get("role"))) {
                         log.info("开始为编辑重发的用户消息附加文件内容，原始内容：{}，文件ID：{}",
-                                msg.get("content"), finalFilesId);
+                                msg.get("content"), originalFilesId);
 
                         // 处理文件内容并附加到这条消息
                         List<Map<String, String>> tempMessages = new ArrayList<>();
                         tempMessages.add(msg);
-                        List<Map<String, String>> processedMessages = processFilesContent(tempMessages, finalFilesId, userId);
+                        List<Map<String, String>> processedMessages = processFilesContent(tempMessages, originalFilesId, userId);
                         if (!processedMessages.isEmpty()) {
                             // 更新消息内容（仅用于AI处理）
                             String originalContent = msg.get("content");
                             String processedContent = processedMessages.get(0).get("content");
                             msg.put("content", processedContent);
                             log.info("已为编辑重发的用户消息附加文件内容，原始长度：{}，附加后长度：{}，文件数量：{}",
-                                    originalContent.length(), processedContent.length(), finalFilesId.split(",").length);
+                                    originalContent.length(), processedContent.length(), originalFilesId.split(",").length);
                         } else {
-                            log.warn("processFilesContent返回空结果，文件ID：{}", finalFilesId);
+                            log.warn("processFilesContent返回空结果，文件ID：{}", originalFilesId);
                         }
                         break;
                     }

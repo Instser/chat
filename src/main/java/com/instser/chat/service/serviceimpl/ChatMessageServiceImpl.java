@@ -170,6 +170,71 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
         }
     }
 
+    @Override
+    public int deleteMessagesFromPointWithFilePreservation(String messageId, String sessionId, List<String> preserveFileIds) {
+        try {
+            // 获取指定消息
+            ChatMessage targetMessage = getByMessageId(messageId);
+            if (targetMessage == null) {
+                log.warn("未找到要删除的消息，messageId：{}", messageId);
+                return 0;
+            }
+
+            if (!targetMessage.getSessionId().equals(sessionId)) {
+                log.warn("消息不属于指定会话，messageId：{}，sessionId：{}", messageId, sessionId);
+                return 0;
+            }
+
+            // 获取该会话的所有消息，按创建时间排序
+            List<ChatMessage> allMessages = getSessionMessages(sessionId);
+
+            // 找到目标消息的位置，删除该消息及之后的所有消息
+            boolean foundTarget = false;
+            List<Long> messagesToDelete = new ArrayList<>();
+            List<String> messageIdsToDelete = new ArrayList<>();
+
+            for (ChatMessage message : allMessages) {
+                if (message.getMessageId().equals(messageId)) {
+                    foundTarget = true;
+                }
+                if (foundTarget) {
+                    messagesToDelete.add(message.getId());
+                    messageIdsToDelete.add(message.getMessageId());
+                }
+            }
+
+            if (messagesToDelete.isEmpty()) {
+                log.warn("未找到要删除的消息范围，messageId：{}", messageId);
+                return 0;
+            }
+
+            // 先删除关联的文件，但跳过需要保留的文件
+            int deletedFilesCount = 0;
+            try {
+                deletedFilesCount = fileUploadService.deleteFilesByMessageIds(messageIdsToDelete, targetMessage.getUserId(), preserveFileIds);
+                log.info("删除消息关联文件完成（edit-resend场景），文件数量：{}，消息数量：{}，保留文件数量：{}",
+                        deletedFilesCount, messageIdsToDelete.size(), preserveFileIds != null ? preserveFileIds.size() : 0);
+            } catch (Exception e) {
+                log.error("删除消息关联文件失败，继续删除消息", e);
+            }
+
+            // 执行删除消息
+            boolean deleted = this.removeByIds(messagesToDelete);
+            if (deleted) {
+                log.info("成功删除{}条消息和{}个关联文件（edit-resend场景），起始messageId：{}，sessionId：{}",
+                        messagesToDelete.size(), deletedFilesCount, messageId, sessionId);
+                return messagesToDelete.size();
+            } else {
+                log.error("删除消息失败，messageId：{}，sessionId：{}", messageId, sessionId);
+                return 0;
+            }
+
+        } catch (Exception e) {
+            log.error("删除指定消息及之后消息失败（edit-resend场景），messageId：{}，sessionId：{}", messageId, sessionId, e);
+            return 0;
+        }
+    }
+
     /**
      * 从会话中获取模型ID
      *
