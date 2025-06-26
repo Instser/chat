@@ -112,7 +112,7 @@ public class ChatResponseDTO {
         ChatResponseDTO response = new ChatResponseDTO();
         response.setSuccess(true);
         response.setHasContentSent(hasContentSent);
-        response.setRealAiResponse(hasContentSent); // 如果有内容发送，则认为是真实AI响应
+        response.setRealAiResponse(false); // 中断响应不应被当作真实AI响应，避免重复保存
         response.setAiResponseContent(partialContent != null ? partialContent : "");
         response.setShouldRecordUsage(hasContentSent); // 如果有内容发送，则记录使用次数
         response.setInterrupted(true);

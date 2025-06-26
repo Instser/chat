@@ -145,6 +145,15 @@ public class ChatServiceImpl implements ChatService {
                 }
 
                 log.info("用户{}AI响应成功", request.getUserId());
+            } else if (result.isInterrupted() && result.isHasContentSent()) {
+                // 中断响应且有内容发送，记录使用次数但不重复保存（已在中断时保存）
+                boolean recordSuccess = chatLimitService.recordChatUsage(request.getUserId());
+                if (recordSuccess) {
+                    log.info("用户{}中断聊天使用次数记录成功", request.getUserId());
+                } else {
+                    log.warn("用户{}中断聊天使用次数记录失败", request.getUserId());
+                }
+                log.info("用户{}聊天被中断，已保存部分内容", request.getUserId());
             } else if (result.isHasContentSent()) {
                 // 有内容发送（错误响应），但不记录使用次数
                 log.info("用户{}收到错误响应，已保存聊天记录但不记录使用次数", request.getUserId());
@@ -594,6 +603,7 @@ public class ChatServiceImpl implements ChatService {
         final boolean[] hasContentSent = {false};
         final boolean[] isRealAiResponse = {false};
         final boolean[] isInterrupted = {false};
+        final boolean[] interruptSaved = {false}; // 防止多次保存中断内容
         // 用于收集完整的AI响应内容
         final StringBuilder aiResponseContent = new StringBuilder();
 
@@ -689,21 +699,25 @@ public class ChatServiceImpl implements ChatService {
                                 log.info("检测到聊天中断信号，会话ID：{}", request.getSessionId());
                                 isInterrupted[0] = true;
 
-                                // 保存已接收的部分内容
-                                if (aiResponseContent.length() > 0) {
+                                // 只保存一次中断内容，防止重复保存
+                                if (!interruptSaved[0] && aiResponseContent.length() > 0) {
                                     savePartialAiResponse(request.getSessionId(), request.getUserId(), model.getId(),
                                                         aiResponseContent.toString(), true);
+                                    interruptSaved[0] = true; // 标记已保存
                                     log.info("已保存中断前的部分AI响应，内容长度：{}", aiResponseContent.length());
                                 }
 
-                                // 发送中断完成标记
-                                try {
-                                    String interruptData = buildInterruptCompletionData();
-                                    response.getWriter().write(interruptData);
-                                    response.getWriter().flush();
-                                    log.info("已发送中断完成标记");
-                                } catch (Exception e) {
-                                    log.error("发送中断完成标记失败", e);
+                                // 发送中断完成标记（只发送一次）
+                                if (!interruptSaved[0] || aiResponseContent.length() == 0) {
+                                    try {
+                                        String interruptData = buildInterruptCompletionData();
+                                        response.getWriter().write(interruptData);
+                                        response.getWriter().flush();
+                                        log.info("已发送中断完成标记");
+                                        interruptSaved[0] = true; // 标记已处理
+                                    } catch (Exception e) {
+                                        log.error("发送中断完成标记失败", e);
+                                    }
                                 }
 
                                 return; // 停止处理后续数据
@@ -1812,6 +1826,10 @@ public class ChatServiceImpl implements ChatService {
             ChatSession chatSession = validation.getChatSession();
             log.info("编辑重发请求 - 验证通过，用户ID：{}，会话ID：{}", userId, sessionId);
 
+            // 在删除消息之前，先获取被编辑消息的文件关联信息
+            String originalFilesId = fileUploadService.getFileIdsByMessageId(messageId);
+            log.info("被编辑消息的原始文件关联：{}", originalFilesId);
+
             // 删除指定用户消息及之后的所有消息
             int deletedCount = chatMessageService.deleteMessagesFromPoint(messageId, sessionId);
             if (deletedCount == 0) {
@@ -1821,8 +1839,9 @@ public class ChatServiceImpl implements ChatService {
 
             log.info("成功删除{}条消息，准备保存新的用户消息", deletedCount);
 
-            // 检查是否有文件附件
-            boolean hasAttachments = filesId != null && !filesId.trim().isEmpty();
+            // 确定最终的文件关联：优先使用前端传入的filesId，如果没有则使用原始消息的文件关联
+            String finalFilesId = (filesId != null && !filesId.trim().isEmpty()) ? filesId : originalFilesId;
+            boolean hasAttachments = finalFilesId != null && !finalFilesId.trim().isEmpty();
 
             // 保存新的用户原始消息（不包含文件内容）
             ChatMessage newUserMessage = new ChatMessage();
@@ -1848,8 +1867,8 @@ public class ChatServiceImpl implements ChatService {
 
             // 如果有附件，强制更新文件关联信息（edit-resend场景需要强制更新）
             if (hasAttachments) {
-                updateFilesAssociation(filesId, newUserMessage.getMessageId(), sessionId, userId);
-                log.info("edit-resend场景：强制更新文件关联，文件ID：{}，新消息ID：{}", filesId, newUserMessage.getMessageId());
+                updateFilesAssociation(finalFilesId, newUserMessage.getMessageId(), sessionId, userId);
+                log.info("edit-resend场景：文件关联已转移到新消息，文件ID：{}，新消息ID：{}", finalFilesId, newUserMessage.getMessageId());
             }
 
             // 获取更新后的会话消息，构建新的聊天请求
@@ -1869,7 +1888,7 @@ public class ChatServiceImpl implements ChatService {
             }
 
             // 如果最后一条用户消息有附件，需要附加文件内容供AI处理
-            log.debug("检查编辑重发消息附件，hasAttachments: {}, filesId: {}", hasAttachments, filesId);
+            log.debug("检查编辑重发消息附件，hasAttachments: {}, finalFilesId: {}", hasAttachments, finalFilesId);
 
             if (hasAttachments && !messages.isEmpty()) {
                 // 找到最后一条用户消息
@@ -1877,21 +1896,21 @@ public class ChatServiceImpl implements ChatService {
                     Map<String, String> msg = messages.get(i);
                     if ("user".equals(msg.get("role"))) {
                         log.info("开始为编辑重发的用户消息附加文件内容，原始内容：{}，文件ID：{}",
-                                msg.get("content"), filesId);
+                                msg.get("content"), finalFilesId);
 
                         // 处理文件内容并附加到这条消息
                         List<Map<String, String>> tempMessages = new ArrayList<>();
                         tempMessages.add(msg);
-                        List<Map<String, String>> processedMessages = processFilesContent(tempMessages, filesId, userId);
+                        List<Map<String, String>> processedMessages = processFilesContent(tempMessages, finalFilesId, userId);
                         if (!processedMessages.isEmpty()) {
                             // 更新消息内容（仅用于AI处理）
                             String originalContent = msg.get("content");
                             String processedContent = processedMessages.get(0).get("content");
                             msg.put("content", processedContent);
                             log.info("已为编辑重发的用户消息附加文件内容，原始长度：{}，附加后长度：{}，文件数量：{}",
-                                    originalContent.length(), processedContent.length(), filesId.split(",").length);
+                                    originalContent.length(), processedContent.length(), finalFilesId.split(",").length);
                         } else {
-                            log.warn("processFilesContent返回空结果，文件ID：{}", filesId);
+                            log.warn("processFilesContent返回空结果，文件ID：{}", finalFilesId);
                         }
                         break;
                     }
