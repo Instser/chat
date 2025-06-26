@@ -143,7 +143,7 @@ public class FileController {
         fileInfo.put("sessionId", fileUpload.getSessionId());
         fileInfo.put("messageId", fileUpload.getMessageId());
         fileInfo.put("hasContent", fileUpload.getContent() != null && !fileUpload.getContent().isEmpty());
-        fileInfo.put("uploadedAt", fileUpload.getCreateTime().toString());
+        fileInfo.put("uploadedAt", fileUpload.getCreatedTime().toString());
         fileInfo.put("updatedAt", fileUpload.getUpdateTime().toString());
 
         return Result.success(fileInfo, "获取文件信息成功");
@@ -253,7 +253,7 @@ public class FileController {
             fileInfo.put("sessionId", fileUpload.getSessionId());
             fileInfo.put("messageId", fileUpload.getMessageId());
             fileInfo.put("hasContent", fileUpload.getContent() != null && !fileUpload.getContent().isEmpty());
-            fileInfo.put("uploadedAt", fileUpload.getCreateTime().toString());
+            fileInfo.put("uploadedAt", fileUpload.getCreatedTime().toString());
 
             fileInfoList.add(fileInfo);
         }
@@ -328,7 +328,7 @@ public class FileController {
             response.put("fileType", fileUpload.getFileType());
             response.put("fileSize", fileUpload.getFileSize());
             response.put("content", content);
-            response.put("uploadedAt", fileUpload.getCreateTime().toString());
+            response.put("uploadedAt", fileUpload.getCreatedTime().toString());
 
             return Result.success(response, "文件下载成功");
 
