@@ -35,6 +35,31 @@ public interface ChatMessageService extends IService<ChatMessage> {
     Long sendMessage(String sessionId, String role, String content, Long userId);
 
     /**
+     * 发送消息（支持指定角色和模型ID）
+     *
+     * @param sessionId 会话ID
+     * @param role      消息角色（user/assistant）
+     * @param content   消息内容
+     * @param userId    用户ID
+     * @param modelId   模型ID
+     * @return 消息ID
+     */
+    Long sendMessage(String sessionId, String role, String content, Long userId, Long modelId);
+
+    /**
+     * 发送消息（支持指定角色、模型ID和附件标识）
+     *
+     * @param sessionId 会话ID
+     * @param role      消息角色（user/assistant）
+     * @param content   消息内容
+     * @param userId    用户ID
+     * @param modelId   模型ID
+     * @param hasAttachments 是否包含附件
+     * @return 消息ID
+     */
+    Long sendMessage(String sessionId, String role, String content, Long userId, Long modelId, Integer hasAttachments);
+
+    /**
      * 获取会话消息列表
      *
      * @param sessionId 会话ID

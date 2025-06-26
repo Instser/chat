@@ -4,7 +4,10 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.instser.chat.dao.ChatMessageDao;
 import com.instser.chat.entity.ChatMessage;
+import com.instser.chat.entity.ChatSession;
 import com.instser.chat.service.ChatMessageService;
+import com.instser.chat.service.ChatSessionService;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -20,7 +23,10 @@ import java.util.List;
  */
 @Slf4j
 @Service
+@RequiredArgsConstructor
 public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMessage> implements ChatMessageService {
+
+    private final ChatSessionService chatSessionService;
 
     @Override
     public Long sendMessage(String sessionId, String content, Long userId) {
@@ -30,22 +36,36 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
 
     @Override
     public Long sendMessage(String sessionId, String role, String content, Long userId) {
+        // 从会话中获取modelId，如果获取失败则使用默认值1L
+        Long modelId = getModelIdFromSession(sessionId);
+        return sendMessage(sessionId, role, content, userId, modelId);
+    }
+
+    @Override
+    public Long sendMessage(String sessionId, String role, String content, Long userId, Long modelId) {
+        return sendMessage(sessionId, role, content, userId, modelId, 0);
+    }
+
+    @Override
+    public Long sendMessage(String sessionId, String role, String content, Long userId, Long modelId, Integer hasAttachments) {
         ChatMessage message = new ChatMessage();
         message.setMessageId(java.util.UUID.randomUUID().toString());
         message.setSessionId(sessionId);
         message.setRole(role); // 使用传入的角色信息
         message.setContent(content);
         message.setMessageType("text");
+        message.setHasAttachments(hasAttachments != null ? hasAttachments : 0); // 设置附件标识
         message.setUserId(userId);
-        message.setModelId(1L); // 默认模型ID，后续可以从会话中获取
+        message.setModelId(modelId != null ? modelId : 1L); // 使用传入的modelId，如果为null则使用默认值
         message.setTokenCount(content.length() / 4); // 简单估算token数
         message.setStatus(1); // 成功状态
         message.setCreatedTime(LocalDateTime.now());
         message.setUpdateTime(LocalDateTime.now());
 
         this.save(message);
-        log.info("{}消息保存成功，消息ID：{}，角色：{}",
-                "assistant".equals(role) ? "AI" : "用户", message.getId(), role);
+        log.info("{}消息保存成功，消息ID：{}，角色：{}，模型ID：{}，附件：{}",
+                "assistant".equals(role) ? "AI" : "用户", message.getId(), role, modelId,
+                hasAttachments != null && hasAttachments > 0 ? "有" : "无");
 
         return message.getId();
     }
@@ -135,5 +155,25 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
             log.error("删除指定消息及之后消息失败，messageId：{}，sessionId：{}", messageId, sessionId, e);
             return 0;
         }
+    }
+
+    /**
+     * 从会话中获取模型ID
+     *
+     * @param sessionId 会话ID
+     * @return 模型ID，如果获取失败则返回1L
+     */
+    private Long getModelIdFromSession(String sessionId) {
+        try {
+            if (sessionId != null) {
+                ChatSession session = chatSessionService.getSessionInfo(sessionId);
+                if (session != null && session.getModelId() != null) {
+                    return session.getModelId();
+                }
+            }
+        } catch (Exception e) {
+            log.warn("从会话{}获取模型ID失败，使用默认值", sessionId, e);
+        }
+        return 1L; // 默认模型ID
     }
 }

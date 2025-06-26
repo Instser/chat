@@ -46,6 +46,11 @@ public class ChatMessageVO implements Serializable {
     private String messageType;
 
     /**
+     * 是否包含附件
+     */
+    private Boolean hasAttachments;
+
+    /**
      * 用户ID
      */
     @JsonSerialize(using = ToStringSerializer.class)

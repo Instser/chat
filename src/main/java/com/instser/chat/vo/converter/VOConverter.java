@@ -93,6 +93,7 @@ public class VOConverter {
         chatMessageVO.setChatId(chatMessage.getSessionId()); // 前端使用chatId
         chatMessageVO.setCreatedTime(chatMessage.getCreatedTime()); // 统一使用createdTime
         chatMessageVO.setUpdateTime(chatMessage.getUpdateTime()); // 统一使用updateTime
+        chatMessageVO.setHasAttachments(chatMessage.getHasAttachments() != null && chatMessage.getHasAttachments() > 0); // 设置附件标识
         
         return chatMessageVO;
     }

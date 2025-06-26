@@ -1,13 +1,33 @@
 # 当前工作内容
 
-**📅 最后更新**: 2025-06-26 11:30:00
+**📅 最后更新**: 2025-06-26 13:08:00
 **👤 更新人员**: Augment Agent
-**📊 文档版本**: v8.1
+**📊 文档版本**: v8.3
 
 ## 当前任务
-已完成retry和edit-resend接口ModelId支持及代码优化：
+已完成Retry和EditResend附件内容分离优化：
 
-### 最新完成 (2025-06-26 11:30)
+### 最新完成 (2025-06-26 13:08)
+1. **Edit-Resend功能优化** - ✅ 修改processEditResendChat方法，支持filesId参数，保存原始内容到数据库
+2. **Retry功能优化** - ✅ 修改processRetryChat方法，自动检测历史消息附件并动态附加文件内容
+3. **FileUploadService扩展** - ✅ 添加getFileIdsByMessageId方法，根据消息ID获取关联的文件ID列表
+4. **附件检测机制** - ✅ 通过has_attachments字段快速检测消息是否包含附件，避免不必要的数据库查询
+5. **动态内容附加** - ✅ 在AI处理时动态附加文件内容，数据库中保持原始用户内容
+6. **文件关联更新** - ✅ Edit-Resend时正确更新新消息与文件的关联关系
+7. **向后兼容性** - ✅ 保持原有API接口不变，自动处理历史数据中的附件检测
+8. **错误处理完善** - ✅ 添加完善的异常处理和降级机制，确保系统稳定性
+
+### 历史完成 (2025-06-26 12:45)
+1. **ModelID硬编码问题修复** - ✅ 修复ChatMessageServiceImpl中硬编码modelId=1L的问题，实现动态绑定
+2. **接口扩展** - ✅ 在ChatMessageService中添加支持modelId参数的sendMessage重载方法
+3. **会话模型获取** - ✅ 添加getModelIdFromSession方法，从ChatSession表中动态获取模型ID
+4. **服务层重构** - ✅ 修改saveAiResponse、saveErrorResponse、saveUserMessage方法，传递正确的modelId
+5. **向后兼容性** - ✅ 保持原有API接口不变，自动从会话中获取modelId，降级到默认值1L
+6. **依赖注入优化** - ✅ 在ChatMessageServiceImpl中注入ChatSessionService，支持会话信息查询
+7. **错误处理完善** - ✅ 添加完善的异常处理和降级机制，确保系统稳定性
+8. **日志增强** - ✅ 在消息保存时记录实际使用的modelId，便于问题排查和数据分析
+
+### 历史完成 (2025-06-26 11:30)
 1. **ModelId参数支持** - ✅ 为retry和edit-resend接口添加可选的modelId参数，支持用户在重试时选择不同模型
 2. **模型选择逻辑** - ✅ 实现优先使用传入modelId，否则使用会话原有模型的智能选择机制
 3. **会话模型更新** - ✅ 添加ChatSessionService.updateSessionModel方法，使用新模型时自动更新会话状态
@@ -660,3 +680,5 @@
 | 2025-06-25 22:06:00 | v7.3 | 优化AI请求日志记录，添加详细请求信息和提示词截取显示 | Augment Agent |
 | 2025-06-25 22:25:00 | v7.4 | 完成OpenAiServiceImpl清除和代码优化，移除未使用代码简化项目结构 | Augment Agent |
 | 2025-06-25 22:45:00 | v7.5 | 实现Chat消息接口filesName字段支持，获取消息时自动包含关联文件名列表 | Augment Agent |
+| 2025-06-26 12:45:00 | v8.2 | 修复消息ModelID硬编码问题，实现动态绑定机制 | Augment Agent |
+| 2025-06-26 13:08:00 | v8.3 | 优化Retry和EditResend功能，实现附件内容分离机制 | Augment Agent |

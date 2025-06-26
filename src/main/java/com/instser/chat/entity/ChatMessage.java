@@ -57,6 +57,12 @@ public class ChatMessage implements Serializable {
     private String messageType;
 
     /**
+     * 是否包含附件（0-无附件，1-有附件）
+     */
+    @TableField("has_attachments")
+    private Integer hasAttachments;
+
+    /**
      * 用户ID
      */
     @TableField("user_id")

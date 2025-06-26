@@ -71,6 +71,14 @@ public interface FileUploadService extends IService<FileUpload> {
     List<FileUpload> getByMessageId(String messageId);
 
     /**
+     * 根据消息ID获取文件ID列表（逗号分隔）
+     *
+     * @param messageId 消息ID
+     * @return 文件ID列表（逗号分隔），如果没有文件则返回null
+     */
+    String getFileIdsByMessageId(String messageId);
+
+    /**
      * 删除文件（逻辑删除）
      *
      * @param fileId 文件ID

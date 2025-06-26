@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.Base64;
+import java.util.stream.Collectors;
 
 /**
  * 文件上传服务实现类
@@ -195,6 +196,23 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
     @Override
     public List<FileUpload> getByMessageId(String messageId) {
         return fileUploadDao.selectByMessageId(messageId);
+    }
+
+    @Override
+    public String getFileIdsByMessageId(String messageId) {
+        if (messageId == null || messageId.trim().isEmpty()) {
+            return null;
+        }
+
+        List<FileUpload> files = fileUploadDao.selectByMessageId(messageId);
+        if (files == null || files.isEmpty()) {
+            return null;
+        }
+
+        // 将文件ID列表转换为逗号分隔的字符串
+        return files.stream()
+                .map(FileUpload::getFileId)
+                .collect(Collectors.joining(","));
     }
 
     @Override

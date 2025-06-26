@@ -247,7 +247,7 @@ public class ChatApiController {
             }
 
             // 调用ChatService处理编辑重发逻辑（chatId实际对应sessionId）
-            chatService.processEditResendChat(chatId, messageId, newContent, modelId, authentication, response);
+            chatService.processEditResendChat(chatId, messageId, newContent, null, modelId, authentication, response);
 
         } catch (Exception e) {
             handleCommonException(e, "编辑重发", response);

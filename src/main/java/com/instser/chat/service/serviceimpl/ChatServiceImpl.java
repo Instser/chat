@@ -28,6 +28,7 @@ import reactor.core.publisher.Flux;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
@@ -98,15 +99,18 @@ public class ChatServiceImpl implements ChatService {
             log.info("用户{}聊天权限验证通过，套餐：{}，限制类型：{}",
                     request.getUserId(), limitCheck.getPackageName(), limitCheck.getLimitType());
 
-            // 处理文件内容并附加到用户消息中
-            List<Map<String, String>> processedMessages = processFilesContent(request.getMessages(), request.getFilesId(), request.getUserId());
-            request.setMessages(processedMessages);
+            // 检查是否有文件附件
+            boolean hasAttachments = request.getFilesId() != null && !request.getFilesId().trim().isEmpty();
 
-            // 保存用户消息到数据库
+            // 保存用户原始消息到数据库（不包含文件内容）
             String userMessageId = null;
             if (request.getSessionId() != null) {
-                userMessageId = saveUserMessage(request.getMessages(), request.getSessionId(), request.getUserId());
+                userMessageId = saveUserOriginalMessage(request.getMessages(), request.getSessionId(), request.getUserId(), model.getId(), hasAttachments);
             }
+
+            // 处理文件内容并附加到用户消息中（仅用于AI处理）
+            List<Map<String, String>> processedMessages = processFilesContent(request.getMessages(), request.getFilesId(), request.getUserId());
+            request.setMessages(processedMessages);
 
             // 判断是否会生成标题
             boolean willGenerateTitle = request.getSessionId() != null && isFirstAiResponse(request.getMessages());
@@ -198,6 +202,13 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public String saveUserMessage(List<Map<String, String>> messages, String sessionId, Long userId) {
+        // 从会话中获取modelId，如果获取失败则使用null（会在sendMessage中处理）
+        Long modelId = getModelIdFromSession(sessionId);
+        return saveUserMessage(messages, sessionId, userId, modelId);
+    }
+
+    @Override
+    public String saveUserMessage(List<Map<String, String>> messages, String sessionId, Long userId, Long modelId) {
         try {
             if (messages == null || messages.isEmpty() || sessionId == null || userId == null) {
                 log.warn("无法保存用户消息到数据库，缺少必要参数");
@@ -215,13 +226,13 @@ public class ChatServiceImpl implements ChatService {
             }
 
             if (lastUserMessage != null && !lastUserMessage.trim().isEmpty()) {
-                Long messageDbId = chatMessageService.sendMessage(sessionId, "user", lastUserMessage, userId);
+                Long messageDbId = chatMessageService.sendMessage(sessionId, "user", lastUserMessage, userId, modelId);
                 if (messageDbId != null) {
                     // 获取刚创建的消息以获取messageId
                     ChatMessage savedMessage = chatMessageService.getById(messageDbId);
                     if (savedMessage != null) {
-                        log.info("用户消息已保存到数据库，会话ID：{}，用户ID：{}，消息ID：{}，内容长度：{}",
-                                sessionId, userId, savedMessage.getMessageId(), lastUserMessage.length());
+                        log.info("用户消息已保存到数据库，会话ID：{}，用户ID：{}，消息ID：{}，模型ID：{}，内容长度：{}",
+                                sessionId, userId, savedMessage.getMessageId(), modelId, lastUserMessage.length());
                         return savedMessage.getMessageId();
                     }
                 }
@@ -230,6 +241,44 @@ public class ChatServiceImpl implements ChatService {
             }
         } catch (Exception e) {
             log.error("保存用户消息到数据库失败", e);
+        }
+        return null;
+    }
+
+    @Override
+    public String saveUserOriginalMessage(List<Map<String, String>> originalMessages, String sessionId, Long userId, Long modelId, boolean hasAttachments) {
+        try {
+            if (originalMessages == null || originalMessages.isEmpty() || sessionId == null || userId == null) {
+                log.warn("无法保存用户原始消息到数据库，缺少必要参数");
+                return null;
+            }
+
+            // 从消息列表中找到最后一条用户消息
+            String lastUserMessage = null;
+            for (int i = originalMessages.size() - 1; i >= 0; i--) {
+                Map<String, String> message = originalMessages.get(i);
+                if ("user".equals(message.get("role"))) {
+                    lastUserMessage = message.get("content");
+                    break;
+                }
+            }
+
+            if (lastUserMessage != null && !lastUserMessage.trim().isEmpty()) {
+                Long messageDbId = chatMessageService.sendMessage(sessionId, "user", lastUserMessage, userId, modelId, hasAttachments ? 1 : 0);
+                if (messageDbId != null) {
+                    // 获取刚创建的消息以获取messageId
+                    ChatMessage savedMessage = chatMessageService.getById(messageDbId);
+                    if (savedMessage != null) {
+                        log.info("用户原始消息已保存到数据库，会话ID：{}，用户ID：{}，消息ID：{}，模型ID：{}，附件：{}，内容长度：{}",
+                                sessionId, userId, savedMessage.getMessageId(), modelId, hasAttachments ? "有" : "无", lastUserMessage.length());
+                        return savedMessage.getMessageId();
+                    }
+                }
+            } else {
+                log.warn("未找到有效的用户消息，跳过保存");
+            }
+        } catch (Exception e) {
+            log.error("保存用户原始消息到数据库失败", e);
         }
         return null;
     }
@@ -286,8 +335,8 @@ public class ChatServiceImpl implements ChatService {
     public void saveAiResponse(String sessionId, Long userId, Long modelId, String content) {
         try {
             if (sessionId != null && userId != null && modelId != null && content != null && !content.trim().isEmpty()) {
-                chatMessageService.sendMessage(sessionId, "assistant", content, userId);
-                log.info("AI响应已保存到数据库，会话ID：{}，用户ID：{}，内容长度：{}", sessionId, userId, content.length());
+                chatMessageService.sendMessage(sessionId, "assistant", content, userId, modelId);
+                log.info("AI响应已保存到数据库，会话ID：{}，用户ID：{}，模型ID：{}，内容长度：{}", sessionId, userId, modelId, content.length());
             } else {
                 log.warn("无法保存AI响应到数据库，缺少必要参数：sessionId={}, userId={}, modelId={}, contentLength={}",
                         sessionId, userId, modelId, content != null ? content.length() : 0);
@@ -301,8 +350,8 @@ public class ChatServiceImpl implements ChatService {
     public void saveErrorResponse(String sessionId, Long userId, Long modelId, String errorContent) {
         try {
             if (sessionId != null && userId != null && modelId != null) {
-                chatMessageService.sendMessage(sessionId, "assistant", errorContent, userId);
-                log.info("错误响应已保存到数据库，会话ID：{}，用户ID：{}，内容：{}", sessionId, userId, errorContent);
+                chatMessageService.sendMessage(sessionId, "assistant", errorContent, userId, modelId);
+                log.info("错误响应已保存到数据库，会话ID：{}，用户ID：{}，模型ID：{}，内容：{}", sessionId, userId, modelId, errorContent);
             } else {
                 log.warn("无法保存错误响应到数据库，缺少必要参数：sessionId={}, userId={}, modelId={}",
                         sessionId, userId, modelId);
@@ -1436,11 +1485,41 @@ public class ChatServiceImpl implements ChatService {
 
             // 构建消息列表用于AI请求
             List<Map<String, String>> messages = new ArrayList<>();
+            ChatMessage lastUserMessageEntity = null;
             for (ChatMessage message : remainingMessages) {
                 Map<String, String> msgMap = new HashMap<>();
                 msgMap.put("role", message.getRole());
                 msgMap.put("content", message.getContent());
                 messages.add(msgMap);
+
+                // 记录最后一条用户消息实体，用于检查附件
+                if ("user".equals(message.getRole())) {
+                    lastUserMessageEntity = message;
+                }
+            }
+
+            // 检查最后一条用户消息是否有附件，如果有则附加文件内容供AI处理
+            if (lastUserMessageEntity != null && lastUserMessageEntity.getHasAttachments() != null && lastUserMessageEntity.getHasAttachments() > 0) {
+                // 获取该消息关联的文件ID列表
+                String filesId = fileUploadService.getFileIdsByMessageId(lastUserMessageEntity.getMessageId());
+                if (filesId != null && !filesId.trim().isEmpty()) {
+                    // 找到最后一条用户消息并附加文件内容
+                    for (int i = messages.size() - 1; i >= 0; i--) {
+                        Map<String, String> msg = messages.get(i);
+                        if ("user".equals(msg.get("role"))) {
+                            // 处理文件内容并附加到这条消息
+                            List<Map<String, String>> tempMessages = new ArrayList<>();
+                            tempMessages.add(msg);
+                            List<Map<String, String>> processedMessages = processFilesContent(tempMessages, filesId, userId);
+                            if (!processedMessages.isEmpty()) {
+                                // 更新消息内容（仅用于AI处理）
+                                msg.put("content", processedMessages.get(0).get("content"));
+                                log.info("已为重试请求的用户消息附加文件内容，文件ID：{}", filesId);
+                            }
+                            break;
+                        }
+                    }
+                }
             }
 
             // 获取并验证AI模型
@@ -1502,8 +1581,8 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
-    public void processEditResendChat(String sessionId, String messageId, String newContent, Long modelId, Authentication authentication, HttpServletResponse response) {
-        log.info("开始处理编辑重发请求，sessionId：{}，messageId：{}，newContent长度：{}，modelId：{}", sessionId, messageId, newContent.length(), modelId);
+    public void processEditResendChat(String sessionId, String messageId, String newContent, String filesId, Long modelId, Authentication authentication, HttpServletResponse response) {
+        log.info("开始处理编辑重发请求，sessionId：{}，messageId：{}，newContent长度：{}，filesId：{}，modelId：{}", sessionId, messageId, newContent.length(), filesId, modelId);
 
         try {
             // 设置响应头
@@ -1529,16 +1608,22 @@ public class ChatServiceImpl implements ChatService {
 
             log.info("成功删除{}条消息，准备保存新的用户消息", deletedCount);
 
-            // 保存新的用户消息
+            // 检查是否有文件附件
+            boolean hasAttachments = filesId != null && !filesId.trim().isEmpty();
+
+            // 保存新的用户原始消息（不包含文件内容）
             ChatMessage newUserMessage = new ChatMessage();
             newUserMessage.setMessageId(java.util.UUID.randomUUID().toString());
             newUserMessage.setSessionId(sessionId);
             newUserMessage.setRole("user");
-            newUserMessage.setContent(newContent);
+            newUserMessage.setContent(newContent); // 保存原始内容
             newUserMessage.setMessageType("text");
+            newUserMessage.setHasAttachments(hasAttachments ? 1 : 0); // 设置附件标识
             newUserMessage.setUserId(userId);
             newUserMessage.setModelId(chatSession.getModelId());
             newUserMessage.setStatus(1); // 成功状态
+            newUserMessage.setCreatedTime(LocalDateTime.now());
+            newUserMessage.setUpdateTime(LocalDateTime.now());
 
             boolean saved = chatMessageService.save(newUserMessage);
             if (!saved) {
@@ -1546,7 +1631,12 @@ public class ChatServiceImpl implements ChatService {
                 return;
             }
 
-            log.info("成功保存新的用户消息，messageId：{}", newUserMessage.getMessageId());
+            log.info("成功保存新的用户消息，messageId：{}，附件：{}", newUserMessage.getMessageId(), hasAttachments ? "有" : "无");
+
+            // 如果有附件，更新文件关联信息
+            if (hasAttachments) {
+                updateFilesAssociation(filesId, newUserMessage.getMessageId(), sessionId, userId);
+            }
 
             // 获取更新后的会话消息，构建新的聊天请求
             List<ChatMessage> remainingMessages = chatMessageService.getSessionMessages(sessionId);
@@ -1562,6 +1652,26 @@ public class ChatServiceImpl implements ChatService {
                 msgMap.put("role", message.getRole());
                 msgMap.put("content", message.getContent());
                 messages.add(msgMap);
+            }
+
+            // 如果最后一条用户消息有附件，需要附加文件内容供AI处理
+            if (hasAttachments && !messages.isEmpty()) {
+                // 找到最后一条用户消息
+                for (int i = messages.size() - 1; i >= 0; i--) {
+                    Map<String, String> msg = messages.get(i);
+                    if ("user".equals(msg.get("role"))) {
+                        // 处理文件内容并附加到这条消息
+                        List<Map<String, String>> tempMessages = new ArrayList<>();
+                        tempMessages.add(msg);
+                        List<Map<String, String>> processedMessages = processFilesContent(tempMessages, filesId, userId);
+                        if (!processedMessages.isEmpty()) {
+                            // 更新消息内容（仅用于AI处理）
+                            msg.put("content", processedMessages.get(0).get("content"));
+                            log.info("已为编辑重发的用户消息附加文件内容，文件数量：{}", filesId.split(",").length);
+                        }
+                        break;
+                    }
+                }
             }
 
             // 获取并验证AI模型
@@ -1620,5 +1730,25 @@ public class ChatServiceImpl implements ChatService {
                 log.error("发送编辑重发错误消息失败", ex);
             }
         }
+    }
+
+    /**
+     * 从会话中获取模型ID
+     *
+     * @param sessionId 会话ID
+     * @return 模型ID，如果获取失败则返回null
+     */
+    private Long getModelIdFromSession(String sessionId) {
+        try {
+            if (sessionId != null) {
+                ChatSession session = chatSessionService.getSessionInfo(sessionId);
+                if (session != null && session.getModelId() != null) {
+                    return session.getModelId();
+                }
+            }
+        } catch (Exception e) {
+            log.warn("从会话{}获取模型ID失败", sessionId, e);
+        }
+        return null; // 返回null，让sendMessage方法使用默认值
     }
 }
