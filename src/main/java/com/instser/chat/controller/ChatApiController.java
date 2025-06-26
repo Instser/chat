@@ -236,6 +236,7 @@ public class ChatApiController {
             String chatId = (String) request.get("chatId");
             String messageId = (String) request.get("messageId");
             String newContent = (String) request.get("newContent");
+            String filesId = (String) request.get("filesId");
             Long modelId = extractModelId(request, response);
 
             // 验证基础参数
@@ -249,7 +250,7 @@ public class ChatApiController {
             }
 
             // 调用ChatService处理编辑重发逻辑（chatId实际对应sessionId）
-            chatService.processEditResendChat(chatId, messageId, newContent, null, modelId, authentication, response);
+            chatService.processEditResendChat(chatId, messageId, newContent, filesId, modelId, authentication, response);
 
         } catch (Exception e) {
             handleCommonException(e, "编辑重发", response);

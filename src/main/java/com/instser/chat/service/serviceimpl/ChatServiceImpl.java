@@ -8,6 +8,7 @@ import com.instser.chat.dto.ChatResponseDTO;
 import com.instser.chat.entity.AiModel;
 import com.instser.chat.entity.ChatMessage;
 import com.instser.chat.entity.ChatSession;
+import com.instser.chat.entity.FileUpload;
 import com.instser.chat.service.*;
 import com.instser.chat.vo.ChatLimitVO;
 import jakarta.servlet.http.HttpServletResponse;
@@ -100,14 +101,18 @@ public class ChatServiceImpl implements ChatService {
             log.info("用户{}聊天权限验证通过，套餐：{}，限制类型：{}",
                     request.getUserId(), limitCheck.getPackageName(), limitCheck.getLimitType());
 
+            // 如果没有sessionId，创建新会话
+            if (request.getSessionId() == null || request.getSessionId().trim().isEmpty()) {
+                String newSessionId = chatSessionService.createSession(request.getUserId(), model.getId());
+                request.setSessionId(newSessionId);
+                log.info("为用户{}创建新会话，会话ID：{}", request.getUserId(), newSessionId);
+            }
+
             // 检查是否有文件附件
             boolean hasAttachments = request.getFilesId() != null && !request.getFilesId().trim().isEmpty();
 
             // 保存用户原始消息到数据库（不包含文件内容）
-            String userMessageId = null;
-            if (request.getSessionId() != null) {
-                userMessageId = saveUserOriginalMessage(request.getMessages(), request.getSessionId(), request.getUserId(), model.getId(), hasAttachments);
-            }
+            String userMessageId = saveUserOriginalMessage(request.getMessages(), request.getSessionId(), request.getUserId(), model.getId(), hasAttachments);
 
             // 处理文件内容并附加到用户消息中（仅用于AI处理）
             List<Map<String, String>> processedMessages = processFilesContent(request.getMessages(), request.getFilesId(), request.getUserId());
@@ -134,9 +139,9 @@ public class ChatServiceImpl implements ChatService {
                     saveAiResponse(request.getSessionId(), request.getUserId(), model.getId(), result.getAiResponseContent());
                 }
 
-                // AI响应成功后，更新文件的关联信息
+                // AI响应成功后，更新文件的关联信息（仅当文件尚未关联到任何消息时）
                 if (userMessageId != null && request.getFilesId() != null && !request.getFilesId().trim().isEmpty()) {
-                    updateFilesAssociation(request.getFilesId(), userMessageId, request.getSessionId(), request.getUserId());
+                    updateFilesAssociationIfNeeded(request.getFilesId(), userMessageId, request.getSessionId(), request.getUserId());
                 }
 
                 log.info("用户{}AI响应成功", request.getUserId());
@@ -329,6 +334,60 @@ public class ChatServiceImpl implements ChatService {
 
         } catch (Exception e) {
             log.error("更新文件关联信息失败", e);
+        }
+    }
+
+    /**
+     * 仅在文件尚未关联到任何消息时更新文件关联信息
+     * @param filesId 文件ID列表（逗号分隔）
+     * @param messageId 消息ID
+     * @param sessionId 会话ID
+     * @param userId 用户ID
+     */
+    private void updateFilesAssociationIfNeeded(String filesId, String messageId, String sessionId, Long userId) {
+        try {
+            if (filesId == null || filesId.trim().isEmpty() || messageId == null || sessionId == null || userId == null) {
+                log.warn("无法更新文件关联信息，缺少必要参数");
+                return;
+            }
+
+            // 解析文件ID列表
+            String[] fileIds = filesId.split(",");
+            int successCount = 0;
+            int totalCount = fileIds.length;
+
+            for (String fileId : fileIds) {
+                fileId = fileId.trim();
+                if (fileId.isEmpty()) {
+                    continue;
+                }
+
+                try {
+                    // 检查文件是否已经关联到其他消息
+                    FileUpload existingFile = fileUploadService.getByFileId(fileId);
+                    if (existingFile != null && existingFile.getMessageId() != null && !existingFile.getMessageId().trim().isEmpty()) {
+                        log.info("文件{}已关联到消息{}，跳过更新", fileId, existingFile.getMessageId());
+                        continue;
+                    }
+
+                    // 更新文件的messageId和sessionId
+                    boolean updated = fileUploadService.updateFileAssociation(fileId, messageId, sessionId, userId);
+                    if (updated) {
+                        successCount++;
+                        log.info("文件{}关联信息已更新，消息ID：{}，会话ID：{}，用户ID：{}", fileId, messageId, sessionId, userId);
+                    } else {
+                        log.warn("文件{}关联信息更新失败，用户ID：{}", fileId, userId);
+                    }
+                } catch (Exception e) {
+                    log.error("文件{}关联信息更新时发生异常，用户ID：{}", fileId, userId, e);
+                }
+            }
+
+            log.info("文件关联信息条件更新完成，成功：{}/{}，消息ID：{}，会话ID：{}，用户ID：{}",
+                    successCount, totalCount, messageId, sessionId, userId);
+
+        } catch (Exception e) {
+            log.error("条件更新文件关联信息失败", e);
         }
     }
 
@@ -1787,9 +1846,10 @@ public class ChatServiceImpl implements ChatService {
 
             log.info("成功保存新的用户消息，messageId：{}，附件：{}", newUserMessage.getMessageId(), hasAttachments ? "有" : "无");
 
-            // 如果有附件，更新文件关联信息
+            // 如果有附件，强制更新文件关联信息（edit-resend场景需要强制更新）
             if (hasAttachments) {
                 updateFilesAssociation(filesId, newUserMessage.getMessageId(), sessionId, userId);
+                log.info("edit-resend场景：强制更新文件关联，文件ID：{}，新消息ID：{}", filesId, newUserMessage.getMessageId());
             }
 
             // 获取更新后的会话消息，构建新的聊天请求
