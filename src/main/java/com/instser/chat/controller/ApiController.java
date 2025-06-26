@@ -396,38 +396,18 @@ public class ApiController {
             return Result.failed("消息不属于此聊天");
         }
 
-        // 获取该聊天的所有消息
-        List<ChatMessage> allMessages = chatMessageService.getSessionMessages(chatId);
-
-        // 找到目标消息的位置，删除该消息及之后的所有消息
-        boolean foundTarget = false;
-        List<Long> messagesToDelete = new java.util.ArrayList<>();
-
-        for (ChatMessage message : allMessages) {
-            if (message.getMessageId().equals(messageId)) {
-                foundTarget = true;
-            }
-            if (foundTarget) {
-                messagesToDelete.add(message.getId());
-            }
-        }
-
-        if (messagesToDelete.isEmpty()) {
-            return Result.failed("未找到要删除的消息");
-        }
-
-        // 执行删除
-        boolean deleted = chatMessageService.removeByIds(messagesToDelete);
-        if (!deleted) {
+        // 调用ChatMessageService的deleteMessagesFromPoint方法（包含文件删除逻辑）
+        int deletedCount = chatMessageService.deleteMessagesFromPoint(messageId, chatId);
+        if (deletedCount == 0) {
             return Result.failed("删除消息失败");
         }
 
         Map<String, Object> response = new HashMap<>();
         response.put("success", true);
-        response.put("deletedCount", messagesToDelete.size());
+        response.put("deletedCount", deletedCount);
 
         log.info("范围删除消息成功，聊天ID：{}，起始消息ID：{}，删除数量：{}",
-                chatId, messageId, messagesToDelete.size());
+                chatId, messageId, deletedCount);
         return Result.success(response, "范围删除消息成功");
     }
 

@@ -7,6 +7,7 @@ import com.instser.chat.entity.ChatMessage;
 import com.instser.chat.entity.ChatSession;
 import com.instser.chat.service.ChatMessageService;
 import com.instser.chat.service.ChatSessionService;
+import com.instser.chat.service.FileUploadService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -27,6 +28,7 @@ import java.util.List;
 public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMessage> implements ChatMessageService {
 
     private final ChatSessionService chatSessionService;
+    private final FileUploadService fileUploadService;
 
     @Override
     public Long sendMessage(String sessionId, String content, Long userId) {
@@ -125,6 +127,7 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
             // 找到目标消息的位置，删除该消息及之后的所有消息
             boolean foundTarget = false;
             List<Long> messagesToDelete = new ArrayList<>();
+            List<String> messageIdsToDelete = new ArrayList<>();
 
             for (ChatMessage message : allMessages) {
                 if (message.getMessageId().equals(messageId)) {
@@ -132,6 +135,7 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
                 }
                 if (foundTarget) {
                     messagesToDelete.add(message.getId());
+                    messageIdsToDelete.add(message.getMessageId());
                 }
             }
 
@@ -140,11 +144,20 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
                 return 0;
             }
 
-            // 执行删除
+            // 先删除关联的文件
+            int deletedFilesCount = 0;
+            try {
+                deletedFilesCount = fileUploadService.deleteFilesByMessageIds(messageIdsToDelete, targetMessage.getUserId());
+                log.info("删除消息关联文件完成，文件数量：{}，消息数量：{}", deletedFilesCount, messageIdsToDelete.size());
+            } catch (Exception e) {
+                log.error("删除消息关联文件失败，继续删除消息", e);
+            }
+
+            // 执行删除消息
             boolean deleted = this.removeByIds(messagesToDelete);
             if (deleted) {
-                log.info("成功删除{}条消息，起始messageId：{}，sessionId：{}",
-                        messagesToDelete.size(), messageId, sessionId);
+                log.info("成功删除{}条消息和{}个关联文件，起始messageId：{}，sessionId：{}",
+                        messagesToDelete.size(), deletedFilesCount, messageId, sessionId);
                 return messagesToDelete.size();
             } else {
                 log.error("删除消息失败，messageId：{}，sessionId：{}", messageId, sessionId);

@@ -1274,8 +1274,8 @@ public class ChatServiceImpl implements ChatService {
                             fileContentBuilder.append(",");
                         }
 
-                        // 构建文件内容格式：{"fileId_123_name":"fileId_123_content"}
-                        fileContentBuilder.append("{\"fileId_").append(fileId).append("_").append(fileName)
+                        // 构建文件内容格式：{"fileName":"fileContent"}
+                        fileContentBuilder.append("{\"").append(fileName)
                                          .append("\":\"").append(escapeJsonString(fileContent)).append("\"}");
 
                         hasValidFiles = true;
@@ -1389,7 +1389,7 @@ public class ChatServiceImpl implements ChatService {
     }
 
     /**
-     * 截取内容，保留前15和后15个字符
+     * 截取内容，保留前15和后15个字符，并解析文件信息
      */
     private String truncateContent(String content) {
         if (content == null) {
@@ -1400,9 +1400,70 @@ public class ChatServiceImpl implements ChatService {
             return content;
         }
 
+        // 检查是否包含文件内容
+        String fileInfo = extractFileInfo(content);
+
         String prefix = content.substring(0, 15);
         String suffix = content.substring(content.length() - 15);
-        return prefix + "..." + suffix + " (总长度: " + content.length() + "字符)";
+        String result = prefix + "..." + suffix + " (总长度: " + content.length() + "字符)";
+
+        // 如果包含文件，添加文件信息
+        if (fileInfo != null && !fileInfo.isEmpty()) {
+            result += " " + fileInfo;
+        }
+
+        return result;
+    }
+
+    /**
+     * 提取文件信息，解析文件名和数量
+     */
+    private String extractFileInfo(String content) {
+        if (content == null || !content.contains("以下是文件内容：[")) {
+            return null;
+        }
+
+        try {
+            // 查找文件内容部分
+            int startIndex = content.indexOf("以下是文件内容：[");
+            if (startIndex == -1) {
+                return null;
+            }
+
+            int endIndex = content.lastIndexOf("]");
+            if (endIndex == -1 || endIndex <= startIndex) {
+                return null;
+            }
+
+            String fileContentPart = content.substring(startIndex + "以下是文件内容：[".length(), endIndex);
+
+            // 解析文件信息
+            List<String> fileNames = new ArrayList<>();
+
+            // 使用正则表达式匹配文件名
+            // 格式：{"fileName":"content"}
+            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\"([^\"]+)\":");
+            java.util.regex.Matcher matcher = pattern.matcher(fileContentPart);
+
+            while (matcher.find()) {
+                String fileName = matcher.group(1);
+                if (fileName != null && !fileName.trim().isEmpty()) {
+                    fileNames.add(fileName);
+                }
+            }
+
+            if (fileNames.isEmpty()) {
+                return "[包含文件]";
+            } else if (fileNames.size() == 1) {
+                return "[包含文件: " + fileNames.get(0) + "]";
+            } else {
+                return "[包含" + fileNames.size() + "个文件: " + String.join(", ", fileNames) + "]";
+            }
+
+        } catch (Exception e) {
+            log.debug("解析文件信息失败", e);
+            return "[包含文件]";
+        }
     }
 
     /**
@@ -1499,27 +1560,46 @@ public class ChatServiceImpl implements ChatService {
             }
 
             // 检查最后一条用户消息是否有附件，如果有则附加文件内容供AI处理
+            log.debug("检查重试消息附件，lastUserMessageEntity: {}, hasAttachments: {}",
+                    lastUserMessageEntity != null ? lastUserMessageEntity.getMessageId() : "null",
+                    lastUserMessageEntity != null ? lastUserMessageEntity.getHasAttachments() : "null");
+
             if (lastUserMessageEntity != null && lastUserMessageEntity.getHasAttachments() != null && lastUserMessageEntity.getHasAttachments() > 0) {
                 // 获取该消息关联的文件ID列表
                 String filesId = fileUploadService.getFileIdsByMessageId(lastUserMessageEntity.getMessageId());
+                log.debug("重试消息关联的文件ID列表：{}", filesId);
+
                 if (filesId != null && !filesId.trim().isEmpty()) {
                     // 找到最后一条用户消息并附加文件内容
                     for (int i = messages.size() - 1; i >= 0; i--) {
                         Map<String, String> msg = messages.get(i);
                         if ("user".equals(msg.get("role"))) {
+                            log.info("开始为重试请求的用户消息附加文件内容，原始内容：{}，文件ID：{}",
+                                    msg.get("content"), filesId);
+
                             // 处理文件内容并附加到这条消息
                             List<Map<String, String>> tempMessages = new ArrayList<>();
                             tempMessages.add(msg);
                             List<Map<String, String>> processedMessages = processFilesContent(tempMessages, filesId, userId);
                             if (!processedMessages.isEmpty()) {
                                 // 更新消息内容（仅用于AI处理）
-                                msg.put("content", processedMessages.get(0).get("content"));
-                                log.info("已为重试请求的用户消息附加文件内容，文件ID：{}", filesId);
+                                String originalContent = msg.get("content");
+                                String newContent = processedMessages.get(0).get("content");
+                                msg.put("content", newContent);
+                                log.info("已为重试请求的用户消息附加文件内容，原始长度：{}，附加后长度：{}，文件ID：{}",
+                                        originalContent.length(), newContent.length(), filesId);
+                            } else {
+                                log.warn("processFilesContent返回空结果，文件ID：{}", filesId);
                             }
                             break;
                         }
                     }
+                } else {
+                    log.info("重试消息没有关联的文件ID，messageId：{}", lastUserMessageEntity.getMessageId());
                 }
+            } else {
+                log.info("重试消息没有附件标识，messageId：{}",
+                        lastUserMessageEntity != null ? lastUserMessageEntity.getMessageId() : "null");
             }
 
             // 获取并验证AI模型
@@ -1655,23 +1735,36 @@ public class ChatServiceImpl implements ChatService {
             }
 
             // 如果最后一条用户消息有附件，需要附加文件内容供AI处理
+            log.debug("检查编辑重发消息附件，hasAttachments: {}, filesId: {}", hasAttachments, filesId);
+
             if (hasAttachments && !messages.isEmpty()) {
                 // 找到最后一条用户消息
                 for (int i = messages.size() - 1; i >= 0; i--) {
                     Map<String, String> msg = messages.get(i);
                     if ("user".equals(msg.get("role"))) {
+                        log.info("开始为编辑重发的用户消息附加文件内容，原始内容：{}，文件ID：{}",
+                                msg.get("content"), filesId);
+
                         // 处理文件内容并附加到这条消息
                         List<Map<String, String>> tempMessages = new ArrayList<>();
                         tempMessages.add(msg);
                         List<Map<String, String>> processedMessages = processFilesContent(tempMessages, filesId, userId);
                         if (!processedMessages.isEmpty()) {
                             // 更新消息内容（仅用于AI处理）
-                            msg.put("content", processedMessages.get(0).get("content"));
-                            log.info("已为编辑重发的用户消息附加文件内容，文件数量：{}", filesId.split(",").length);
+                            String originalContent = msg.get("content");
+                            String processedContent = processedMessages.get(0).get("content");
+                            msg.put("content", processedContent);
+                            log.info("已为编辑重发的用户消息附加文件内容，原始长度：{}，附加后长度：{}，文件数量：{}",
+                                    originalContent.length(), processedContent.length(), filesId.split(",").length);
+                        } else {
+                            log.warn("processFilesContent返回空结果，文件ID：{}", filesId);
                         }
                         break;
                     }
                 }
+            } else {
+                log.info("编辑重发消息没有附件或消息列表为空，hasAttachments: {}, messagesSize: {}",
+                        hasAttachments, messages.size());
             }
 
             // 获取并验证AI模型

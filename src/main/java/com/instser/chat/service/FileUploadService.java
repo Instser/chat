@@ -79,6 +79,33 @@ public interface FileUploadService extends IService<FileUpload> {
     String getFileIdsByMessageId(String messageId);
 
     /**
+     * 根据消息ID删除关联的文件（逻辑删除）
+     *
+     * @param messageId 消息ID
+     * @param userId 用户ID（用于权限验证）
+     * @return 删除的文件数量
+     */
+    int deleteFilesByMessageId(String messageId, Long userId);
+
+    /**
+     * 根据消息ID列表批量删除关联的文件（逻辑删除）
+     *
+     * @param messageIds 消息ID列表
+     * @param userId 用户ID（用于权限验证）
+     * @return 删除的文件数量
+     */
+    int deleteFilesByMessageIds(List<String> messageIds, Long userId);
+
+    /**
+     * 根据会话ID删除关联的文件（逻辑删除）
+     *
+     * @param sessionId 会话ID
+     * @param userId 用户ID（用于权限验证）
+     * @return 删除的文件数量
+     */
+    int deleteFilesBySessionId(String sessionId, Long userId);
+
+    /**
      * 删除文件（逻辑删除）
      *
      * @param fileId 文件ID

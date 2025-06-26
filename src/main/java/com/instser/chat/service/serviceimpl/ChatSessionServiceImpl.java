@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.instser.chat.dao.ChatSessionDao;
 import com.instser.chat.entity.ChatSession;
 import com.instser.chat.service.ChatSessionService;
+import com.instser.chat.service.FileUploadService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -21,6 +22,12 @@ import java.util.UUID;
 @Slf4j
 @Service
 public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionDao, ChatSession> implements ChatSessionService {
+
+    private final FileUploadService fileUploadService;
+
+    public ChatSessionServiceImpl(FileUploadService fileUploadService) {
+        this.fileUploadService = fileUploadService;
+    }
 
     @Override
     public String createSession(Long userId, Long modelId) {
@@ -87,16 +94,39 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionDao, ChatSess
 
     @Override
     public boolean deleteSession(String sessionId) {
-        LambdaQueryWrapper<ChatSession> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(ChatSession::getSessionId, sessionId);
+        try {
+            // 先获取会话信息，用于获取用户ID
+            ChatSession session = getSessionInfo(sessionId);
+            if (session == null) {
+                log.warn("会话不存在，无法删除，会话ID：{}", sessionId);
+                return false;
+            }
 
-        boolean result = this.remove(wrapper);
-        if (result) {
-            log.info("会话删除成功，会话ID：{}", sessionId);
-        } else {
-            log.warn("会话删除失败，会话ID：{}", sessionId);
+            // 删除会话关联的文件
+            int deletedFilesCount = 0;
+            try {
+                deletedFilesCount = fileUploadService.deleteFilesBySessionId(sessionId, session.getUserId());
+                log.info("删除会话关联文件完成，文件数量：{}，会话ID：{}", deletedFilesCount, sessionId);
+            } catch (Exception e) {
+                log.error("删除会话关联文件失败，继续删除会话，会话ID：{}", sessionId, e);
+            }
+
+            // 删除会话
+            LambdaQueryWrapper<ChatSession> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(ChatSession::getSessionId, sessionId);
+
+            boolean result = this.remove(wrapper);
+            if (result) {
+                log.info("会话删除成功，会话ID：{}，删除关联文件：{}个", sessionId, deletedFilesCount);
+            } else {
+                log.warn("会话删除失败，会话ID：{}", sessionId);
+            }
+            return result;
+
+        } catch (Exception e) {
+            log.error("删除会话失败，会话ID：{}", sessionId, e);
+            return false;
         }
-        return result;
     }
 
     @Override
