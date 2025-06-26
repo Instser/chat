@@ -114,6 +114,12 @@ public class ChatServiceImpl implements ChatService {
             // 保存用户原始消息到数据库（不包含文件内容）
             String userMessageId = saveUserOriginalMessage(request.getMessages(), request.getSessionId(), request.getUserId(), model.getId(), hasAttachments);
 
+            // 立即更新文件关联信息（避免AI错误时文件关联丢失）
+            if (userMessageId != null && request.getFilesId() != null && !request.getFilesId().trim().isEmpty()) {
+                updateFilesAssociationIfNeeded(request.getFilesId(), userMessageId, request.getSessionId(), request.getUserId());
+                log.info("用户{}文件关联已更新，消息ID：{}", request.getUserId(), userMessageId);
+            }
+
             // 处理文件内容并附加到用户消息中（仅用于AI处理）
             List<Map<String, String>> processedMessages = processFilesContent(request.getMessages(), request.getFilesId(), request.getUserId());
             request.setMessages(processedMessages);
@@ -137,11 +143,6 @@ public class ChatServiceImpl implements ChatService {
                 // 保存AI响应到数据库
                 if (request.getSessionId() != null && result.getAiResponseContent() != null && !result.getAiResponseContent().trim().isEmpty()) {
                     saveAiResponse(request.getSessionId(), request.getUserId(), model.getId(), result.getAiResponseContent());
-                }
-
-                // AI响应成功后，更新文件的关联信息（仅当文件尚未关联到任何消息时）
-                if (userMessageId != null && request.getFilesId() != null && !request.getFilesId().trim().isEmpty()) {
-                    updateFilesAssociationIfNeeded(request.getFilesId(), userMessageId, request.getSessionId(), request.getUserId());
                 }
 
                 log.info("用户{}AI响应成功", request.getUserId());
@@ -793,6 +794,12 @@ public class ChatServiceImpl implements ChatService {
                             response.getWriter().flush();
 
                             hasContentSent[0] = true;
+
+                            // 保存错误响应到数据库
+                            if (request.getSessionId() != null && request.getUserId() != null) {
+                                saveErrorResponse(request.getSessionId(), request.getUserId(), model.getId(), errorContent);
+                                log.info("AI错误响应已保存到数据库，会话ID：{}，用户ID：{}", request.getSessionId(), request.getUserId());
+                            }
                         } catch (Exception e) {
                             log.error("发送错误消息失败", e);
                         }
@@ -882,6 +889,12 @@ public class ChatServiceImpl implements ChatService {
                 String completionData = buildCompletionData(false, false, null);
                 response.getWriter().write(completionData);
                 response.getWriter().flush();
+
+                // 保存错误响应到数据库
+                if (request.getSessionId() != null && request.getUserId() != null) {
+                    saveErrorResponse(request.getSessionId(), request.getUserId(), model.getId(), errorContent);
+                    log.info("流式聊天异常错误响应已保存到数据库，会话ID：{}，用户ID：{}", request.getSessionId(), request.getUserId());
+                }
 
                 return ChatResponseDTO.errorWithContent(errorContent);
             } catch (IOException ioException) {
