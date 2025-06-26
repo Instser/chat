@@ -50,6 +50,7 @@ public class ChatServiceImpl implements ChatService {
     private final AiModelService aiModelService;
     private final ChatLimitService chatLimitService;
     private final FileUploadService fileUploadService;
+    private final ChatInterruptService chatInterruptService;
 
     // 智能分块响应配置
     private static final boolean ENABLE_SMART_CHUNKING = true;
@@ -525,9 +526,15 @@ public class ChatServiceImpl implements ChatService {
      * 调用AI服务进行流式响应
      */
     private ChatResponseDTO streamChatWithAI(ChatRequestDTO request, AiModel model, HttpServletResponse response, boolean willGenerateTitle) {
+        // 注册活跃会话以支持中断功能
+        if (request.getSessionId() != null && request.getUserId() != null) {
+            chatInterruptService.registerActiveSession(request.getSessionId(), request.getUserId());
+        }
+
         // 用于跟踪是否有AI内容被成功发送和是否为真实AI响应
         final boolean[] hasContentSent = {false};
         final boolean[] isRealAiResponse = {false};
+        final boolean[] isInterrupted = {false};
         // 用于收集完整的AI响应内容
         final StringBuilder aiResponseContent = new StringBuilder();
 
@@ -618,6 +625,31 @@ public class ChatServiceImpl implements ChatService {
                     })
                     .doOnNext(line -> {
                         try {
+                            // 检查是否被中断
+                            if (request.getSessionId() != null && chatInterruptService.isInterrupted(request.getSessionId())) {
+                                log.info("检测到聊天中断信号，会话ID：{}", request.getSessionId());
+                                isInterrupted[0] = true;
+
+                                // 保存已接收的部分内容
+                                if (aiResponseContent.length() > 0) {
+                                    savePartialAiResponse(request.getSessionId(), request.getUserId(), model.getId(),
+                                                        aiResponseContent.toString(), true);
+                                    log.info("已保存中断前的部分AI响应，内容长度：{}", aiResponseContent.length());
+                                }
+
+                                // 发送中断完成标记
+                                try {
+                                    String interruptData = buildInterruptCompletionData();
+                                    response.getWriter().write(interruptData);
+                                    response.getWriter().flush();
+                                    log.info("已发送中断完成标记");
+                                } catch (Exception e) {
+                                    log.error("发送中断完成标记失败", e);
+                                }
+
+                                return; // 停止处理后续数据
+                            }
+
                             log.info("收到AI响应行: [{}]", line);
 
                             if (line.startsWith("data: ")) {
@@ -695,6 +727,11 @@ public class ChatServiceImpl implements ChatService {
                     .doOnComplete(() -> {
                         log.info("AI API流式响应处理完成");
 
+                        // 清理会话状态
+                        if (request.getSessionId() != null) {
+                            chatInterruptService.markSessionCompleted(request.getSessionId());
+                        }
+
                         // 处理剩余的行缓冲区数据
                         if (lineBuffer.length() > 0) {
                             String remainingLine = lineBuffer.toString().trim();
@@ -749,10 +786,21 @@ public class ChatServiceImpl implements ChatService {
                     .onErrorReturn("")
                     .blockLast();
 
+            // 如果被中断，返回特殊的响应状态
+            if (isInterrupted[0]) {
+                return ChatResponseDTO.interrupted(hasContentSent[0], aiResponseContent.toString());
+            }
+
             return ChatResponseDTO.success(hasContentSent[0], isRealAiResponse[0], aiResponseContent.toString());
 
         } catch (Exception e) {
             log.error("流式聊天异常", e);
+
+            // 清理会话状态
+            if (request.getSessionId() != null) {
+                chatInterruptService.markSessionCompleted(request.getSessionId());
+            }
+
             try {
                 String errorContent = "请求错误";
                 String vercelFormat = String.format("0:%s\n", new ObjectMapper().writeValueAsString(errorContent));
@@ -766,6 +814,11 @@ public class ChatServiceImpl implements ChatService {
             } catch (IOException ioException) {
                 log.error("发送异常消息失败", ioException);
                 return ChatResponseDTO.failure("系统错误");
+            }
+        } finally {
+            // 确保会话状态被清理
+            if (request.getSessionId() != null) {
+                chatInterruptService.markSessionCompleted(request.getSessionId());
             }
         }
     }
@@ -983,6 +1036,27 @@ public class ChatServiceImpl implements ChatService {
             return Math.max(10, Math.min(length / 8, 15));
         } else {
             return Math.max(15, Math.min(MAX_CHUNK_SIZE, length / 12));
+        }
+    }
+
+    /**
+     * 构建中断完成标记数据
+     */
+    private String buildInterruptCompletionData() {
+        try {
+            Map<String, Object> interruptMap = new HashMap<>();
+            interruptMap.put("finishReason", "interrupted");
+            interruptMap.put("usage", Map.of(
+                "promptTokens", 0,
+                "completionTokens", 0
+            ));
+            interruptMap.put("title", false);
+            interruptMap.put("interrupted", true);
+
+            return String.format("d:%s\n", new ObjectMapper().writeValueAsString(interruptMap));
+        } catch (Exception e) {
+            log.error("构建中断完成标记数据失败", e);
+            return "d:{\"finishReason\":\"interrupted\",\"usage\":{\"promptTokens\":0,\"completionTokens\":0},\"title\":false,\"interrupted\":true}\n";
         }
     }
 
@@ -1843,5 +1917,26 @@ public class ChatServiceImpl implements ChatService {
             log.warn("从会话{}获取模型ID失败", sessionId, e);
         }
         return null; // 返回null，让sendMessage方法使用默认值
+    }
+
+    @Override
+    public void savePartialAiResponse(String sessionId, Long userId, Long modelId, String partialContent, boolean isInterrupted) {
+        try {
+            if (sessionId != null && userId != null && modelId != null && partialContent != null && !partialContent.trim().isEmpty()) {
+                // 为中断的响应添加标识
+                String contentToSave = isInterrupted ? partialContent + " [已中断]" : partialContent;
+
+                chatMessageService.sendMessage(sessionId, "assistant", contentToSave, userId, modelId);
+
+                String logMessage = isInterrupted ? "部分AI响应（中断）已保存到数据库" : "部分AI响应已保存到数据库";
+                log.info("{}，会话ID：{}，用户ID：{}，模型ID：{}，内容长度：{}",
+                        logMessage, sessionId, userId, modelId, partialContent.length());
+            } else {
+                log.warn("无法保存部分AI响应到数据库，缺少必要参数：sessionId={}, userId={}, modelId={}, contentLength={}",
+                        sessionId, userId, modelId, partialContent != null ? partialContent.length() : 0);
+            }
+        } catch (Exception e) {
+            log.error("保存部分AI响应到数据库失败", e);
+        }
     }
 }

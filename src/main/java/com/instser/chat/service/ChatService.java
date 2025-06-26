@@ -146,4 +146,15 @@ public interface ChatService {
      * @return 处理后的消息列表
      */
     List<Map<String, String>> processFilesContent(List<Map<String, String>> messages, String filesId, Long userId);
+
+    /**
+     * 保存部分AI响应到数据库（用于中断场景）
+     *
+     * @param sessionId 会话ID
+     * @param userId 用户ID
+     * @param modelId 模型ID
+     * @param partialContent 部分AI响应内容
+     * @param isInterrupted 是否因中断而保存
+     */
+    void savePartialAiResponse(String sessionId, Long userId, Long modelId, String partialContent, boolean isInterrupted);
 }

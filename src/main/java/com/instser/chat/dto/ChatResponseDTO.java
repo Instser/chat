@@ -51,6 +51,11 @@ public class ChatResponseDTO {
      */
     private String generatedTitle;
 
+    /**
+     * 是否被中断
+     */
+    private boolean interrupted;
+
     public ChatResponseDTO() {
         this.success = true;
         this.hasContentSent = false;
@@ -58,6 +63,7 @@ public class ChatResponseDTO {
         this.shouldRecordUsage = false;
         this.titleGenerated = false;
         this.aiResponseContent = "";
+        this.interrupted = false;
     }
 
     /**
@@ -96,6 +102,20 @@ public class ChatResponseDTO {
         response.setRealAiResponse(false);
         response.setAiResponseContent(errorContent);
         response.setShouldRecordUsage(false);
+        return response;
+    }
+
+    /**
+     * 创建中断响应
+     */
+    public static ChatResponseDTO interrupted(boolean hasContentSent, String partialContent) {
+        ChatResponseDTO response = new ChatResponseDTO();
+        response.setSuccess(true);
+        response.setHasContentSent(hasContentSent);
+        response.setRealAiResponse(hasContentSent); // 如果有内容发送，则认为是真实AI响应
+        response.setAiResponseContent(partialContent != null ? partialContent : "");
+        response.setShouldRecordUsage(hasContentSent); // 如果有内容发送，则记录使用次数
+        response.setInterrupted(true);
         return response;
     }
 }

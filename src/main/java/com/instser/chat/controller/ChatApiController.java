@@ -7,6 +7,7 @@ import com.instser.chat.entity.AiModel;
 import com.instser.chat.entity.ChatMessage;
 import com.instser.chat.entity.ChatSession;
 import com.instser.chat.service.AiModelService;
+import com.instser.chat.service.ChatInterruptService;
 import com.instser.chat.service.ChatMessageService;
 import com.instser.chat.service.ChatSessionService;
 import com.instser.chat.service.ChatService;
@@ -40,6 +41,7 @@ public class ChatApiController {
     private final ChatSessionService chatSessionService;
     private final AiModelService aiModelService;
     private final ChatService chatService;
+    private final ChatInterruptService chatInterruptService;
 
     /**
      * 流式聊天接口 - 兼容前端 (POST)
@@ -338,5 +340,66 @@ public class ChatApiController {
         response.setHeader("Access-Control-Allow-Credentials", "true");
         response.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
         response.setHeader("Access-Control-Allow-Headers", "*");
+    }
+
+    /**
+     * 中断聊天接口
+     */
+    @PostMapping("/stop")
+    public Result<String> stopChat(@RequestBody Map<String, Object> request, Authentication authentication) {
+        try {
+            // 提取参数
+            String sessionId = (String) request.get("sessionId");
+            Long userId = getCurrentUserId(authentication);
+
+            // 参数验证
+            if (sessionId == null || sessionId.trim().isEmpty()) {
+                log.warn("中断聊天请求参数错误：sessionId为空");
+                return Result.validateFailed("会话ID不能为空");
+            }
+
+            if (userId == null) {
+                log.warn("中断聊天请求认证失败：无法获取用户ID");
+                return Result.unauthorized("用户认证失败");
+            }
+
+            log.info("用户{}请求中断聊天会话：sessionId={}", userId, sessionId);
+
+            // 执行中断操作
+            boolean success = chatInterruptService.interruptChat(sessionId, userId);
+
+            if (success) {
+                log.info("用户{}成功中断聊天会话：sessionId={}", userId, sessionId);
+                return Result.success("聊天已中断");
+            } else {
+                log.warn("用户{}中断聊天会话失败：sessionId={}", userId, sessionId);
+                return Result.failed("中断失败，会话可能已完成或不存在");
+            }
+
+        } catch (Exception e) {
+            log.error("中断聊天请求处理异常", e);
+            return Result.failed("系统错误，请稍后重试");
+        }
+    }
+
+    /**
+     * 获取活跃会话状态（调试用）
+     */
+    @GetMapping("/status")
+    public Result<Map<String, Object>> getChatStatus(Authentication authentication) {
+        try {
+            int activeSessionCount = chatInterruptService.getActiveSessionCount();
+
+            Map<String, Object> status = Map.of(
+                "activeSessionCount", activeSessionCount,
+                "timestamp", System.currentTimeMillis()
+            );
+
+            return Result.success(status, "获取状态成功");
+
+        } catch (Exception e) {
+            log.error("获取聊天状态异常", e);
+            return Result.failed("获取状态失败");
+        }
     }
 }
