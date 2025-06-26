@@ -1,8 +1,11 @@
 package com.instser.chat.config;
 
+import com.instser.chat.interceptor.RequestLogInterceptor;
+import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 /**
@@ -12,7 +15,10 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
  * @since 2024-01-01
  */
 @Configuration
+@RequiredArgsConstructor
 public class WebConfig implements WebMvcConfigurer {
+
+    private final RequestLogInterceptor requestLogInterceptor;
 
     @Value("${app.cors.allowed-origins}")
     private String allowedOrigins;
@@ -49,5 +55,22 @@ public class WebConfig implements WebMvcConfigurer {
                 .allowedHeaders("*")         // 允许所有请求头
                 .allowCredentials(true)      // 允许携带凭据
                 .maxAge(3600);              // 预检请求缓存时间1小时
+    }
+
+    /**
+     * 添加拦截器
+     */
+    @Override
+    public void addInterceptors(InterceptorRegistry registry) {
+        registry.addInterceptor(requestLogInterceptor)
+                .addPathPatterns("/**")
+                .excludePathPatterns(
+                    "/druid/**",
+                    "/actuator/**",
+                    "/error",
+                    "/favicon.ico",
+                    "/static/**",
+                    "/public/**"
+                );
     }
 }

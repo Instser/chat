@@ -1,13 +1,24 @@
 # 当前工作内容
 
-**📅 最后更新**: 2025-06-26 00:03:00
+**📅 最后更新**: 2025-06-26 11:30:00
 **👤 更新人员**: Augment Agent
-**📊 文档版本**: v8.0
+**📊 文档版本**: v8.1
 
 ## 当前任务
-已完成文件上传与消息关联优化：
+已完成retry和edit-resend接口ModelId支持及代码优化：
 
-### 最新完成 (2025-06-26 00:03)
+### 最新完成 (2025-06-26 11:30)
+1. **ModelId参数支持** - ✅ 为retry和edit-resend接口添加可选的modelId参数，支持用户在重试时选择不同模型
+2. **模型选择逻辑** - ✅ 实现优先使用传入modelId，否则使用会话原有模型的智能选择机制
+3. **会话模型更新** - ✅ 添加ChatSessionService.updateSessionModel方法，使用新模型时自动更新会话状态
+4. **代码重构优化** - ✅ 提取通用验证、模型处理、响应处理方法，减少约100行重复代码
+5. **控制器层优化** - ✅ 添加extractModelId、validateBasicParams、handleCommonException通用方法
+6. **服务层重构** - ✅ 添加validateChatPermissions、getAndValidateModel、handleAiResponseResult通用方法
+7. **参数兼容性** - ✅ modelId为可选参数，支持Number和String类型，向后兼容现有前端
+8. **错误处理统一** - ✅ 统一异常处理逻辑，提供一致的错误响应格式
+9. **参数映射修复** - ✅ 修复前端chatId参数到后端sessionId变量的正确映射，确保数据库操作一致性
+
+### 历史完成 (2025-06-26 00:03)
 1. **文件上传流程优化** - ✅ 修改upload接口，移除sessionId和messageId参数，文件上传时不关联消息
 2. **AI响应后关联** - ✅ 在AI响应成功后，自动更新文件的messageId和sessionId关联信息
 3. **关联方法重构** - ✅ 重命名为updateFilesAssociation方法，支持同时更新messageId和sessionId

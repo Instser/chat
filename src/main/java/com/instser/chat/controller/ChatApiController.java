@@ -138,6 +138,57 @@ public class ChatApiController {
     }
 
     /**
+     * 提取并验证modelId参数
+     */
+    private Long extractModelId(Map<String, Object> request, HttpServletResponse response) throws Exception {
+        Object modelIdObj = request.get("modelId");
+        if (modelIdObj == null) {
+            return null;
+        }
+
+        if (modelIdObj instanceof Number) {
+            return ((Number) modelIdObj).longValue();
+        } else if (modelIdObj instanceof String) {
+            try {
+                return Long.parseLong((String) modelIdObj);
+            } catch (NumberFormatException e) {
+                writeErrorResponse(response, "modelId格式错误");
+                throw new Exception("modelId格式错误");
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 验证基础参数
+     */
+    private boolean validateBasicParams(String chatId, String messageId, HttpServletResponse response) throws Exception {
+        if (chatId == null || chatId.trim().isEmpty()) {
+            writeErrorResponse(response, "chatId不能为空");
+            return false;
+        }
+
+        if (messageId == null || messageId.trim().isEmpty()) {
+            writeErrorResponse(response, "messageId不能为空");
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * 处理通用异常
+     */
+    private void handleCommonException(Exception e, String operation, HttpServletResponse response) {
+        log.error("{}接口异常", operation, e);
+        try {
+            writeErrorResponse(response, "请求错误");
+        } catch (Exception ex) {
+            log.error("发送错误响应失败", ex);
+        }
+    }
+
+    /**
      * 重新生成AI回复
      */
     @PostMapping(value = "/retry", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
@@ -149,30 +200,21 @@ public class ChatApiController {
         setCorsHeaders(httpRequest, response);
 
         try {
-            // 提取参数
+            // 提取参数 - 前端传入chatId，后端映射为sessionId
             String chatId = (String) request.get("chatId");
             String messageId = (String) request.get("messageId");
+            Long modelId = extractModelId(request, response);
 
-            if (chatId == null || chatId.trim().isEmpty()) {
-                writeErrorResponse(response, "chatId不能为空");
+            // 验证基础参数
+            if (!validateBasicParams(chatId, messageId, response)) {
                 return;
             }
 
-            if (messageId == null || messageId.trim().isEmpty()) {
-                writeErrorResponse(response, "messageId不能为空");
-                return;
-            }
-
-            // 调用ChatService处理重新生成逻辑
-            chatService.processRetryChat(chatId, messageId, authentication, response);
+            // 调用ChatService处理重新生成逻辑（chatId实际对应sessionId）
+            chatService.processRetryChat(chatId, messageId, modelId, authentication, response);
 
         } catch (Exception e) {
-            log.error("重新生成接口异常", e);
-            try {
-                writeErrorResponse(response, "请求错误");
-            } catch (Exception ex) {
-                log.error("发送错误响应失败", ex);
-            }
+            handleCommonException(e, "重新生成", response);
         }
     }
 
@@ -188,18 +230,14 @@ public class ChatApiController {
         setCorsHeaders(httpRequest, response);
 
         try {
-            // 提取参数
+            // 提取参数 - 前端传入chatId，后端映射为sessionId
             String chatId = (String) request.get("chatId");
             String messageId = (String) request.get("messageId");
             String newContent = (String) request.get("newContent");
+            Long modelId = extractModelId(request, response);
 
-            if (chatId == null || chatId.trim().isEmpty()) {
-                writeErrorResponse(response, "chatId不能为空");
-                return;
-            }
-
-            if (messageId == null || messageId.trim().isEmpty()) {
-                writeErrorResponse(response, "messageId不能为空");
+            // 验证基础参数
+            if (!validateBasicParams(chatId, messageId, response)) {
                 return;
             }
 
@@ -208,16 +246,11 @@ public class ChatApiController {
                 return;
             }
 
-            // 调用ChatService处理编辑重发逻辑
-            chatService.processEditResendChat(chatId, messageId, newContent, authentication, response);
+            // 调用ChatService处理编辑重发逻辑（chatId实际对应sessionId）
+            chatService.processEditResendChat(chatId, messageId, newContent, modelId, authentication, response);
 
         } catch (Exception e) {
-            log.error("编辑重发接口异常", e);
-            try {
-                writeErrorResponse(response, "请求错误");
-            } catch (Exception ex) {
-                log.error("发送错误响应失败", ex);
-            }
+            handleCommonException(e, "编辑重发", response);
         }
     }
 

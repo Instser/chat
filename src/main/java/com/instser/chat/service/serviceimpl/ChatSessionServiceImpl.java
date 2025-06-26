@@ -98,4 +98,22 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionDao, ChatSess
         }
         return result;
     }
+
+    @Override
+    public boolean updateSessionModel(String sessionId, Long modelId) {
+        LambdaQueryWrapper<ChatSession> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ChatSession::getSessionId, sessionId);
+
+        ChatSession session = new ChatSession();
+        session.setModelId(modelId);
+        session.setUpdateTime(LocalDateTime.now());
+
+        boolean result = this.update(session, wrapper);
+        if (result) {
+            log.info("会话模型更新成功，会话ID：{}，模型ID：{}", sessionId, modelId);
+        } else {
+            log.warn("会话模型更新失败，会话ID：{}，模型ID：{}", sessionId, modelId);
+        }
+        return result;
+    }
 }

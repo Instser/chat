@@ -62,4 +62,13 @@ public interface ChatSessionService extends IService<ChatSession> {
      * @return 是否删除成功
      */
     boolean deleteSession(String sessionId);
+
+    /**
+     * 更新会话模型
+     *
+     * @param sessionId 会话ID
+     * @param modelId 新的模型ID
+     * @return 是否更新成功
+     */
+    boolean updateSessionModel(String sessionId, Long modelId);
 }

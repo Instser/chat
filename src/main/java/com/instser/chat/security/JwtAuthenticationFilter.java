@@ -57,8 +57,6 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                             );
                         authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                         SecurityContextHolder.getContext().setAuthentication(authToken);
-                        
-                        log.debug("用户认证成功: {}", username);
                     }
                 }
             }
@@ -91,22 +89,15 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
      * 从Cookie中提取Token
      */
     private String extractTokenFromCookie(HttpServletRequest request) {
-        log.debug("尝试从Cookie中提取Token，Cookie名称: {}", jwtConfig.getCookieName());
         if (request.getCookies() != null) {
-            log.debug("请求中包含 {} 个Cookie", request.getCookies().length);
             for (Cookie cookie : request.getCookies()) {
-                log.debug("检查Cookie: {} = {}", cookie.getName(), cookie.getValue().substring(0, Math.min(20, cookie.getValue().length())) + "...");
                 if (jwtConfig.getCookieName().equals(cookie.getName())) {
                     String token = cookie.getValue();
                     if (token != null && !token.trim().isEmpty()) {
-                        log.debug("成功从Cookie中提取到Token");
                         return token;
                     }
                 }
             }
-            log.debug("未在Cookie中找到有效的Token");
-        } else {
-            log.debug("请求中没有Cookie");
         }
         return null;
     }

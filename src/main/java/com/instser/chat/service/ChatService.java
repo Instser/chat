@@ -85,23 +85,25 @@ public interface ChatService {
     /**
      * 处理重新生成AI回复请求
      *
-     * @param chatId 会话ID
+     * @param sessionId 会话ID（前端传入的chatId参数）
      * @param messageId 要重新生成的AI消息ID
+     * @param modelId 模型ID（可选，为null时使用会话原有模型）
      * @param authentication 认证信息
      * @param response HTTP响应对象
      */
-    void processRetryChat(String chatId, String messageId, Authentication authentication, HttpServletResponse response);
+    void processRetryChat(String sessionId, String messageId, Long modelId, Authentication authentication, HttpServletResponse response);
 
     /**
      * 处理编辑用户消息并重新生成AI回复请求
      *
-     * @param chatId 会话ID
+     * @param sessionId 会话ID（前端传入的chatId参数）
      * @param messageId 要编辑的用户消息ID
      * @param newContent 新的消息内容
+     * @param modelId 模型ID（可选，为null时使用会话原有模型）
      * @param authentication 认证信息
      * @param response HTTP响应对象
      */
-    void processEditResendChat(String chatId, String messageId, String newContent, Authentication authentication, HttpServletResponse response);
+    void processEditResendChat(String sessionId, String messageId, String newContent, Long modelId, Authentication authentication, HttpServletResponse response);
 
     /**
      * 检查是否为首次AI响应
