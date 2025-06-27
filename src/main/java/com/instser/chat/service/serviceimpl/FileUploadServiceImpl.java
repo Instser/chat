@@ -3,7 +3,9 @@ package com.instser.chat.service.serviceimpl;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.instser.chat.dao.FileUploadDao;
 import com.instser.chat.entity.FileUpload;
+import com.instser.chat.service.DocumentParserService;
 import com.instser.chat.service.FileUploadService;
+import com.instser.chat.util.MagicNumberDetector;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
@@ -15,9 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.Base64;
 import java.util.stream.Collectors;
 
 /**
@@ -32,6 +32,7 @@ import java.util.stream.Collectors;
 public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload> implements FileUploadService {
 
     private final FileUploadDao fileUploadDao;
+    private final DocumentParserService documentParserService;
 
     @Value("${file.upload.path:src/main/resources/file}")
     private String uploadPath;
@@ -42,16 +43,7 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
     @Value("${server.servlet.context-path:}")
     private String contextPath;
 
-    // 允许的文件类型（注意：所有text/*格式都被允许，这里只列出其他类型）
-    private static final Set<String> ALLOWED_FILE_TYPES = Set.of(
-        "image/jpeg", "image/jpg", "image/png", "image/gif", "image/webp",
-        "application/pdf",
-        "application/msword",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/vnd.ms-excel",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        "application/json"
-    );
+    // 注意：文件类型验证现在使用DocumentParserFactory.isDocumentFile()方法
 
     @Override
     public FileUpload uploadFile(MultipartFile file, Long userId, String sessionId, String messageId) {
@@ -65,50 +57,28 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
                 throw new IllegalArgumentException("不支持的文件类型：" + detectedType);
             }
 
-            // 生成文件ID和唯一文件名
+            // 生成文件ID
             String fileId = UUID.randomUUID().toString();
             String originalFilename = file.getOriginalFilename();
-            String fileExtension = getFileExtension(detectedType);
-            String uniqueFilename = generateUniqueFilename(fileExtension);
-
-            // 确保上传目录存在
-            Path uploadDir = Paths.get(uploadPath);
-            if (!Files.exists(uploadDir)) {
-                Files.createDirectories(uploadDir);
-            }
 
             // 读取文件内容
             byte[] fileBytes = file.getBytes();
             String fileContent = null;
 
             // 根据文件类型处理内容
-            if (isTextFile(detectedType)) {
-                // 文本文件：直接转换为字符串
+            if (documentParserService.isDocumentFile(detectedType)) {
+                // 使用统一的文档解析器处理所有支持的文件类型（包括文本文件）
                 try {
-                    fileContent = new String(fileBytes, "UTF-8");
+                    fileContent = documentParserService.parseDocument(fileBytes, originalFilename, detectedType);
+                    log.info("文档解析成功: {} (类型: {}, 内容长度: {} 字符)", originalFilename, detectedType, fileContent.length());
                 } catch (Exception e) {
-                    log.warn("文本文件编码转换失败，尝试使用默认编码: {}", e.getMessage());
-                    fileContent = new String(fileBytes);
+                    log.error("文档解析失败: {} - {}", originalFilename, e.getMessage());
+                    throw new RuntimeException("文档解析失败：" + e.getMessage());
                 }
-            } else if (isBinaryFile(detectedType)) {
-                // 二进制文件：转换为Base64编码
-                fileContent = Base64.getEncoder().encodeToString(fileBytes);
             } else {
-                // 其他文件：尝试文本方式，失败则使用Base64
-                try {
-                    fileContent = new String(fileBytes, "UTF-8");
-                    // 检查是否包含过多的控制字符，如果是则使用Base64
-                    if (containsTooManyControlChars(fileContent)) {
-                        fileContent = Base64.getEncoder().encodeToString(fileBytes);
-                    }
-                } catch (Exception e) {
-                    fileContent = Base64.getEncoder().encodeToString(fileBytes);
-                }
+                // 其他文件类型不支持
+                throw new IllegalArgumentException("不支持的文件类型：" + detectedType);
             }
-
-            // 临时保存文件到磁盘（用于备份和调试）
-            Path filePath = uploadDir.resolve(uniqueFilename);
-            Files.write(filePath, fileBytes);
 
             // 创建文件记录
             FileUpload fileUpload = new FileUpload();
@@ -119,39 +89,16 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
             fileUpload.setFileName(originalFilename);
             fileUpload.setFileType(detectedType);
             fileUpload.setFileSize(file.getSize());
-            fileUpload.setStoragePath(filePath.toString());
-            fileUpload.setContent(fileContent); // 保存完整文件内容
+            fileUpload.setStoragePath(null); // 不再保存文件路径
+            fileUpload.setContent(fileContent); // 保存解析后的文本内容
             fileUpload.setStatus(FileUpload.Status.AVAILABLE);
 
-            try {
-                // 保存到数据库
-                save(fileUpload);
+            // 保存到数据库
+            save(fileUpload);
 
-                // 数据库保存成功后，删除临时文件
-                try {
-                    Files.deleteIfExists(filePath);
-                    log.info("临时文件删除成功：{}", filePath.toString());
-                } catch (IOException deleteException) {
-                    log.warn("删除临时文件失败，但不影响文件上传：{}, 错误：{}",
-                            filePath.toString(), deleteException.getMessage());
-                }
-
-                log.info("文件上传成功：用户ID={}, 文件ID={}, 原始文件名={}, 存储文件名={}",
-                        userId, fileId, originalFilename, uniqueFilename);
-
-                return fileUpload;
-
-            } catch (Exception dbException) {
-                // 数据库保存失败时，清理临时文件
-                try {
-                    Files.deleteIfExists(filePath);
-                    log.info("数据库保存失败，临时文件清理成功：{}", filePath.toString());
-                } catch (IOException deleteException) {
-                    log.warn("数据库保存失败，临时文件清理也失败：{}, 错误：{}",
-                            filePath.toString(), deleteException.getMessage());
-                }
-                throw dbException;
-            }
+            log.info("文件上传并解析成功: {} (ID: {}, 类型: {}, 大小: {} bytes, 内容长度: {} 字符)",
+                originalFilename, fileId, detectedType, file.getSize(), fileContent.length());
+            return fileUpload;
 
         } catch (IOException e) {
             log.error("文件上传失败：{}", e.getMessage(), e);
@@ -464,24 +411,10 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
         }
 
         try {
-            // 如果是文本文件，直接转换为字节
-            if (isTextFile(fileUpload.getFileType())) {
-                return content.getBytes("UTF-8");
-            } else {
-                // 如果是二进制文件，从Base64解码
-                return Base64.getDecoder().decode(content);
-            }
+            // 现在所有文件都存储为解析后的文本内容，直接转换为字节
+            return content.getBytes("UTF-8");
         } catch (Exception e) {
             log.error("解析文件内容失败：{}", e.getMessage(), e);
-            // 尝试从磁盘文件读取作为备选方案
-            try {
-                Path filePath = Paths.get(fileUpload.getStoragePath());
-                if (Files.exists(filePath)) {
-                    return Files.readAllBytes(filePath);
-                }
-            } catch (IOException ioException) {
-                log.error("从磁盘读取文件失败：{}", ioException.getMessage(), ioException);
-            }
             return null;
         }
     }
@@ -656,19 +589,8 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
 
     @Override
     public boolean isFileTypeAllowed(String fileType) {
-        if (fileType == null) {
-            return false;
-        }
-
-        String lowerCaseType = fileType.toLowerCase();
-
-        // 支持所有text格式
-        if (lowerCaseType.startsWith("text/")) {
-            return true;
-        }
-
-        // 支持其他预定义的文件类型
-        return ALLOWED_FILE_TYPES.contains(lowerCaseType);
+        // 使用DocumentParserFactory统一判断文件类型是否支持
+        return documentParserService.isDocumentFile(fileType);
     }
 
     @Override
@@ -692,100 +614,38 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
     }
 
     /**
-     * 检测文件类型（这里简化实现，实际应该使用魔数检测）
+     * 检测文件类型（使用魔数检测）
      */
     private String detectFileType(MultipartFile file) {
-        // 这里可以集成之前实现的魔数检测逻辑
-        String contentType = file.getContentType();
-        return contentType != null ? contentType : "application/octet-stream";
-    }
-
-    /**
-     * 根据MIME类型获取文件扩展名
-     */
-    private String getFileExtension(String mimeType) {
-        switch (mimeType.toLowerCase()) {
-            case "image/png": return ".png";
-            case "image/jpeg": return ".jpg";
-            case "image/gif": return ".gif";
-            case "image/webp": return ".webp";
-            case "application/pdf": return ".pdf";
-            case "text/plain": return ".txt";
-            case "application/json": return ".json";
-            case "text/csv": return ".csv";
-            default: return ".bin";
-        }
-    }
-
-    /**
-     * 生成唯一文件名
-     */
-    private String generateUniqueFilename(String extension) {
-        String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd_HHmmss"));
-        String uuid = UUID.randomUUID().toString().substring(0, 8);
-        return timestamp + "_" + uuid + extension;
-    }
-
-    /**
-     * 判断是否为文本文件
-     */
-    private boolean isTextFile(String mimeType) {
-        if (mimeType == null) {
-            return false;
-        }
-        return mimeType.startsWith("text/") ||
-               mimeType.equals("application/json") ||
-               mimeType.equals("application/xml") ||
-               mimeType.equals("application/javascript") ||
-               mimeType.equals("application/css");
-    }
-
-    /**
-     * 判断是否为二进制文件
-     */
-    private boolean isBinaryFile(String mimeType) {
-        if (mimeType == null) {
-            return false;
-        }
-        return mimeType.startsWith("image/") ||
-               mimeType.startsWith("audio/") ||
-               mimeType.startsWith("video/") ||
-               mimeType.equals("application/pdf") ||
-               mimeType.equals("application/zip") ||
-               mimeType.startsWith("application/vnd.") ||
-               mimeType.equals("application/octet-stream");
-    }
-
-    /**
-     * 检查字符串是否包含过多的控制字符
-     */
-    private boolean containsTooManyControlChars(String content) {
-        if (content == null || content.isEmpty()) {
-            return false;
-        }
-
-        int controlCharCount = 0;
-        int checkLength = Math.min(content.length(), 1000); // 检查前1000个字符
-
-        for (int i = 0; i < checkLength; i++) {
-            char c = content.charAt(i);
-            // 检查是否为控制字符（排除常见的换行、制表符等）
-            if (c < 0x20 && c != '\t' && c != '\n' && c != '\r') {
-                controlCharCount++;
+        try {
+            // 第一层：使用魔数检测（最可靠）
+            String magicNumberType = MagicNumberDetector.detectFileType(file);
+            if (!"application/octet-stream".equals(magicNumberType)) {
+                log.debug("魔数检测文件类型: {}", magicNumberType);
+                return magicNumberType;
             }
+
+            // 第二层：使用Content-Type（回退方案）
+            String contentType = file.getContentType();
+            if (contentType != null && !contentType.isEmpty() && !"application/octet-stream".equals(contentType)) {
+                log.debug("Content-Type检测文件类型: {}", contentType);
+                return contentType;
+            }
+
+            // 第三层：根据文件名猜测（最后备选）
+            String filename = file.getOriginalFilename();
+            String guessedType = MagicNumberDetector.guessTypeFromFilename(filename);
+            log.debug("文件名猜测文件类型: {}", guessedType);
+            return guessedType;
+
+        } catch (Exception e) {
+            log.warn("文件类型检测失败，使用默认类型: {}", e.getMessage());
+            return "application/octet-stream";
         }
-
-        // 如果控制字符比例超过5%，认为是二进制文件
-        return (double) controlCharCount / checkLength > 0.05;
     }
 
-    /**
-     * 判断是否应该存储内容到content字段（已废弃，现在所有文件都存储内容）
-     */
-    @Deprecated
-    private boolean shouldStoreContent(String fileType, Long fileSize) {
-        return true; // 现在所有文件都存储内容到content字段
-    }
+
+
 
     /**
      * 清理临时文件

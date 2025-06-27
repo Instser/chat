@@ -51,4 +51,12 @@ public interface ChatInterruptService {
      * 清理超时的会话（防止内存泄漏）
      */
     void cleanupTimeoutSessions();
+
+    /**
+     * 检查用户是否已有活跃会话
+     *
+     * @param userId 用户ID
+     * @return 如果用户已有活跃会话返回true，否则返回false
+     */
+    boolean hasActiveSession(Long userId);
 }

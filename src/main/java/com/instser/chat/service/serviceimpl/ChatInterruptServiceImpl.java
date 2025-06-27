@@ -125,21 +125,42 @@ public class ChatInterruptServiceImpl implements ChatInterruptService {
     @Override
     public void cleanupTimeoutSessions() {
         int cleanedCount = 0;
-        
+
         for (String sessionId : activeSessions.keySet()) {
             SessionInfo sessionInfo = activeSessions.get(sessionId);
             if (sessionInfo != null && sessionInfo.isTimeout()) {
                 activeSessions.remove(sessionId);
                 interruptFlags.remove(sessionId);
                 cleanedCount++;
-                
-                log.info("清理超时会话：sessionId={}, userId={}, 开始时间={}", 
+
+                log.info("清理超时会话：sessionId={}, userId={}, 开始时间={}",
                         sessionId, sessionInfo.getUserId(), sessionInfo.getStartTime());
             }
         }
-        
+
         if (cleanedCount > 0) {
             log.info("清理超时会话完成：清理数量={}, 剩余活跃会话数={}", cleanedCount, activeSessions.size());
         }
+    }
+
+    @Override
+    public boolean hasActiveSession(Long userId) {
+        if (userId == null) {
+            return false;
+        }
+
+        // 遍历所有活跃会话，检查是否有该用户的会话
+        for (SessionInfo sessionInfo : activeSessions.values()) {
+            if (sessionInfo != null && userId.equals(sessionInfo.getUserId())) {
+                // 检查会话是否超时，如果超时则不算活跃
+                if (!sessionInfo.isTimeout()) {
+                    log.debug("用户{}已有活跃会话", userId);
+                    return true;
+                }
+            }
+        }
+
+        log.debug("用户{}没有活跃会话", userId);
+        return false;
     }
 }

@@ -81,10 +81,17 @@ public class ChatServiceImpl implements ChatService {
                 return ChatResponseDTO.failure(permissionError);
             }
 
+            // 检查用户是否已有活跃会话（每个用户只能有一个活跃对话）
+            if (chatInterruptService.hasActiveSession(request.getUserId())) {
+                String errorMessage = "Currently chatting, please end the chat and try again";
+                writeErrorResponse(response, errorMessage);
+                return ChatResponseDTO.failure(errorMessage);
+            }
+
             // 获取模型配置
             AiModel model = aiModelService.getById(request.getModelId());
             if (model == null || model.getIsAvailable() != 1) {
-                String error = "AI模型不可用";
+                String error = "AI model unavailable";
                 writeErrorResponse(response, error);
                 return ChatResponseDTO.failure(error);
             }
@@ -93,7 +100,7 @@ public class ChatServiceImpl implements ChatService {
             ChatLimitVO limitCheck = chatLimitService.validateChatPermission(request.getUserId());
             if (!limitCheck.getCanChat()) {
                 String errorMessage = limitCheck.getLimitReason() != null ?
-                    limitCheck.getLimitReason() : "聊天权限验证失败";
+                    limitCheck.getLimitReason() : "Chat permission verification failed";
                 writeErrorResponse(response, errorMessage);
                 return ChatResponseDTO.failure(errorMessage);
             }
@@ -165,7 +172,7 @@ public class ChatServiceImpl implements ChatService {
         } catch (Exception e) {
             log.error("处理流式聊天请求异常", e);
             try {
-                String errorContent = "请求错误";
+                String errorContent = "Request failed";
                 writeErrorResponse(response, errorContent);
                 
                 // 保存错误响应到数据库
@@ -179,7 +186,7 @@ public class ChatServiceImpl implements ChatService {
                 return ChatResponseDTO.errorWithContent(errorContent);
             } catch (IOException ioException) {
                 log.error("发送系统错误消息失败", ioException);
-                return ChatResponseDTO.failure("系统错误");
+                return ChatResponseDTO.failure("System error");
             }
         }
     }
@@ -785,7 +792,7 @@ public class ChatServiceImpl implements ChatService {
                     .doOnError(error -> {
                         log.error("AI API流式响应处理失败", error);
                         try {
-                            String errorContent = "请求错误";
+                            String errorContent = "Request failed";
                             String vercelFormat = String.format("0:%s\n", new ObjectMapper().writeValueAsString(errorContent));
                             response.getWriter().write(vercelFormat);
 
@@ -882,7 +889,7 @@ public class ChatServiceImpl implements ChatService {
             }
 
             try {
-                String errorContent = "请求错误";
+                String errorContent = "Request failed";
                 String vercelFormat = String.format("0:%s\n", new ObjectMapper().writeValueAsString(errorContent));
                 response.getWriter().write(vercelFormat);
 
@@ -899,7 +906,7 @@ public class ChatServiceImpl implements ChatService {
                 return ChatResponseDTO.errorWithContent(errorContent);
             } catch (IOException ioException) {
                 log.error("发送异常消息失败", ioException);
-                return ChatResponseDTO.failure("系统错误");
+                return ChatResponseDTO.failure("System error");
             }
         } finally {
             // 确保会话状态被清理
@@ -1765,7 +1772,7 @@ public class ChatServiceImpl implements ChatService {
             // 获取并验证AI模型
             AiModel model = getAndValidateModel(modelId, chatSession);
             if (model == null) {
-                writeErrorResponse(response, "AI模型不可用");
+                writeErrorResponse(response, "AI model unavailable");
                 return;
             }
 
@@ -1776,7 +1783,7 @@ public class ChatServiceImpl implements ChatService {
             ChatLimitVO limitCheck = chatLimitService.validateChatPermission(userId);
             if (!limitCheck.getCanChat()) {
                 String errorMessage = limitCheck.getLimitReason() != null ?
-                    limitCheck.getLimitReason() : "聊天权限验证失败";
+                    limitCheck.getLimitReason() : "Chat permission verification failed";
                 writeErrorResponse(response, errorMessage);
                 return;
             }
@@ -1803,7 +1810,7 @@ public class ChatServiceImpl implements ChatService {
         } catch (Exception e) {
             log.error("处理重新生成请求异常", e);
             try {
-                String errorContent = "请求错误";
+                String errorContent = "Request failed";
                 writeErrorResponse(response, errorContent);
 
                 // 保存错误响应到数据库
@@ -1959,7 +1966,7 @@ public class ChatServiceImpl implements ChatService {
             // 获取并验证AI模型
             AiModel model = getAndValidateModel(modelId, chatSession);
             if (model == null) {
-                writeErrorResponse(response, "AI模型不可用");
+                writeErrorResponse(response, "AI model unavailable");
                 return;
             }
 
@@ -1970,7 +1977,7 @@ public class ChatServiceImpl implements ChatService {
             ChatLimitVO limitCheck = chatLimitService.validateChatPermission(userId);
             if (!limitCheck.getCanChat()) {
                 String errorMessage = limitCheck.getLimitReason() != null ?
-                    limitCheck.getLimitReason() : "聊天权限验证失败";
+                    limitCheck.getLimitReason() : "Chat permission verification failed";
                 writeErrorResponse(response, errorMessage);
                 return;
             }
@@ -1997,7 +2004,7 @@ public class ChatServiceImpl implements ChatService {
         } catch (Exception e) {
             log.error("处理编辑重发请求异常", e);
             try {
-                String errorContent = "请求错误";
+                String errorContent = "Request failed";
                 writeErrorResponse(response, errorContent);
 
                 // 保存错误响应到数据库

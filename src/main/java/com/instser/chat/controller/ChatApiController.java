@@ -184,7 +184,7 @@ public class ChatApiController {
     private void handleCommonException(Exception e, String operation, HttpServletResponse response) {
         log.error("{}接口异常", operation, e);
         try {
-            writeErrorResponse(response, "请求错误");
+            writeErrorResponse(response, "Request failed");
         } catch (Exception ex) {
             log.error("发送错误响应失败", ex);
         }

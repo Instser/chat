@@ -1,9 +1,11 @@
 package com.instser.chat.service;
 
+import com.instser.chat.dao.FileUploadDao;
 import com.instser.chat.entity.FileUpload;
 import com.instser.chat.service.serviceimpl.FileUploadServiceImpl;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.Mockito;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.test.context.TestPropertySource;
@@ -63,7 +65,9 @@ public class FileUploadServiceTest {
         assertTrue(Files.exists(tempFile), "临时文件应该存在");
         
         // 创建服务实例并测试清理方法
-        FileUploadServiceImpl service = new FileUploadServiceImpl(null);
+        FileUploadDao mockDao = Mockito.mock(FileUploadDao.class);
+        DocumentParserService mockParserService = Mockito.mock(DocumentParserService.class);
+        FileUploadServiceImpl service = new FileUploadServiceImpl(mockDao, mockParserService);
         service.cleanupTempFile(testFileUpload);
         
         // 验证文件已被删除
@@ -97,7 +101,9 @@ public class FileUploadServiceTest {
         assertTrue(Files.exists(tempFile2), "临时文件2应该存在");
         
         // 批量清理
-        FileUploadServiceImpl service = new FileUploadServiceImpl(null);
+        FileUploadDao mockDao = Mockito.mock(FileUploadDao.class);
+        DocumentParserService mockParserService = Mockito.mock(DocumentParserService.class);
+        FileUploadServiceImpl service = new FileUploadServiceImpl(mockDao, mockParserService);
         service.cleanupTempFiles(java.util.Arrays.asList(file1, file2));
         
         // 验证文件已被删除
@@ -115,7 +121,9 @@ public class FileUploadServiceTest {
         testFileUpload.setStoragePath("/path/to/non-existent-file.txt");
         
         // 清理不存在的文件应该不抛出异常
-        FileUploadServiceImpl service = new FileUploadServiceImpl(null);
+        FileUploadDao mockDao = Mockito.mock(FileUploadDao.class);
+        DocumentParserService mockParserService = Mockito.mock(DocumentParserService.class);
+        FileUploadServiceImpl service = new FileUploadServiceImpl(mockDao, mockParserService);
         assertDoesNotThrow(() -> service.cleanupTempFile(testFileUpload));
     }
 
@@ -124,7 +132,9 @@ public class FileUploadServiceTest {
      */
     @Test
     public void testCleanupNullFile() {
-        FileUploadServiceImpl service = new FileUploadServiceImpl(null);
+        FileUploadDao mockDao = Mockito.mock(FileUploadDao.class);
+        DocumentParserService mockParserService = Mockito.mock(DocumentParserService.class);
+        FileUploadServiceImpl service = new FileUploadServiceImpl(mockDao, mockParserService);
         assertDoesNotThrow(() -> service.cleanupTempFile(null));
         assertDoesNotThrow(() -> service.cleanupTempFiles(null));
         assertDoesNotThrow(() -> service.cleanupTempFiles(java.util.Collections.emptyList()));
