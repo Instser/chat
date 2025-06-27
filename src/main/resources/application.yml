@@ -80,8 +80,8 @@ spring:
   # 文件上传配置
   servlet:
     multipart:
-      max-file-size: 5MB
-      max-request-size: 5MB
+      max-file-size: 10MB
+      max-request-size: 10MB
 
 # MyBatis-Plus配置
 mybatis-plus:
@@ -183,7 +183,7 @@ app:
 file:
   upload:
     path: ${FILE_UPLOAD_PATH:src/main/resources/file}
-    max-size: ${FILE_UPLOAD_MAX_SIZE:5242880}  # 5MB
+    max-size: ${FILE_UPLOAD_MAX_SIZE:10485760}  # 5MB 5242880
 
 # Swagger/OpenAPI 配置
 springdoc:

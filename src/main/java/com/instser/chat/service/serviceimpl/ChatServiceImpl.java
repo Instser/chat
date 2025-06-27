@@ -1557,6 +1557,7 @@ public class ChatServiceImpl implements ChatService {
 
     /**
      * 截取内容，保留前15和后15个字符，并解析文件信息
+     * 如果包含文件内容，则显示完整的文件格式但截取每个文件的content
      */
     private String truncateContent(String content) {
         if (content == null) {
@@ -1568,68 +1569,87 @@ public class ChatServiceImpl implements ChatService {
         }
 
         // 检查是否包含文件内容
-        String fileInfo = extractFileInfo(content);
-
-        String prefix = content.substring(0, 15);
-        String suffix = content.substring(content.length() - 15);
-        String result = prefix + "..." + suffix + " (总长度: " + content.length() + "字符)";
-
-        // 如果包含文件，添加文件信息
-        if (fileInfo != null && !fileInfo.isEmpty()) {
-            result += " " + fileInfo;
+        if (content.contains("以下是文件内容：[")) {
+            return truncateContentWithFiles(content);
         }
 
-        return result;
+        // 普通内容截取
+        String prefix = content.substring(0, 15);
+        String suffix = content.substring(content.length() - 15);
+        return prefix + "..." + suffix + " (总长度: " + content.length() + "字符)";
     }
 
     /**
-     * 提取文件信息，解析文件名和数量
+     * 截取包含文件内容的消息，显示完整的文件格式但截取每个文件的content
      */
-    private String extractFileInfo(String content) {
-        if (content == null || !content.contains("以下是文件内容：[")) {
-            return null;
-        }
-
+    private String truncateContentWithFiles(String content) {
         try {
             // 查找文件内容部分
-            int startIndex = content.indexOf("以下是文件内容：[");
-            if (startIndex == -1) {
-                return null;
+            int fileStartIndex = content.indexOf("以下是文件内容：[");
+            if (fileStartIndex == -1) {
+                // 没有找到文件内容，使用普通截取
+                String prefix = content.substring(0, Math.min(15, content.length()));
+                String suffix = content.length() > 15 ? content.substring(content.length() - 15) : "";
+                return prefix + "..." + suffix + " (总长度: " + content.length() + "字符)";
             }
 
-            int endIndex = content.lastIndexOf("]");
-            if (endIndex == -1 || endIndex <= startIndex) {
-                return null;
+            int fileEndIndex = content.lastIndexOf("]");
+            if (fileEndIndex == -1 || fileEndIndex <= fileStartIndex) {
+                // 文件格式不完整，使用普通截取
+                String prefix = content.substring(0, Math.min(15, content.length()));
+                String suffix = content.length() > 15 ? content.substring(content.length() - 15) : "";
+                return prefix + "..." + suffix + " (总长度: " + content.length() + "字符)";
             }
 
-            String fileContentPart = content.substring(startIndex + "以下是文件内容：[".length(), endIndex);
+            // 分离前缀、文件内容和后缀
+            String beforeFiles = content.substring(0, fileStartIndex);
+            String fileContentPart = content.substring(fileStartIndex + "以下是文件内容：[".length(), fileEndIndex);
+            String afterFiles = content.substring(fileEndIndex + 1);
 
-            // 解析文件信息
-            List<String> fileNames = new ArrayList<>();
+            // 处理文件内容，截取每个文件的content
+            String processedFileContent = processFileContentForLogging(fileContentPart);
 
-            // 使用正则表达式匹配文件名
-            // 格式：{"fileName":"content"}
-            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\"([^\"]+)\":");
-            java.util.regex.Matcher matcher = pattern.matcher(fileContentPart);
+            // 构建结果
+            StringBuilder result = new StringBuilder();
 
-            while (matcher.find()) {
-                String fileName = matcher.group(1);
-                if (fileName != null && !fileName.trim().isEmpty()) {
-                    fileNames.add(fileName);
+            // 添加前缀（截取）
+            if (beforeFiles.length() > 15) {
+                result.append(beforeFiles.substring(0, 15)).append("...");
+            } else {
+                result.append(beforeFiles);
+            }
+
+            // 添加文件内容
+            result.append("以下是文件内容：[").append(processedFileContent).append("]");
+
+            // 添加后缀（截取）
+            if (afterFiles.length() > 15) {
+                result.append("...").append(afterFiles.substring(afterFiles.length() - 15));
+            } else {
+                result.append(afterFiles);
+            }
+
+            result.append(" (总长度: ").append(content.length()).append("字符)");
+
+            // 统计文件数量
+            int fileCount = countFilesInContent(fileContentPart);
+            if (fileCount > 0) {
+                List<String> fileNames = extractFileNames(fileContentPart);
+                if (fileNames.size() == 1) {
+                    result.append(" [包含1个文件: ").append(fileNames.get(0)).append("]");
+                } else {
+                    result.append(" [包含").append(fileCount).append("个文件: ").append(String.join(", ", fileNames)).append("]");
                 }
             }
 
-            if (fileNames.isEmpty()) {
-                return "[包含文件]";
-            } else if (fileNames.size() == 1) {
-                return "[包含文件: " + fileNames.get(0) + "]";
-            } else {
-                return "[包含" + fileNames.size() + "个文件: " + String.join(", ", fileNames) + "]";
-            }
+            return result.toString();
 
         } catch (Exception e) {
-            log.debug("解析文件信息失败", e);
-            return "[包含文件]";
+            log.debug("处理文件内容日志失败", e);
+            // 出错时回退到普通截取
+            String prefix = content.substring(0, Math.min(15, content.length()));
+            String suffix = content.length() > 15 ? content.substring(content.length() - 15) : "";
+            return prefix + "..." + suffix + " (总长度: " + content.length() + "字符)";
         }
     }
 
@@ -2060,5 +2080,120 @@ public class ChatServiceImpl implements ChatService {
         } catch (Exception e) {
             log.error("保存部分AI响应到数据库失败", e);
         }
+    }
+
+    /**
+     * 处理文件内容用于日志记录，截取每个文件的content部分
+     */
+    private String processFileContentForLogging(String fileContentPart) {
+        if (fileContentPart == null || fileContentPart.trim().isEmpty()) {
+            return "";
+        }
+
+        try {
+            StringBuilder result = new StringBuilder();
+
+            // 使用正则表达式匹配每个文件的JSON格式：{"fileName":"content"}
+            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\{\"([^\"]+)\":\"([^\"]*(?:\\\\.[^\"]*)*)\"}");
+            java.util.regex.Matcher matcher = pattern.matcher(fileContentPart);
+
+            boolean first = true;
+            while (matcher.find()) {
+                if (!first) {
+                    result.append(",");
+                }
+                first = false;
+
+                String fileName = matcher.group(1);
+                String content = matcher.group(2);
+
+                // 截取content，保留前后各15字符
+                String truncatedContent = truncateFileContent(content);
+
+                result.append("{\"").append(fileName).append("\":\"").append(truncatedContent).append("\"}");
+            }
+
+            return result.toString();
+
+        } catch (Exception e) {
+            log.debug("处理文件内容用于日志记录失败", e);
+            return fileContentPart; // 出错时返回原内容
+        }
+    }
+
+    /**
+     * 截取单个文件的内容，保留前后各15字符
+     */
+    private String truncateFileContent(String content) {
+        if (content == null) {
+            return "";
+        }
+
+        // 处理转义字符
+        String unescaped = content.replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\");
+
+        if (unescaped.length() <= 30) {
+            return content; // 返回原始转义格式
+        }
+
+        // 截取前15和后15字符
+        String prefix = unescaped.substring(0, 15);
+        String suffix = unescaped.substring(unescaped.length() - 15);
+
+        // 重新转义用于JSON格式
+        String truncated = prefix + "..." + suffix;
+        return truncated.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
+    }
+
+    /**
+     * 统计文件内容中的文件数量
+     */
+    private int countFilesInContent(String fileContentPart) {
+        if (fileContentPart == null || fileContentPart.trim().isEmpty()) {
+            return 0;
+        }
+
+        try {
+            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\{\"[^\"]+\":\"[^\"]*(?:\\\\.[^\"]*)*\"}");
+            java.util.regex.Matcher matcher = pattern.matcher(fileContentPart);
+
+            int count = 0;
+            while (matcher.find()) {
+                count++;
+            }
+            return count;
+
+        } catch (Exception e) {
+            log.debug("统计文件数量失败", e);
+            return 0;
+        }
+    }
+
+    /**
+     * 提取文件内容中的文件名列表
+     */
+    private List<String> extractFileNames(String fileContentPart) {
+        List<String> fileNames = new ArrayList<>();
+
+        if (fileContentPart == null || fileContentPart.trim().isEmpty()) {
+            return fileNames;
+        }
+
+        try {
+            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\"([^\"]+)\":");
+            java.util.regex.Matcher matcher = pattern.matcher(fileContentPart);
+
+            while (matcher.find()) {
+                String fileName = matcher.group(1);
+                if (fileName != null && !fileName.trim().isEmpty()) {
+                    fileNames.add(fileName);
+                }
+            }
+
+        } catch (Exception e) {
+            log.debug("提取文件名失败", e);
+        }
+
+        return fileNames;
     }
 }

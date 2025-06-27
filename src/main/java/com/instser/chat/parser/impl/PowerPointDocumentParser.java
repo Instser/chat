@@ -32,10 +32,10 @@ public class PowerPointDocumentParser implements DocumentParser {
         try (ByteArrayInputStream inputStream = new ByteArrayInputStream(fileBytes)) {
             if (fileType.equals("application/vnd.openxmlformats-officedocument.presentationml.presentation")) {
                 // 处理.pptx文件
-                content.append(parsePptx(inputStream));
+                content.append(parsePptx(inputStream, fileName));
             } else if (fileType.equals("application/vnd.ms-powerpoint")) {
                 // 处理.ppt文件
-                content.append(parsePpt(inputStream));
+                content.append(parsePpt(inputStream, fileName));
             } else {
                 throw new IllegalArgumentException("不支持的PowerPoint文档格式: " + fileType);
             }
@@ -47,12 +47,14 @@ public class PowerPointDocumentParser implements DocumentParser {
     /**
      * 解析.pptx文件
      */
-    private String parsePptx(ByteArrayInputStream inputStream) throws Exception {
+    private String parsePptx(ByteArrayInputStream inputStream, String fileName) throws Exception {
         StringBuilder content = new StringBuilder();
-        
+
         try (XMLSlideShow ppt = new XMLSlideShow(inputStream)) {
             content.append("文档类型: PowerPoint文档 (.pptx)\n");
-            
+            content.append("文件名: ").append(getFileName(fileName)).append("\n");
+            content.append("元数据文档名: ").append(getDocumentTitleFromMetadata(ppt)).append("\n");
+
             List<XSLFSlide> slides = ppt.getSlides();
             content.append("幻灯片总数: ").append(slides.size()).append("\n\n");
             
@@ -68,12 +70,14 @@ public class PowerPointDocumentParser implements DocumentParser {
     /**
      * 解析.ppt文件
      */
-    private String parsePpt(ByteArrayInputStream inputStream) throws Exception {
+    private String parsePpt(ByteArrayInputStream inputStream, String fileName) throws Exception {
         StringBuilder content = new StringBuilder();
-        
+
         try (HSLFSlideShow ppt = new HSLFSlideShow(inputStream)) {
             content.append("文档类型: PowerPoint文档 (.ppt)\n");
-            
+            content.append("文件名: ").append(getFileName(fileName)).append("\n");
+            content.append("元数据文档名: ").append(getDocumentTitleFromMetadata(ppt)).append("\n");
+
             List<HSLFSlide> slides = ppt.getSlides();
             content.append("幻灯片总数: ").append(slides.size()).append("\n\n");
             
@@ -172,6 +176,56 @@ public class PowerPointDocumentParser implements DocumentParser {
     }
 
 
+
+    /**
+     * 获取文件名
+     * 返回原始文件名，如果为空则返回默认值
+     */
+    private String getFileName(String fileName) {
+        if (fileName != null && !fileName.trim().isEmpty()) {
+            return fileName.trim();
+        }
+        return "未知文件";
+    }
+
+    /**
+     * 从PowerPoint文档元数据获取标题
+     * 支持PPTX格式
+     */
+    private String getDocumentTitleFromMetadata(XMLSlideShow ppt) {
+        if (ppt != null) {
+            try {
+                if (ppt.getProperties() != null &&
+                    ppt.getProperties().getCoreProperties() != null) {
+                    String title = ppt.getProperties().getCoreProperties().getTitle();
+                    if (title != null && !title.trim().isEmpty()) {
+                        return title.trim();
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("无法获取PPTX文档元数据标题: {}", e.getMessage());
+            }
+        }
+        return "无标题";
+    }
+
+    /**
+     * 从PowerPoint文档元数据获取标题
+     * 支持PPT格式
+     */
+    private String getDocumentTitleFromMetadata(HSLFSlideShow ppt) {
+        if (ppt != null) {
+            try {
+                // PPT格式的元数据获取相对复杂，这里简化处理
+                // 可以尝试从文档属性中获取，但API可能不同
+                // 暂时返回默认值，避免API兼容性问题
+                log.debug("PPT格式暂不支持元数据标题获取");
+            } catch (Exception e) {
+                log.debug("无法获取PPT文档元数据标题: {}", e.getMessage());
+            }
+        }
+        return "无标题";
+    }
 
     @Override
     public String[] getSupportedTypes() {

@@ -65,11 +65,7 @@ public class FileUpload {
     @TableField("file_size")
     private Long fileSize;
 
-    /**
-     * 存储路径
-     */
-    @TableField("storage_path")
-    private String storagePath;
+
 
     /**
      * 文件内容（用于存储文本文件或小文件的完整内容）

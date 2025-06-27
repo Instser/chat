@@ -39,8 +39,10 @@ public class ExcelDocumentParser implements DocumentParser {
             } else {
                 throw new IllegalArgumentException("不支持的Excel文档格式: " + fileType);
             }
-            
+
             try {
+                content.append("文件名: ").append(getFileName(fileName)).append("\n");
+                content.append("元数据文档名: ").append(getDocumentTitleFromMetadata(workbook)).append("\n");
                 content.append("工作表数量: ").append(workbook.getNumberOfSheets()).append("\n\n");
                 
                 // 遍历所有工作表
@@ -177,6 +179,51 @@ public class ExcelDocumentParser implements DocumentParser {
             default:
                 return "";
         }
+    }
+
+    /**
+     * 获取文件名
+     * 返回原始文件名，如果为空则返回默认值
+     */
+    private String getFileName(String fileName) {
+        if (fileName != null && !fileName.trim().isEmpty()) {
+            return fileName.trim();
+        }
+        return "未知文件";
+    }
+
+    /**
+     * 从Excel文档元数据获取标题
+     */
+    private String getDocumentTitleFromMetadata(Workbook workbook) {
+        if (workbook != null) {
+            try {
+                // 针对不同的Excel格式使用不同的方法获取元数据
+                if (workbook instanceof XSSFWorkbook) {
+                    // XLSX格式
+                    XSSFWorkbook xssfWorkbook = (XSSFWorkbook) workbook;
+                    if (xssfWorkbook.getProperties() != null &&
+                        xssfWorkbook.getProperties().getCoreProperties() != null) {
+                        String title = xssfWorkbook.getProperties().getCoreProperties().getTitle();
+                        if (title != null && !title.trim().isEmpty()) {
+                            return title.trim();
+                        }
+                    }
+                } else if (workbook instanceof HSSFWorkbook) {
+                    // XLS格式
+                    HSSFWorkbook hssfWorkbook = (HSSFWorkbook) workbook;
+                    if (hssfWorkbook.getSummaryInformation() != null) {
+                        String title = hssfWorkbook.getSummaryInformation().getTitle();
+                        if (title != null && !title.trim().isEmpty()) {
+                            return title.trim();
+                        }
+                    }
+                }
+            } catch (Exception e) {
+                log.debug("无法获取Excel文档元数据标题: {}", e.getMessage());
+            }
+        }
+        return "无标题";
     }
 
     @Override

@@ -4,8 +4,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.util.Arrays;
 
 /**
  * 文件魔数检测工具类
@@ -23,7 +21,21 @@ public class MagicNumberDetector {
     public static String detectFileType(MultipartFile file) {
         try {
             byte[] fileBytes = file.getBytes();
-            return detectFileType(fileBytes);
+            String detectedType = detectFileType(fileBytes);
+
+            // 如果魔数检测到ZIP格式，但文件名表明是Office文档，则使用文件名判断
+            if ("application/zip".equals(detectedType)) {
+                String filename = file.getOriginalFilename();
+                if (filename != null) {
+                    String filenameBasedType = guessTypeFromFilename(filename);
+                    if (isOfficeDocument(filenameBasedType)) {
+                        log.debug("ZIP格式文件根据文件名识别为Office文档: {} -> {}", filename, filenameBasedType);
+                        return filenameBasedType;
+                    }
+                }
+            }
+
+            return detectedType;
         } catch (IOException e) {
             log.warn("读取文件内容失败，使用Content-Type: {}", e.getMessage());
             String contentType = file.getContentType();
@@ -271,5 +283,19 @@ public class MagicNumberDetector {
             
             default: return "application/octet-stream";
         }
+    }
+
+    /**
+     * 判断是否为Office文档类型
+     */
+    private static boolean isOfficeDocument(String mimeType) {
+        if (mimeType == null) return false;
+
+        return mimeType.equals("application/vnd.openxmlformats-officedocument.wordprocessingml.document") ||
+               mimeType.equals("application/msword") ||
+               mimeType.equals("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") ||
+               mimeType.equals("application/vnd.ms-excel") ||
+               mimeType.equals("application/vnd.openxmlformats-officedocument.presentationml.presentation") ||
+               mimeType.equals("application/vnd.ms-powerpoint");
     }
 }

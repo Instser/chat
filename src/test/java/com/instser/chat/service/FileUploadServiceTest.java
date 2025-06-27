@@ -52,24 +52,19 @@ public class FileUploadServiceTest {
         // 注意：这里需要实际的数据库连接才能完整测试
         // 在单元测试中，我们主要验证临时文件清理逻辑
         
-        // 验证临时文件清理方法
-        FileUpload testFileUpload = new FileUpload();
-        testFileUpload.setFileId("test-file-id");
-        testFileUpload.setStoragePath(tempDir.resolve("test-temp-file.txt").toString());
-        
-        // 创建临时文件
-        Path tempFile = Paths.get(testFileUpload.getStoragePath());
+        // 验证临时文件清理方法（新架构下直接测试Path参数的方法）
+        Path tempFile = tempDir.resolve("test-temp-file.txt");
         Files.write(tempFile, testContent.getBytes());
-        
+
         // 验证文件存在
         assertTrue(Files.exists(tempFile), "临时文件应该存在");
-        
+
         // 创建服务实例并测试清理方法
         FileUploadDao mockDao = Mockito.mock(FileUploadDao.class);
         DocumentParserService mockParserService = Mockito.mock(DocumentParserService.class);
         FileUploadServiceImpl service = new FileUploadServiceImpl(mockDao, mockParserService);
-        service.cleanupTempFile(testFileUpload);
-        
+        service.cleanupTempFile(tempFile);
+
         // 验证文件已被删除
         assertFalse(Files.exists(tempFile), "临时文件应该被删除");
     }
@@ -79,33 +74,27 @@ public class FileUploadServiceTest {
      */
     @Test
     public void testBatchTempFileCleanup() throws IOException {
-        // 创建多个测试文件
+        // 创建多个测试文件（新架构下直接创建Path对象）
         String testContent = "测试内容";
-        
-        FileUpload file1 = new FileUpload();
-        file1.setFileId("test-file-1");
-        file1.setStoragePath(tempDir.resolve("temp-file-1.txt").toString());
-        
-        FileUpload file2 = new FileUpload();
-        file2.setFileId("test-file-2");
-        file2.setStoragePath(tempDir.resolve("temp-file-2.txt").toString());
-        
-        // 创建临时文件
-        Path tempFile1 = Paths.get(file1.getStoragePath());
-        Path tempFile2 = Paths.get(file2.getStoragePath());
+
+        Path tempFile1 = tempDir.resolve("temp-file-1.txt");
+        Path tempFile2 = tempDir.resolve("temp-file-2.txt");
         Files.write(tempFile1, testContent.getBytes());
         Files.write(tempFile2, testContent.getBytes());
-        
+
         // 验证文件存在
         assertTrue(Files.exists(tempFile1), "临时文件1应该存在");
         assertTrue(Files.exists(tempFile2), "临时文件2应该存在");
-        
+
         // 批量清理
         FileUploadDao mockDao = Mockito.mock(FileUploadDao.class);
         DocumentParserService mockParserService = Mockito.mock(DocumentParserService.class);
         FileUploadServiceImpl service = new FileUploadServiceImpl(mockDao, mockParserService);
-        service.cleanupTempFiles(java.util.Arrays.asList(file1, file2));
-        
+
+        // 新架构下使用Path参数的清理方法
+        service.cleanupTempFile(tempFile1);
+        service.cleanupTempFile(tempFile2);
+
         // 验证文件已被删除
         assertFalse(Files.exists(tempFile1), "临时文件1应该被删除");
         assertFalse(Files.exists(tempFile2), "临时文件2应该被删除");
@@ -116,15 +105,14 @@ public class FileUploadServiceTest {
      */
     @Test
     public void testCleanupNonExistentFile() {
-        FileUpload testFileUpload = new FileUpload();
-        testFileUpload.setFileId("non-existent-file");
-        testFileUpload.setStoragePath("/path/to/non-existent-file.txt");
-        
+        // 新架构下直接测试Path参数的清理方法
+        Path nonExistentPath = Paths.get("/path/to/non-existent-file.txt");
+
         // 清理不存在的文件应该不抛出异常
         FileUploadDao mockDao = Mockito.mock(FileUploadDao.class);
         DocumentParserService mockParserService = Mockito.mock(DocumentParserService.class);
         FileUploadServiceImpl service = new FileUploadServiceImpl(mockDao, mockParserService);
-        assertDoesNotThrow(() -> service.cleanupTempFile(testFileUpload));
+        assertDoesNotThrow(() -> service.cleanupTempFile(nonExistentPath));
     }
 
     /**
@@ -135,7 +123,12 @@ public class FileUploadServiceTest {
         FileUploadDao mockDao = Mockito.mock(FileUploadDao.class);
         DocumentParserService mockParserService = Mockito.mock(DocumentParserService.class);
         FileUploadServiceImpl service = new FileUploadServiceImpl(mockDao, mockParserService);
-        assertDoesNotThrow(() -> service.cleanupTempFile(null));
+
+        // 测试新架构下的Path参数清理方法
+        assertDoesNotThrow(() -> service.cleanupTempFile((Path) null));
+
+        // 测试接口兼容性方法
+        assertDoesNotThrow(() -> service.cleanupTempFile((FileUpload) null));
         assertDoesNotThrow(() -> service.cleanupTempFiles(null));
         assertDoesNotThrow(() -> service.cleanupTempFiles(java.util.Collections.emptyList()));
     }

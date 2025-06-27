@@ -15,7 +15,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
+
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -47,6 +47,7 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
 
     @Override
     public FileUpload uploadFile(MultipartFile file, Long userId, String sessionId, String messageId) {
+        Path tempFilePath = null;
         try {
             // 验证文件
             validateFile(file);
@@ -61,8 +62,12 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
             String fileId = UUID.randomUUID().toString();
             String originalFilename = file.getOriginalFilename();
 
-            // 读取文件内容
-            byte[] fileBytes = file.getBytes();
+            // 创建临时文件用于解析
+            tempFilePath = createTempFile(file, fileId);
+            log.debug("创建临时文件: {}", tempFilePath.toString());
+
+            // 读取文件内容进行解析
+            byte[] fileBytes = Files.readAllBytes(tempFilePath);
             String fileContent = null;
 
             // 根据文件类型处理内容
@@ -89,7 +94,6 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
             fileUpload.setFileName(originalFilename);
             fileUpload.setFileType(detectedType);
             fileUpload.setFileSize(file.getSize());
-            fileUpload.setStoragePath(null); // 不再保存文件路径
             fileUpload.setContent(fileContent); // 保存解析后的文本内容
             fileUpload.setStatus(FileUpload.Status.AVAILABLE);
 
@@ -98,11 +102,17 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
 
             log.info("文件上传并解析成功: {} (ID: {}, 类型: {}, 大小: {} bytes, 内容长度: {} 字符)",
                 originalFilename, fileId, detectedType, file.getSize(), fileContent.length());
+
             return fileUpload;
 
         } catch (IOException e) {
             log.error("文件上传失败：{}", e.getMessage(), e);
             throw new RuntimeException("文件上传失败：" + e.getMessage());
+        } finally {
+            // 无论成功还是失败，都要清理临时文件
+            if (tempFilePath != null) {
+                cleanupTempFile(tempFilePath);
+            }
         }
     }
 
@@ -344,14 +354,8 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
      */
     private boolean deleteFilePhysicallyInternal(FileUpload fileUpload) {
         try {
-            // 删除磁盘文件（如果存在）
-            if (fileUpload.getStoragePath() != null && !fileUpload.getStoragePath().trim().isEmpty()) {
-                Path filePath = Paths.get(fileUpload.getStoragePath());
-                if (Files.exists(filePath)) {
-                    Files.delete(filePath);
-                    log.info("磁盘文件删除成功：{}", filePath.toString());
-                }
-            }
+            // 新架构下不再存储物理文件，只需删除数据库记录
+            // 所有文件内容都已解析为文本存储在content字段中
 
             // 删除数据库记录（物理删除，不使用逻辑删除）
             boolean deleted = fileUploadDao.deleteById(fileUpload.getId()) > 0;
@@ -360,9 +364,6 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
             }
             return deleted;
 
-        } catch (IOException e) {
-            log.error("删除磁盘文件失败，文件ID：{}，路径：{}", fileUpload.getFileId(), fileUpload.getStoragePath(), e);
-            return false;
         } catch (Exception e) {
             log.error("删除文件失败，文件ID：{}", fileUpload.getFileId(), e);
             return false;
@@ -556,11 +557,8 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
         int deletedCount = 0;
         for (FileUpload file : expiredFiles) {
             try {
-                // 删除磁盘文件
-                Path filePath = Paths.get(file.getStoragePath());
-                if (Files.exists(filePath)) {
-                    Files.delete(filePath);
-                }
+                // 新架构下不再存储物理文件，只需删除数据库记录
+                // 所有文件内容都已解析为文本存储在content字段中
 
                 // 删除数据库记录
                 if (removeById(file.getId())) {
@@ -648,24 +646,77 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
 
 
     /**
-     * 清理临时文件
+     * 清理临时文件（接口兼容性方法）
      *
-     * @param fileUpload 文件上传记录
+     * @param fileUpload 文件上传记录（新架构下此参数无效）
      */
+    @Override
     public void cleanupTempFile(FileUpload fileUpload) {
-        if (fileUpload == null || fileUpload.getStoragePath() == null) {
+        // 新架构下不再存储物理文件，此方法保持接口兼容性
+        // 实际的临时文件清理在文件上传过程中自动完成
+        log.debug("cleanupTempFile调用，新架构下无需清理物理文件");
+    }
+
+    /**
+     * 创建临时文件用于解析
+     *
+     * @param file   上传的文件
+     * @param fileId 文件ID
+     * @return 临时文件路径
+     * @throws IOException 创建文件失败
+     */
+    private Path createTempFile(MultipartFile file, String fileId) throws IOException {
+        // 确保临时目录存在
+        Path tempDir = Files.createTempDirectory("file-upload-");
+
+        // 获取文件扩展名
+        String originalFilename = file.getOriginalFilename();
+        String extension = "";
+        if (originalFilename != null && originalFilename.contains(".")) {
+            extension = originalFilename.substring(originalFilename.lastIndexOf("."));
+        }
+
+        // 创建临时文件
+        Path tempFilePath = tempDir.resolve(fileId + extension);
+
+        // 将上传的文件内容写入临时文件
+        try (var inputStream = file.getInputStream()) {
+            Files.copy(inputStream, tempFilePath);
+        }
+
+        log.debug("临时文件创建成功: {} (大小: {} bytes)", tempFilePath.toString(), file.getSize());
+        return tempFilePath;
+    }
+
+    /**
+     * 清理临时文件（新方法）
+     *
+     * @param tempFilePath 临时文件路径
+     */
+    public void cleanupTempFile(Path tempFilePath) {
+        if (tempFilePath == null) {
             return;
         }
 
         try {
-            Path tempFilePath = Paths.get(fileUpload.getStoragePath());
             if (Files.exists(tempFilePath)) {
                 Files.delete(tempFilePath);
-                log.info("临时文件清理成功：{}", tempFilePath.toString());
+                log.debug("临时文件清理成功：{}", tempFilePath.toString());
+
+                // 尝试删除临时目录（如果为空）
+                Path parentDir = tempFilePath.getParent();
+                if (parentDir != null && Files.exists(parentDir)) {
+                    try {
+                        Files.delete(parentDir);
+                        log.debug("临时目录清理成功：{}", parentDir.toString());
+                    } catch (IOException e) {
+                        // 目录不为空或其他原因，忽略错误
+                        log.debug("临时目录清理跳过：{}", parentDir.toString());
+                    }
+                }
             }
         } catch (IOException e) {
-            log.warn("清理临时文件失败：{}, 错误：{}",
-                    fileUpload.getStoragePath(), e.getMessage());
+            log.warn("清理临时文件失败：{}, 错误：{}", tempFilePath.toString(), e.getMessage());
         }
     }
 
