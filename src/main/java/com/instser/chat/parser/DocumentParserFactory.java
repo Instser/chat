@@ -1,10 +1,12 @@
 package com.instser.chat.parser;
 
 import com.instser.chat.parser.impl.ExcelDocumentParser;
+import com.instser.chat.parser.impl.ImageDocumentParser;
 import com.instser.chat.parser.impl.PdfDocumentParser;
 import com.instser.chat.parser.impl.PowerPointDocumentParser;
 import com.instser.chat.parser.impl.TextDocumentParser;
 import com.instser.chat.parser.impl.WordDocumentParser;
+import com.instser.chat.util.MagicNumberDetector;
 
 /**
  * 文档解析器工厂
@@ -29,6 +31,11 @@ public class DocumentParserFactory {
         
         String lowerCaseType = fileType.toLowerCase().trim();
         
+        // 检查是否为图片文件
+        if (MagicNumberDetector.isImageFile(lowerCaseType)) {
+            return new ImageDocumentParser();
+        }
+
         // 检查是否为文本文件
         if (lowerCaseType.startsWith("text/") || isTextBasedFormat(lowerCaseType)) {
             return new TextDocumentParser();
@@ -71,6 +78,11 @@ public class DocumentParserFactory {
         }
 
         String lowerCaseType = fileType.toLowerCase().trim();
+
+        // 支持图片文件
+        if (MagicNumberDetector.isImageFile(lowerCaseType)) {
+            return true;
+        }
 
         // 支持文本文件
         if (lowerCaseType.startsWith("text/") || isTextBasedFormat(lowerCaseType)) {

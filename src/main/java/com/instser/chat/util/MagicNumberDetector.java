@@ -298,4 +298,11 @@ public class MagicNumberDetector {
                mimeType.equals("application/vnd.openxmlformats-officedocument.presentationml.presentation") ||
                mimeType.equals("application/vnd.ms-powerpoint");
     }
+
+    /**
+     * 判断是否为图片文件
+     */
+    public static boolean isImageFile(String mimeType) {
+        return mimeType != null && mimeType.startsWith("image/");
+    }
 }
