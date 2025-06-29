@@ -28,9 +28,14 @@ public class DocumentParserFactory {
         if (fileType == null || fileType.trim().isEmpty()) {
             throw new IllegalArgumentException("文件类型不能为空");
         }
-        
+
         String lowerCaseType = fileType.toLowerCase().trim();
-        
+
+        // 检查是否为压缩文件（不支持）
+        if (MagicNumberDetector.isCompressedFile(lowerCaseType)) {
+            throw new IllegalArgumentException("不支持压缩文件类型: " + fileType);
+        }
+
         // 检查是否为图片文件
         if (MagicNumberDetector.isImageFile(lowerCaseType)) {
             return new ImageDocumentParser();
@@ -78,6 +83,11 @@ public class DocumentParserFactory {
         }
 
         String lowerCaseType = fileType.toLowerCase().trim();
+
+        // 不支持压缩文件
+        if (MagicNumberDetector.isCompressedFile(lowerCaseType)) {
+            return false;
+        }
 
         // 支持图片文件
         if (MagicNumberDetector.isImageFile(lowerCaseType)) {

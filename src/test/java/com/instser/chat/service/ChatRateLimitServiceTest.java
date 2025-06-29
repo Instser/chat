@@ -4,6 +4,7 @@ import com.instser.chat.service.serviceimpl.ChatRateLimitServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -19,7 +20,16 @@ class ChatRateLimitServiceTest {
 
     @BeforeEach
     void setUp() {
-        chatRateLimitService = new ChatRateLimitServiceImpl();
+        // 使用Mock对象创建ChatRateLimitServiceImpl实例
+        UserAccountService mockUserAccountService = Mockito.mock(UserAccountService.class);
+        PackageService mockPackageService = Mockito.mock(PackageService.class);
+        UserDailyUsageService mockUserDailyUsageService = Mockito.mock(UserDailyUsageService.class);
+
+        chatRateLimitService = new ChatRateLimitServiceImpl(
+            mockUserAccountService,
+            mockPackageService,
+            mockUserDailyUsageService
+        );
     }
 
     /**

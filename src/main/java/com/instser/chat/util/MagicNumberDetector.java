@@ -23,7 +23,7 @@ public class MagicNumberDetector {
             byte[] fileBytes = file.getBytes();
             String detectedType = detectFileType(fileBytes);
 
-            // 如果魔数检测到ZIP格式，但文件名表明是Office文档，则使用文件名判断
+            // 如果魔数检测到ZIP格式，需要根据文件名判断是Office文档还是普通压缩文件
             if ("application/zip".equals(detectedType)) {
                 String filename = file.getOriginalFilename();
                 if (filename != null) {
@@ -31,6 +31,10 @@ public class MagicNumberDetector {
                     if (isOfficeDocument(filenameBasedType)) {
                         log.debug("ZIP格式文件根据文件名识别为Office文档: {} -> {}", filename, filenameBasedType);
                         return filenameBasedType;
+                    } else {
+                        // 如果不是Office文档，则确认为普通ZIP压缩文件
+                        log.debug("ZIP格式文件识别为普通压缩文件: {}", filename);
+                        return "application/zip";
                     }
                 }
             }
@@ -47,7 +51,7 @@ public class MagicNumberDetector {
      * 检测字节数组的文件类型
      */
     public static String detectFileType(byte[] fileBytes) {
-        if (fileBytes == null || fileBytes.length < 4) {
+        if (fileBytes == null || fileBytes.length < 2) {
             return "application/octet-stream";
         }
 
@@ -60,6 +64,15 @@ public class MagicNumberDetector {
 
         // 文档文件检测
         if (isPDF(fileBytes)) return "application/pdf";
+
+        // 压缩文件检测（需要在ZIP检测之前，因为某些压缩格式也使用ZIP结构）
+        if (isRAR(fileBytes)) return "application/x-rar-compressed";
+        if (is7Z(fileBytes)) return "application/x-7z-compressed";
+        if (isGZIP(fileBytes)) return "application/gzip";
+        if (isBZIP2(fileBytes)) return "application/x-bzip2";
+        if (isTAR(fileBytes)) return "application/x-tar";
+
+        // ZIP文件检测（包括基于ZIP的Office文档）
         if (isZIP(fileBytes)) return detectZipBasedFormat(fileBytes);
 
         // Office文档检测（基于OLE格式）
@@ -162,6 +175,68 @@ public class MagicNumberDetector {
     }
 
     /**
+     * 检测RAR文件
+     * 魔数: 52 61 72 21 1A 07 00 (RAR 1.5+) 或 52 61 72 21 1A 07 01 00 (RAR 5.0+)
+     */
+    private static boolean isRAR(byte[] fileBytes) {
+        if (fileBytes.length < 7) return false;
+        return fileBytes[0] == 0x52 &&
+               fileBytes[1] == 0x61 &&
+               fileBytes[2] == 0x72 &&
+               fileBytes[3] == 0x21 &&
+               fileBytes[4] == 0x1A &&
+               fileBytes[5] == 0x07 &&
+               (fileBytes[6] == 0x00 || fileBytes[6] == 0x01);
+    }
+
+    /**
+     * 检测7Z文件
+     * 魔数: 37 7A BC AF 27 1C
+     */
+    private static boolean is7Z(byte[] fileBytes) {
+        if (fileBytes.length < 6) return false;
+        return fileBytes[0] == 0x37 &&
+               fileBytes[1] == 0x7A &&
+               fileBytes[2] == (byte) 0xBC &&
+               fileBytes[3] == (byte) 0xAF &&
+               fileBytes[4] == 0x27 &&
+               fileBytes[5] == 0x1C;
+    }
+
+    /**
+     * 检测GZIP文件
+     * 魔数: 1F 8B
+     */
+    private static boolean isGZIP(byte[] fileBytes) {
+        if (fileBytes.length < 2) return false;
+        return fileBytes[0] == 0x1F && fileBytes[1] == (byte) 0x8B;
+    }
+
+    /**
+     * 检测BZIP2文件
+     * 魔数: 42 5A 68
+     */
+    private static boolean isBZIP2(byte[] fileBytes) {
+        if (fileBytes.length < 3) return false;
+        return fileBytes[0] == 0x42 &&
+               fileBytes[1] == 0x5A &&
+               fileBytes[2] == 0x68;
+    }
+
+    /**
+     * 检测TAR文件
+     * 魔数: 在偏移257处有 "ustar" (75 73 74 61 72)
+     */
+    private static boolean isTAR(byte[] fileBytes) {
+        if (fileBytes.length < 262) return false;
+        return fileBytes[257] == 0x75 &&
+               fileBytes[258] == 0x73 &&
+               fileBytes[259] == 0x74 &&
+               fileBytes[260] == 0x61 &&
+               fileBytes[261] == 0x72;
+    }
+
+    /**
      * 检测OLE文档（老版本Office文档）
      * 魔数: D0 CF 11 E0 A1 B1 1A E1
      */
@@ -179,10 +254,11 @@ public class MagicNumberDetector {
 
     /**
      * 检测基于ZIP的文档格式（新版本Office文档）
+     * 通过检查ZIP内部的文件结构来区分Office文档和普通ZIP文件
      */
     private static String detectZipBasedFormat(byte[] fileBytes) {
-        // 这里可以进一步检测ZIP内容来确定具体的Office文档类型
-        // 简化实现，返回通用ZIP类型
+        // 简化实现：如果是ZIP格式，需要结合文件名来判断是否为Office文档
+        // 这个方法会在detectFileType(MultipartFile)中被调用时进行进一步判断
         return "application/zip";
     }
 
@@ -272,8 +348,18 @@ public class MagicNumberDetector {
             case ".bmp": return "image/bmp";
             
             case ".pdf": return "application/pdf";
+
+            // 压缩文件
             case ".zip": return "application/zip";
-            
+            case ".rar": return "application/x-rar-compressed";
+            case ".7z": return "application/x-7z-compressed";
+            case ".tar": return "application/x-tar";
+            case ".gz": return "application/gzip";
+            case ".bz2": return "application/x-bzip2";
+            case ".xz": return "application/x-xz";
+            case ".lzma": return "application/x-lzma";
+
+            // Office文档
             case ".doc": return "application/msword";
             case ".docx": return "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
             case ".xls": return "application/vnd.ms-excel";
@@ -288,7 +374,7 @@ public class MagicNumberDetector {
     /**
      * 判断是否为Office文档类型
      */
-    private static boolean isOfficeDocument(String mimeType) {
+    public static boolean isOfficeDocument(String mimeType) {
         if (mimeType == null) return false;
 
         return mimeType.equals("application/vnd.openxmlformats-officedocument.wordprocessingml.document") ||
@@ -304,5 +390,21 @@ public class MagicNumberDetector {
      */
     public static boolean isImageFile(String mimeType) {
         return mimeType != null && mimeType.startsWith("image/");
+    }
+
+    /**
+     * 判断是否为压缩文件
+     */
+    public static boolean isCompressedFile(String mimeType) {
+        if (mimeType == null) return false;
+
+        return mimeType.equals("application/zip") ||
+               mimeType.equals("application/x-rar-compressed") ||
+               mimeType.equals("application/x-7z-compressed") ||
+               mimeType.equals("application/x-tar") ||
+               mimeType.equals("application/gzip") ||
+               mimeType.equals("application/x-bzip2") ||
+               mimeType.equals("application/x-xz") ||
+               mimeType.equals("application/x-lzma");
     }
 }
