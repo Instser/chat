@@ -57,7 +57,7 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
             // 检测文件类型
             String detectedType = detectFileType(file);
             if (!isFileTypeAllowed(detectedType)) {
-                throw new IllegalArgumentException("不支持的文件类型：" + detectedType);
+                throw new FileUploadException("FILE_TYPE_NOT_SUPPORTED", "File type not supported: " + detectedType);
             }
 
             // 生成文件ID
@@ -83,7 +83,7 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
                 }
             } else {
                 // 其他文件类型不支持
-                throw new IllegalArgumentException("不支持的文件类型：" + detectedType);
+                throw new FileUploadException("FILE_TYPE_NOT_SUPPORTED", "File type not supported: " + detectedType);
             }
 
             // 创建文件记录

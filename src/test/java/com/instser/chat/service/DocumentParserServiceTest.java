@@ -40,8 +40,12 @@ public class DocumentParserServiceTest {
         assertTrue(documentParserService.isDocumentFile("application/xml"));
         assertTrue(documentParserService.isDocumentFile("application/javascript"));
 
+        // 测试支持的图片文件类型
+        assertTrue(documentParserService.isDocumentFile("image/jpeg"));
+        assertTrue(documentParserService.isDocumentFile("image/png"));
+        assertTrue(documentParserService.isDocumentFile("image/gif"));
+
         // 测试不支持的文件类型
-        assertFalse(documentParserService.isDocumentFile("image/jpeg"));
         assertFalse(documentParserService.isDocumentFile("audio/mp3"));
         assertFalse(documentParserService.isDocumentFile("video/mp4"));
         assertFalse(documentParserService.isDocumentFile(null));
