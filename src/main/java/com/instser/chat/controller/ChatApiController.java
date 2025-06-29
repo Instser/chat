@@ -16,6 +16,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpServletResponse;
@@ -154,7 +155,22 @@ public class ChatApiController {
             try {
                 return Long.parseLong((String) modelIdObj);
             } catch (NumberFormatException e) {
-                writeErrorResponse(response, "modelId格式错误");
+                String errorContent = "Request failed. Please try again later.";
+                writeErrorResponse(response, errorContent);
+
+                // 尝试保存错误响应到数据库
+                try {
+                    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+                    if (auth != null && auth.isAuthenticated()) {
+                        Long userId = getCurrentUserId(auth);
+                        if (userId != null) {
+                            // 由于没有chatId，这里无法保存到数据库，只记录日志
+                            log.warn("modelId格式错误，用户ID：{}，错误值：{}", userId, modelIdObj);
+                        }
+                    }
+                } catch (Exception ex) {
+                    log.warn("处理modelId格式错误时获取用户信息失败", ex);
+                }
                 throw new Exception("modelId格式错误");
             }
         }
@@ -166,12 +182,42 @@ public class ChatApiController {
      */
     private boolean validateBasicParams(String chatId, String messageId, HttpServletResponse response) throws Exception {
         if (chatId == null || chatId.trim().isEmpty()) {
-            writeErrorResponse(response, "chatId不能为空");
+            String errorContent = "Request failed. Please try again later.";
+            writeErrorResponse(response, errorContent);
+
+            // 尝试保存错误响应到数据库（如果能获取到用户信息）
+            try {
+                Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+                if (auth != null && auth.isAuthenticated()) {
+                    Long userId = getCurrentUserId(auth);
+                    if (userId != null) {
+                        chatService.saveErrorResponse(chatId, userId, 1L, errorContent);
+                        log.info("参数验证失败错误响应已保存到数据库，会话ID：{}，用户ID：{}，原因：chatId为空", chatId, userId);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("保存参数验证错误响应失败", e);
+            }
             return false;
         }
 
         if (messageId == null || messageId.trim().isEmpty()) {
-            writeErrorResponse(response, "messageId不能为空");
+            String errorContent = "Request failed. Please try again later.";
+            writeErrorResponse(response, errorContent);
+
+            // 尝试保存错误响应到数据库（如果能获取到用户信息）
+            try {
+                Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+                if (auth != null && auth.isAuthenticated()) {
+                    Long userId = getCurrentUserId(auth);
+                    if (userId != null) {
+                        chatService.saveErrorResponse(chatId, userId, 1L, errorContent);
+                        log.info("参数验证失败错误响应已保存到数据库，会话ID：{}，用户ID：{}，原因：messageId为空", chatId, userId);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("保存参数验证错误响应失败", e);
+            }
             return false;
         }
 
@@ -184,7 +230,7 @@ public class ChatApiController {
     private void handleCommonException(Exception e, String operation, HttpServletResponse response) {
         log.error("{}接口异常", operation, e);
         try {
-            writeErrorResponse(response, "Request failed");
+            writeErrorResponse(response, "Request failed. Please try again later.");
         } catch (Exception ex) {
             log.error("发送错误响应失败", ex);
         }
@@ -245,7 +291,19 @@ public class ChatApiController {
             }
 
             if (newContent == null || newContent.trim().isEmpty()) {
-                writeErrorResponse(response, "newContent不能为空");
+                String errorContent = "Request failed. Please try again later.";
+                writeErrorResponse(response, errorContent);
+
+                // 尝试保存错误响应到数据库
+                try {
+                    Long userId = getCurrentUserId(authentication);
+                    if (userId != null) {
+                        chatService.saveErrorResponse(chatId, userId, 1L, errorContent);
+                        log.info("编辑重发参数验证失败错误响应已保存到数据库，会话ID：{}，用户ID：{}，原因：newContent为空", chatId, userId);
+                    }
+                } catch (Exception e) {
+                    log.warn("保存编辑重发参数验证错误响应失败", e);
+                }
                 return;
             }
 

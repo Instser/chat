@@ -1,6 +1,7 @@
 package com.instser.chat.service.serviceimpl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.instser.chat.common.exception.FileUploadException;
 import com.instser.chat.dao.FileUploadDao;
 import com.instser.chat.entity.FileUpload;
 import com.instser.chat.service.DocumentParserService;
@@ -48,6 +49,7 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
     @Override
     public FileUpload uploadFile(MultipartFile file, Long userId, String sessionId, String messageId) {
         Path tempFilePath = null;
+        String originalFilename = file.getOriginalFilename(); // 移到try外面，确保在catch中可以访问
         try {
             // 验证文件
             validateFile(file);
@@ -60,7 +62,6 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
 
             // 生成文件ID
             String fileId = UUID.randomUUID().toString();
-            String originalFilename = file.getOriginalFilename();
 
             // 创建临时文件用于解析
             tempFilePath = createTempFile(file, fileId);
@@ -77,7 +78,7 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
                     fileContent = documentParserService.parseDocument(fileBytes, originalFilename, detectedType);
                     log.info("文档解析成功: {} (类型: {}, 内容长度: {} 字符)", originalFilename, detectedType, fileContent.length());
                 } catch (Exception e) {
-                    log.error("文档解析失败: {} - {}", originalFilename, e.getMessage());
+                    log.error("文档解析失败: {} - {}", originalFilename, e.getMessage(), e);
                     throw new RuntimeException("文档解析失败：" + e.getMessage());
                 }
             } else {
@@ -105,9 +106,31 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
 
             return fileUpload;
 
+        } catch (IllegalArgumentException e) {
+            // 参数验证错误，记录具体原因并抛出特定异常
+            log.warn("文件上传参数验证失败：{} - {}", originalFilename, e.getMessage());
+            // 根据具体错误类型抛出不同的异常
+            if (e.getMessage().contains("文件不能为空")) {
+                throw new FileUploadException("FILE_EMPTY", "File cannot be empty");
+            } else if (e.getMessage().contains("文件大小超过限制")) {
+                throw new FileUploadException("FILE_SIZE_EXCEEDED", "File size exceeds limit");
+            } else if (e.getMessage().contains("不支持的文件类型")) {
+                throw new FileUploadException("FILE_TYPE_NOT_SUPPORTED", "File type not supported");
+            } else {
+                throw new FileUploadException("FILE_UPLOAD_FAILED", "File upload failed");
+            }
         } catch (IOException e) {
-            log.error("文件上传失败：{}", e.getMessage(), e);
-            throw new RuntimeException("文件上传失败：" + e.getMessage());
+            // IO错误，记录具体原因但返回统一错误消息
+            log.error("文件上传IO错误：{} - {}", originalFilename, e.getMessage(), e);
+            throw new FileUploadException("FILE_UPLOAD_FAILED", "File upload failed");
+        } catch (Exception e) {
+            // 其他错误，记录具体原因但返回统一错误消息
+            log.error("文件上传失败：{} - {}", originalFilename, e.getMessage(), e);
+            if (e.getMessage().contains("文档解析失败")) {
+                throw new FileUploadException("FILE_PARSE_FAILED", "File parsing failed");
+            } else {
+                throw new FileUploadException("FILE_UPLOAD_FAILED", "File upload failed");
+            }
         } finally {
             // 无论成功还是失败，都要清理临时文件
             if (tempFilePath != null) {
@@ -126,7 +149,7 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
                     FileUpload uploadedFile = uploadFile(file, userId, sessionId, messageId);
                     uploadedFiles.add(uploadedFile);
                 } catch (Exception e) {
-                    log.error("批量上传中文件 {} 上传失败：{}", file.getOriginalFilename(), e.getMessage());
+                    log.error("批量上传中文件 {} 上传失败：{}", file.getOriginalFilename(), e.getMessage(), e);
                     // 继续处理其他文件，不中断整个批量上传过程
                 }
             }
@@ -607,7 +630,7 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
         }
 
         if (!isFileSizeAllowed(file.getSize())) {
-            throw new IllegalArgumentException("文件大小超过限制");
+            throw new IllegalArgumentException("文件大小超过限制：" + file.getSize() + " bytes");
         }
     }
 

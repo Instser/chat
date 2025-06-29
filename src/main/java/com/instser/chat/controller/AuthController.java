@@ -1,6 +1,7 @@
 package com.instser.chat.controller;
 
 import com.instser.chat.common.result.Result;
+import com.instser.chat.common.util.ErrorResponseUtil;
 import com.instser.chat.dto.request.ChangePasswordRequest;
 import com.instser.chat.dto.request.LoginRequest;
 import com.instser.chat.dto.request.RegisterRequest;
@@ -55,17 +56,17 @@ public class AuthController {
         @ApiResponse(responseCode = "400", description = "参数错误或用户已存在")
     })
     @PostMapping("/register")
-    public ResponseEntity<Result<UserVO>> register(
+    public ResponseEntity<?> register(
             @Parameter(description = "注册请求信息", required = true)
             @Valid @RequestBody RegisterRequest request,
             HttpServletResponse response) {
         try {
             // 检查用户名和邮箱是否已存在
             if (userService.getUserByUsername(request.getUsername()) != null) {
-                return ResponseEntity.badRequest().body(Result.failed("用户名已存在"));
+                return ResponseEntity.ok(ErrorResponseUtil.usernameExists());
             }
             if (userService.getUserByEmail(request.getEmail()) != null) {
-                return ResponseEntity.badRequest().body(Result.failed("邮箱已存在"));
+                return ResponseEntity.ok(ErrorResponseUtil.emailExists());
             }
             
             // 创建用户
@@ -85,7 +86,7 @@ public class AuthController {
             
         } catch (Exception e) {
             log.error("用户注册失败", e);
-            return ResponseEntity.badRequest().body(Result.failed("注册失败: " + e.getMessage()));
+            return ResponseEntity.ok(ErrorResponseUtil.registerFailed("Registration failed. Please try again later."));
         }
     }
     
@@ -93,7 +94,7 @@ public class AuthController {
      * 用户登录
      */
     @PostMapping("/login")
-    public ResponseEntity<Result<UserVO>> login(@Valid @RequestBody LoginRequest request, 
+    public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request,
                                                HttpServletResponse response) {
         try {
             // 认证用户
@@ -122,10 +123,10 @@ public class AuthController {
             
         } catch (BadCredentialsException e) {
             log.warn("用户登录失败: 用户名或密码错误");
-            return ResponseEntity.badRequest().body(Result.failed("用户名或密码错误"));
+            return ResponseEntity.ok(ErrorResponseUtil.invalidCredentials());
         } catch (Exception e) {
             log.error("用户登录异常", e);
-            return ResponseEntity.badRequest().body(Result.failed("登录失败，请重试"));
+            return ResponseEntity.ok(ErrorResponseUtil.loginFailed("Login failed. Please try again later."));
         }
     }
     

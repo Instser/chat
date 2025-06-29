@@ -1,6 +1,7 @@
 package com.instser.chat.controller;
 
 import com.instser.chat.common.result.Result;
+import com.instser.chat.common.util.ErrorResponseUtil;
 import com.instser.chat.entity.AiModel;
 import com.instser.chat.entity.ChatMessage;
 import com.instser.chat.entity.ChatSession;
@@ -434,10 +435,13 @@ public class ApiController {
      * 获取指定AI模型信息
      */
     @GetMapping("/models/{id}")
-    public Result<AiModelVO> getModel(@PathVariable Long id) {
+    public Result<?> getModel(@PathVariable Long id) {
         AiModel aiModel = aiModelService.getById(id);
-        if (aiModel == null || aiModel.getIsAvailable() != 1) {
-            return Result.failed("模型不存在或不可用");
+        if (aiModel == null) {
+            return ErrorResponseUtil.modelNotFound();
+        }
+        if (aiModel.getIsAvailable() != 1) {
+            return ErrorResponseUtil.modelUnavailable();
         }
         AiModelVO aiModelVO = VOConverter.toAiModelVO(aiModel);
         return Result.success(aiModelVO, "获取模型信息成功");

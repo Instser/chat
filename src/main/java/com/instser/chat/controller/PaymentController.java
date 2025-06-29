@@ -1,6 +1,7 @@
 package com.instser.chat.controller;
 
 import com.instser.chat.common.result.Result;
+import com.instser.chat.common.util.ErrorResponseUtil;
 import com.instser.chat.entity.Package;
 import com.instser.chat.entity.UserOrder;
 import com.instser.chat.service.OrderService;
@@ -131,11 +132,11 @@ public class PaymentController {
      * 创建支付订单
      */
     @PostMapping("/create")
-    public Result<PaymentResponseVO> createPayment(@Valid @RequestBody PaymentRequestVO paymentRequest, Authentication authentication) {
+    public Result<?> createPayment(@Valid @RequestBody PaymentRequestVO paymentRequest, Authentication authentication) {
         try {
             Long userId = getCurrentUserId(authentication);
             if (userId == null) {
-                return Result.unauthorized("用户未认证");
+                return ErrorResponseUtil.unauthorized("User not authenticated");
             }
 
             paymentRequest.setUserId(userId);
@@ -145,11 +146,11 @@ public class PaymentController {
             if (response.getSuccess()) {
                 return Result.success(response, "支付订单创建成功");
             } else {
-                return Result.failed(response.getErrorMessage());
+                return ErrorResponseUtil.paymentCreateFailed(response.getErrorMessage());
             }
         } catch (Exception e) {
             log.error("创建支付订单失败", e);
-            return Result.failed("创建支付订单失败: " + e.getMessage());
+            return ErrorResponseUtil.paymentCreateFailed("Payment creation failed. Please try again later.");
         }
     }
 
@@ -157,11 +158,11 @@ public class PaymentController {
      * 查询支付状态 - 返回简化格式
      */
     @GetMapping("/status/{orderNo}")
-    public Result<PaymentStatusResponseVO> getPaymentStatus(@PathVariable String orderNo) {
+    public Result<?> getPaymentStatus(@PathVariable String orderNo) {
         try {
             UserOrder order = paymentService.queryPaymentStatus(orderNo);
             if (order == null) {
-                return Result.failed("订单不存在");
+                return ErrorResponseUtil.orderNotFound();
             }
 
             // 构建简化的状态响应
@@ -173,7 +174,7 @@ public class PaymentController {
             return Result.success(response);
         } catch (Exception e) {
             log.error("查询支付状态失败，订单号: {}", orderNo, e);
-            return Result.failed("查询支付状态失败");
+            return ErrorResponseUtil.paymentStatusQueryFailed();
         }
     }
 

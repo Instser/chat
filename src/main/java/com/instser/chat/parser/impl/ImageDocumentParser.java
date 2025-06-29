@@ -32,7 +32,7 @@ public class ImageDocumentParser implements DocumentParser {
     private static final String AI_API_URL = "http://203.0.113.15:3000/v1/chat/completions";
     private static final String AI_API_KEY = "a2366021253";
     private static final String AI_MODEL = "qwen2.5-omni-7b";
-    private static final String AI_PROMPT = "Please analyze this image and provide the content in the following format: First line should be 'Here's what the text in the image says.' followed by a JSON object describing the image content. Do not use markdown code blocks or ```json formatting, just provide plain text with the JSON object.";
+    private static final String AI_PROMPT = "Repeat the picture in detail, I don't want the main content, but a complete repetition , tell me everything you see.";
 
     @Override
     public String parseDocument(byte[] fileBytes, String fileName, String fileType) throws Exception {

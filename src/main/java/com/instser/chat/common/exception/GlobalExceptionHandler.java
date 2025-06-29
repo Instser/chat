@@ -2,7 +2,11 @@ package com.instser.chat.common.exception;
 
 import com.instser.chat.common.result.Result;
 import com.instser.chat.common.result.ResultCode;
+import com.instser.chat.common.util.ErrorResponseUtil;
 import lombok.extern.slf4j.Slf4j;
+
+import java.util.HashMap;
+import java.util.Map;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DuplicateKeyException;
 import org.springframework.http.HttpStatus;
@@ -116,7 +120,7 @@ public class GlobalExceptionHandler {
      * 处理参数校验异常
      */
     @ExceptionHandler(value = MethodArgumentNotValidException.class)
-    public Result<String> handleMethodArgumentNotValidException(MethodArgumentNotValidException e, HttpServletRequest request) {
+    public Result<Map<String, Object>> handleMethodArgumentNotValidException(MethodArgumentNotValidException e, HttpServletRequest request) {
         String requestUrl = request.getRequestURL().toString();
         String method = request.getMethod();
 
@@ -136,7 +140,7 @@ public class GlobalExceptionHandler {
         }
 
         log.warn("参数校验异常 [{}] {}: {} - {}", method, requestUrl, message, details);
-        return Result.validateFailed(message);
+        return ErrorResponseUtil.validateFailed(message);
     }
 
     /**
@@ -248,13 +252,14 @@ public class GlobalExceptionHandler {
      * 处理文件上传大小超限异常
      */
     @ExceptionHandler(value = MaxUploadSizeExceededException.class)
-    public Result<String> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException e, HttpServletRequest request) {
+    public Result<Map<String, Object>> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException e, HttpServletRequest request) {
         String requestUrl = request.getRequestURL().toString();
         String method = request.getMethod();
-        String message = "上传文件大小超出限制";
+        String originalMessage = "上传文件大小超出限制";
 
-        log.warn("文件上传大小超限 [{}] {}: {}", method, requestUrl, message);
-        return new Result<>(ResultCode.BAD_REQUEST.getCode(), message, null);
+        log.warn("文件上传大小超限 [{}] {}: {} - {}", method, requestUrl, originalMessage, e.getMessage());
+
+        return ErrorResponseUtil.fileSizeExceeded();
     }
 
     /**

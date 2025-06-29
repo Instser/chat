@@ -1,6 +1,9 @@
 package com.instser.chat.controller;
 
+import com.instser.chat.common.exception.FileUploadException;
 import com.instser.chat.common.result.Result;
+import com.instser.chat.common.result.ResultCode;
+import com.instser.chat.common.util.ErrorResponseUtil;
 import com.instser.chat.entity.FileUpload;
 import com.instser.chat.security.UserDetailsServiceImpl;
 import com.instser.chat.service.FileUploadService;
@@ -49,7 +52,7 @@ public class FileController {
             Authentication authentication) {
 
         if (files == null || files.length == 0) {
-            return Result.validateFailed("没有文件上传");
+            return ErrorResponseUtil.fileEmpty();
         }
 
         Long userId = getCurrentUserId(authentication);
@@ -98,7 +101,7 @@ public class FileController {
 
             // 检查是否有文件上传成功
             if (validatedFileIds.isEmpty()) {
-                return Result.failed("文件上传失败，没有文件成功存储");
+                return ErrorResponseUtil.fileUploadFailed();
             }
 
             // 构建响应，按照指定格式
@@ -110,9 +113,25 @@ public class FileController {
 
             return Result.success(response, "OK");
 
+        } catch (FileUploadException e) {
+            log.error("文件上传失败: {} - {}", e.getErrorType(), e.getErrorMessage());
+
+            // 根据错误类型返回对应的错误响应
+            switch (e.getErrorType()) {
+                case "FILE_EMPTY":
+                    return ErrorResponseUtil.fileEmpty();
+                case "FILE_SIZE_EXCEEDED":
+                    return ErrorResponseUtil.fileSizeExceeded();
+                case "FILE_TYPE_NOT_SUPPORTED":
+                    return ErrorResponseUtil.fileTypeNotSupported();
+                case "FILE_PARSE_FAILED":
+                    return ErrorResponseUtil.fileParseFailed();
+                default:
+                    return ErrorResponseUtil.fileUploadFailed();
+            }
         } catch (Exception e) {
             log.error("文件上传失败", e);
-            return Result.failed("文件上传失败：" + e.getMessage());
+            return ErrorResponseUtil.fileUploadFailed();
         }
     }
 
