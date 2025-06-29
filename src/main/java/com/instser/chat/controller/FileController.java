@@ -130,7 +130,8 @@ public class FileController {
                     return ErrorResponseUtil.fileUploadFailed();
             }
         } catch (Exception e) {
-            log.error("文件上传失败", e);
+            // 只记录错误消息，不打印堆栈跟踪
+            log.error("文件上传失败: {}", e.getMessage());
             return ErrorResponseUtil.fileUploadFailed();
         }
     }

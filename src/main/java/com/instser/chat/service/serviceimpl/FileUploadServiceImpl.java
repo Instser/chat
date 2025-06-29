@@ -78,7 +78,7 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
                     fileContent = documentParserService.parseDocument(fileBytes, originalFilename, detectedType);
                     log.info("文档解析成功: {} (类型: {}, 内容长度: {} 字符)", originalFilename, detectedType, fileContent.length());
                 } catch (Exception e) {
-                    log.error("文档解析失败: {} - {}", originalFilename, e.getMessage(), e);
+                    log.error("文档解析失败: {} - {}", originalFilename, e.getMessage());
                     throw new RuntimeException("文档解析失败：" + e.getMessage());
                 }
             } else {
@@ -106,6 +106,9 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
 
             return fileUpload;
 
+        } catch (FileUploadException e) {
+            // FileUploadException直接重新抛出，不要转换
+            throw e;
         } catch (IllegalArgumentException e) {
             // 参数验证错误，记录具体原因并抛出特定异常
             log.warn("文件上传参数验证失败：{} - {}", originalFilename, e.getMessage());
@@ -121,11 +124,11 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
             }
         } catch (IOException e) {
             // IO错误，记录具体原因但返回统一错误消息
-            log.error("文件上传IO错误：{} - {}", originalFilename, e.getMessage(), e);
+            log.error("文件上传IO错误：{} - {}", originalFilename, e.getMessage());
             throw new FileUploadException("FILE_UPLOAD_FAILED", "File upload failed");
         } catch (Exception e) {
             // 其他错误，记录具体原因但返回统一错误消息
-            log.error("文件上传失败：{} - {}", originalFilename, e.getMessage(), e);
+            log.error("文件上传失败：{} - {}", originalFilename, e.getMessage());
             if (e.getMessage().contains("文档解析失败")) {
                 throw new FileUploadException("FILE_PARSE_FAILED", "File parsing failed");
             } else {
@@ -148,9 +151,14 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
                 try {
                     FileUpload uploadedFile = uploadFile(file, userId, sessionId, messageId);
                     uploadedFiles.add(uploadedFile);
+                } catch (FileUploadException e) {
+                    log.error("批量上传中文件 {} 上传失败：{}", file.getOriginalFilename(), e.getMessage());
+                    // FileUploadException需要重新抛出，让Controller处理
+                    throw e;
                 } catch (Exception e) {
-                    log.error("批量上传中文件 {} 上传失败：{}", file.getOriginalFilename(), e.getMessage(), e);
-                    // 继续处理其他文件，不中断整个批量上传过程
+                    log.error("批量上传中文件 {} 上传失败：{}", file.getOriginalFilename(), e.getMessage());
+                    // 其他异常转换为FileUploadException
+                    throw new FileUploadException("FILE_UPLOAD_FAILED", "File upload failed: " + e.getMessage(), e);
                 }
             }
         }
@@ -231,7 +239,7 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
             return deletedCount;
 
         } catch (Exception e) {
-            log.error("删除消息{}关联的文件失败", messageId, e);
+            log.error("删除消息{}关联的文件失败: {}", messageId, e.getMessage());
             return 0;
         }
     }
@@ -307,7 +315,7 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
             return deletedCount;
 
         } catch (Exception e) {
-            log.error("删除消息{}关联的文件失败", messageId, e);
+            log.error("删除消息{}关联的文件失败: {}", messageId, e.getMessage());
             return 0;
         }
     }
@@ -348,7 +356,7 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
             return deletedCount;
 
         } catch (Exception e) {
-            log.error("删除会话{}关联的文件失败", sessionId, e);
+            log.error("删除会话{}关联的文件失败: {}", sessionId, e.getMessage());
             return 0;
         }
     }
@@ -388,7 +396,7 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
             return deleted;
 
         } catch (Exception e) {
-            log.error("删除文件失败，文件ID：{}", fileUpload.getFileId(), e);
+            log.error("删除文件失败，文件ID：{}: {}", fileUpload.getFileId(), e.getMessage());
             return false;
         }
     }
@@ -438,7 +446,7 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
             // 现在所有文件都存储为解析后的文本内容，直接转换为字节
             return content.getBytes("UTF-8");
         } catch (Exception e) {
-            log.error("解析文件内容失败：{}", e.getMessage(), e);
+            log.error("解析文件内容失败：{}", e.getMessage());
             return null;
         }
     }
@@ -555,7 +563,7 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
             return updated;
 
         } catch (Exception e) {
-            log.error("更新文件关联信息时发生异常，文件ID：{}，用户ID：{}", fileId, userId, e);
+            log.error("更新文件关联信息时发生异常，文件ID：{}，用户ID：{}: {}", fileId, userId, e.getMessage());
             return false;
         }
     }
@@ -588,7 +596,7 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
                     deletedCount++;
                 }
             } catch (Exception e) {
-                log.error("清理过期文件失败：{}", e.getMessage(), e);
+                log.error("清理过期文件失败：{}", e.getMessage());
             }
         }
 

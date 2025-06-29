@@ -100,7 +100,7 @@ public class GlobalExceptionHandler {
         String requestUrl = request.getRequestURL().toString();
         String method = request.getMethod();
 
-        log.error("外部服务异常 [{}] {}: {} - {}", method, requestUrl, e.getMessage(), e.getDetail(), e);
+        log.error("外部服务异常 [{}] {}: {} - {}", method, requestUrl, e.getMessage(), e.getDetail());
         return new Result<>(e.getCode(), e.getMessage(), null);
     }
 
