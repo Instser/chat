@@ -75,7 +75,7 @@ src/main/java/com/instser/chat/
 ### 环境要求
 
 - **JDK 17+** (必须，项目严格依赖JDK 17)
-- **MySQL 8.0+**
+- **MySQL 8.0+** (已升级完成)
 - **Maven 3.6+**
 
 ### 1. 数据库初始化
@@ -92,7 +92,7 @@ mysql -u root -p < sql/jinyu_chat_database.sql
 ```yaml
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/chat?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=true&serverTimezone=GMT%2B8
+    url: jdbc:mysql://your_host:3306/chat?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true
     username: your_username
     password: your_password
 ```
