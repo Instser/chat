@@ -120,4 +120,26 @@ public interface OrderService extends IService<UserOrder> {
      * @return 订单列表
      */
     List<UserOrder> getPendingOrders(int maxCount);
+
+    /**
+     * 获取需要批量处理的订单（包括过期订单和需要状态同步的订单）
+     *
+     * @return 订单列表
+     */
+    List<UserOrder> getOrdersForBatchProcessing();
+
+    /**
+     * 获取过期的未支付订单
+     *
+     * @return 过期订单列表
+     */
+    List<UserOrder> getExpiredOrders();
+
+    /**
+     * 获取需要状态同步的订单（长时间未更新的待支付订单）
+     *
+     * @param maxCount 最大数量
+     * @return 订单列表
+     */
+    List<UserOrder> getOrdersNeedingStatusSync(int maxCount);
 }

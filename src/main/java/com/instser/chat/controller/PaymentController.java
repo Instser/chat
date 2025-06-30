@@ -6,8 +6,11 @@ import com.instser.chat.entity.Package;
 import com.instser.chat.entity.UserOrder;
 import com.instser.chat.service.OrderService;
 import com.instser.chat.service.PackageService;
+import com.instser.chat.service.PackageActivationService;
 import com.instser.chat.service.PaymentService;
+import com.instser.chat.service.PaymentSecurityEnhancer;
 import com.instser.chat.service.PaymentSyncService;
+import com.instser.chat.service.ExchangeRateService;
 import com.instser.chat.vo.*;
 import com.instser.chat.vo.converter.VOConverter;
 import jakarta.servlet.http.HttpServletRequest;
@@ -15,6 +18,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -41,6 +45,9 @@ public class PaymentController {
     private final OrderService orderService;
     private final PackageService packageService;
     private final PaymentSyncService paymentSyncService;
+    private final PackageActivationService packageActivationService;
+    private final PaymentSecurityEnhancer paymentSecurityEnhancer;
+    private final ExchangeRateService exchangeRateService;
 
     /**
      * 获取当前认证用户ID
@@ -67,16 +74,19 @@ public class PaymentController {
     }
 
     /**
-     * 获取套餐列表 - 返回前端兼容格式
+     * 获取套餐列表 - 返回前端兼容格式（支持实时汇率转换）
      */
     @GetMapping("/packages")
     public Result<List<FrontendPackageVO>> getPackages(@RequestParam(defaultValue = "CNY") String currency) {
         try {
             List<Package> packages = packageService.getEnabledPackages();
-            List<FrontendPackageVO> packageVOs = VOConverter.toFrontendPackageVOList(packages, currency);
+            // 使用汇率服务进行实时价格转换
+            List<FrontendPackageVO> packageVOs = VOConverter.toFrontendPackageVOList(packages, currency, exchangeRateService);
+
+            log.info("获取套餐列表成功，货币: {}, 套餐数量: {}", currency, packageVOs.size());
             return Result.success(packageVOs);
         } catch (Exception e) {
-            log.error("获取套餐列表失败", e);
+            log.error("获取套餐列表失败，货币: {}", currency, e);
             return Result.failed("获取套餐列表失败");
         }
     }
@@ -97,8 +107,8 @@ public class PaymentController {
                 return Result.failed("套餐已下架");
             }
 
-            // 转换为前端格式
-            FrontendPackageVO packageVO = VOConverter.toFrontendPackageVO(packageEntity, request.getCurrency());
+            // 转换为前端格式（使用汇率服务进行实时价格转换）
+            FrontendPackageVO packageVO = VOConverter.toFrontendPackageVO(packageEntity, request.getCurrency(), exchangeRateService);
 
             // 获取可用支付方式
             List<PaymentMethodVO> paymentMethods = paymentService.getAvailablePaymentMethods();
@@ -129,6 +139,32 @@ public class PaymentController {
     }
 
     /**
+     * 激活免费套餐
+     */
+    @PostMapping("/activate-free")
+    public Result<?> activateFreePackage(@Valid @RequestBody FreePackageRequestVO request, Authentication authentication) {
+        try {
+            Long userId = getCurrentUserId(authentication);
+            if (userId == null) {
+                return ErrorResponseUtil.unauthorized("User not authenticated");
+            }
+
+            request.setUserId(userId);
+
+            boolean success = packageActivationService.activateFreePackage(request);
+
+            if (success) {
+                return Result.success(null, "免费套餐激活成功");
+            } else {
+                return ErrorResponseUtil.paymentCreateFailed("免费套餐激活失败");
+            }
+        } catch (Exception e) {
+            log.error("激活免费套餐失败", e);
+            return ErrorResponseUtil.paymentCreateFailed("免费套餐激活失败: " + e.getMessage());
+        }
+    }
+
+    /**
      * 创建支付订单
      */
     @PostMapping("/create")
@@ -150,6 +186,22 @@ public class PaymentController {
             }
         } catch (Exception e) {
             log.error("创建支付订单失败", e);
+
+            // 特殊处理重放攻击错误
+            if (e.getMessage() != null && e.getMessage().contains("重复的支付请求")) {
+                return new Result<>(4001, "重复的支付请求，请勿重复提交");
+            }
+
+            // 特殊处理支付频率限制错误
+            if (e.getMessage() != null && e.getMessage().contains("支付频率过高")) {
+                return new Result<>(4002, "支付频率过高，请稍后再试");
+            }
+
+            // 特殊处理并发支付错误
+            if (e.getMessage() != null && e.getMessage().contains("当前有正在进行的支付")) {
+                return new Result<>(4003, "当前有正在进行的支付，请稍后再试");
+            }
+
             return ErrorResponseUtil.paymentCreateFailed("Payment creation failed. Please try again later.");
         }
     }
@@ -262,6 +314,12 @@ public class PaymentController {
         try {
             log.info("收到支付宝回调通知");
 
+            // 验证回调IP
+            if (!paymentSecurityEnhancer.validateCallbackIP(request, "alipay")) {
+                log.error("支付宝回调IP验证失败");
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("IP not allowed");
+            }
+
             // 获取请求头信息
             String requestTime = request.getHeader("request-time");
             String clientId = request.getHeader("client-id");
@@ -290,6 +348,12 @@ public class PaymentController {
     public ResponseEntity<String> yipayNotify(HttpServletRequest request) {
         try {
             log.info("收到易支付回调通知");
+
+            // 验证回调IP
+            if (!paymentSecurityEnhancer.validateCallbackIP(request, "yipay")) {
+                log.error("易支付回调IP验证失败");
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("IP not allowed");
+            }
 
             // 获取所有参数
             Map<String, String> notifyParams = new HashMap<>();

@@ -7,7 +7,6 @@ import com.instser.chat.strategy.PaymentStrategy;
 import com.instser.chat.strategy.PaymentStrategyFactory;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -150,7 +149,6 @@ public class PaymentSyncServiceImpl implements PaymentSyncService {
     }
 
     @Override
-    @Scheduled(fixedRate = 300000) // 每5分钟执行一次
     public void scheduledSync() {
         try {
             log.debug("开始定时同步任务");

@@ -12,6 +12,27 @@ spring:
     exclude:
       - com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration$DdlApplicationRunner
 
+  # Redis配置
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    database: ${REDIS_DATABASE:0}
+    timeout: 3000ms
+    lettuce:
+      pool:
+        max-active: 20
+        max-idle: 10
+        min-idle: 5
+        max-wait: 1000ms
+
+  # 缓存配置
+  cache:
+    type: redis
+    redis:
+      time-to-live: 1800000  # 30分钟
+      cache-null-values: false
+
   # 数据源配置
   datasource:
     type: com.alibaba.druid.pool.DruidDataSource
@@ -169,15 +190,7 @@ jwt:
   # 请求头名称
   header-name: ${JWT_HEADER_NAME:Authorization}
 
-# 应用配置
-app:
-  # CORS配置 - 允许localhost和局域网访问
-  cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:*,https://localhost:*,http://127.0.0.1:*,https://127.0.0.1:*,http://192.168.1.100:*,https://192.168.1.100:*,http://192.168.1.101:*,https://192.168.1.101:*}
-    allowed-methods: ${CORS_ALLOWED_METHODS:*}
-    allowed-headers: ${CORS_ALLOWED_HEADERS:*}
-    allow-credentials: ${CORS_ALLOW_CREDENTIALS:true}
-    max-age: ${CORS_MAX_AGE:3600}
+
 
 # 文件上传配置
 file:
@@ -213,3 +226,74 @@ springdoc:
 # 日志配置 - 使用logback-spring.xml进行详细配置
 logging:
   config: classpath:logback-spring.xml
+
+# 汇率服务配置
+exchange:
+  api:
+    # 汇率API地址
+    url: ${EXCHANGE_API_URL:https://api.exchangerate-api.com/v4/latest/}
+    # 是否启用汇率API
+    enabled: ${EXCHANGE_API_ENABLED:true}
+    # API密钥（如需要）
+    key: ${EXCHANGE_API_KEY:}
+    # 请求超时时间（毫秒）
+    timeout: ${EXCHANGE_API_TIMEOUT:5000}
+    # 重试次数
+    retry-count: ${EXCHANGE_RETRY_COUNT:3}
+
+  # 缓存配置
+  cache:
+    # 缓存过期时间（分钟）
+    expire-minutes: ${EXCHANGE_CACHE_EXPIRE:30}
+    # 缓存前缀
+    key-prefix: ${EXCHANGE_CACHE_PREFIX:exchange_rate}
+
+  # 默认汇率配置（当API不可用时使用）
+  default-rates:
+    # 主要货币对CNY的汇率
+    USD_CNY: ${EXCHANGE_DEFAULT_USD_CNY:7.20}
+    EUR_CNY: ${EXCHANGE_DEFAULT_EUR_CNY:7.85}
+    GBP_CNY: ${EXCHANGE_DEFAULT_GBP_CNY:9.10}
+    JPY_CNY: ${EXCHANGE_DEFAULT_JPY_CNY:0.048}
+    KRW_CNY: ${EXCHANGE_DEFAULT_KRW_CNY:0.0055}
+    HKD_CNY: ${EXCHANGE_DEFAULT_HKD_CNY:0.92}
+    SGD_CNY: ${EXCHANGE_DEFAULT_SGD_CNY:5.35}
+    AUD_CNY: ${EXCHANGE_DEFAULT_AUD_CNY:4.80}
+    CAD_CNY: ${EXCHANGE_DEFAULT_CAD_CNY:5.25}
+    # 反向汇率
+    CNY_USD: ${EXCHANGE_DEFAULT_CNY_USD:0.139}
+    CNY_EUR: ${EXCHANGE_DEFAULT_CNY_EUR:0.127}
+    CNY_GBP: ${EXCHANGE_DEFAULT_CNY_GBP:0.110}
+    CNY_JPY: ${EXCHANGE_DEFAULT_CNY_JPY:20.83}
+    CNY_KRW: ${EXCHANGE_DEFAULT_CNY_KRW:181.82}
+    CNY_HKD: ${EXCHANGE_DEFAULT_CNY_HKD:1.09}
+    CNY_SGD: ${EXCHANGE_DEFAULT_CNY_SGD:0.187}
+    CNY_AUD: ${EXCHANGE_DEFAULT_CNY_AUD:0.208}
+    CNY_CAD: ${EXCHANGE_DEFAULT_CNY_CAD:0.190}
+
+# 支付安全配置
+payment:
+  security:
+    # 频率限制
+    frequency:
+      max-count: 5
+      time-window: 10  # 分钟
+
+    # 防重放攻击
+    callback:
+      expire-time: 60  # 分钟
+
+    # 可疑行为
+    suspicious:
+      threshold: 3
+      expire-days: 7
+
+# 应用配置
+app:
+  # CORS配置 - 允许localhost和局域网访问
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:*,https://localhost:*,http://127.0.0.1:*,https://127.0.0.1:*,http://192.168.1.100:*,https://192.168.1.100:*,http://192.168.1.101:*,https://192.168.1.101:*}
+    allowed-methods: ${CORS_ALLOWED_METHODS:*}
+    allowed-headers: ${CORS_ALLOWED_HEADERS:*}
+    allow-credentials: ${CORS_ALLOW_CREDENTIALS:true}
+    max-age: ${CORS_MAX_AGE:3600}

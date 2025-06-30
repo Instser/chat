@@ -124,4 +124,31 @@ public interface UserOrderDao extends BaseMapper<UserOrder> {
     @Select("SELECT * FROM t_user_order WHERE payment_status = 0 AND expire_time > NOW() AND deleted = 0 " +
             "ORDER BY create_time DESC LIMIT #{maxCount}")
     List<UserOrder> selectPendingOrders(@Param("maxCount") int maxCount);
+
+    /**
+     * 查询需要批量处理的订单（包括过期订单和需要状态同步的订单）
+     * 限制数量以避免一次处理过多订单
+     *
+     * @return 订单列表
+     */
+    @Select("(" +
+            "SELECT * FROM t_user_order WHERE payment_status = 0 AND expire_time < NOW() AND deleted = 0 " +
+            "ORDER BY expire_time ASC LIMIT 50" +
+            ") UNION ALL (" +
+            "SELECT * FROM t_user_order WHERE payment_status = 0 AND expire_time > NOW() " +
+            "AND update_time < DATE_SUB(NOW(), INTERVAL 1 HOUR) AND deleted = 0 " +
+            "ORDER BY update_time ASC LIMIT 30" +
+            ") ORDER BY expire_time ASC, update_time ASC")
+    List<UserOrder> selectOrdersForBatchProcessing();
+
+    /**
+     * 查询需要状态同步的订单（长时间未更新的待支付订单）
+     *
+     * @param maxCount 最大数量
+     * @return 订单列表
+     */
+    @Select("SELECT * FROM t_user_order WHERE payment_status = 0 AND expire_time > NOW() " +
+            "AND update_time < DATE_SUB(NOW(), INTERVAL 1 HOUR) AND deleted = 0 " +
+            "ORDER BY update_time ASC LIMIT #{maxCount}")
+    List<UserOrder> selectOrdersNeedingStatusSync(@Param("maxCount") int maxCount);
 }

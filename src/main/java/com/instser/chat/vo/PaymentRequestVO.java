@@ -42,4 +42,10 @@ public class PaymentRequestVO {
      * 用户ID（从token中获取，前端不需要传递）
      */
     private Long userId;
+
+    /**
+     * 支付请求唯一标识（用于防重放攻击）
+     * 前端可选传递，后端会自动生成
+     */
+    private String requestId;
 }

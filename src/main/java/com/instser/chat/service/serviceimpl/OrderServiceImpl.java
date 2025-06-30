@@ -7,6 +7,7 @@ import com.instser.chat.entity.Package;
 import com.instser.chat.entity.UserOrder;
 import com.instser.chat.service.OrderService;
 import com.instser.chat.service.PackageService;
+import com.instser.chat.service.RedisDistributedLockService;
 import com.instser.chat.util.MoneyUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +31,7 @@ import java.util.concurrent.ThreadLocalRandom;
 public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> implements OrderService {
 
     private final PackageService packageService;
+    private final RedisDistributedLockService distributedLockService;
 
     @Override
     public UserOrder createOrder(Long userId, Long packageId, String currency, String paymentMethod) {
@@ -106,12 +108,22 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
 
     @Override
     public boolean updatePaymentStatus(String orderNo, Integer paymentStatus, String transactionId) {
-        int result = baseMapper.updatePaymentStatus(orderNo, paymentStatus, transactionId);
-        if (result > 0) {
-            log.info("更新订单支付状态成功，订单号: {}, 状态: {}, 交易号: {}", orderNo, paymentStatus, transactionId);
-            return true;
-        }
-        return false;
+        // 使用分布式锁保护订单状态更新
+        return distributedLockService.executeOrderLock(orderNo, () -> {
+            try {
+                int result = baseMapper.updatePaymentStatus(orderNo, paymentStatus, transactionId);
+                if (result > 0) {
+                    log.info("更新订单支付状态成功，订单号: {}, 状态: {}, 交易号: {}", orderNo, paymentStatus, transactionId);
+                    return true;
+                } else {
+                    log.warn("更新订单支付状态失败，订单号: {}, 状态: {}, 交易号: {}", orderNo, paymentStatus, transactionId);
+                    return false;
+                }
+            } catch (Exception e) {
+                log.error("更新订单支付状态异常，订单号: {}, 状态: {}, 交易号: {}", orderNo, paymentStatus, transactionId, e);
+                return false;
+            }
+        });
     }
 
     @Override
@@ -175,6 +187,39 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
             return baseMapper.selectPendingOrders(maxCount);
         } catch (Exception e) {
             log.error("获取待支付订单异常", e);
+            return List.of();
+        }
+    }
+
+    @Override
+    public List<UserOrder> getOrdersForBatchProcessing() {
+        try {
+            log.debug("获取需要批量处理的订单");
+            return baseMapper.selectOrdersForBatchProcessing();
+        } catch (Exception e) {
+            log.error("获取批量处理订单异常", e);
+            return List.of();
+        }
+    }
+
+    @Override
+    public List<UserOrder> getExpiredOrders() {
+        try {
+            log.debug("获取过期订单");
+            return baseMapper.selectExpiredOrders();
+        } catch (Exception e) {
+            log.error("获取过期订单异常", e);
+            return List.of();
+        }
+    }
+
+    @Override
+    public List<UserOrder> getOrdersNeedingStatusSync(int maxCount) {
+        try {
+            log.debug("获取需要状态同步的订单，最大数量: {}", maxCount);
+            return baseMapper.selectOrdersNeedingStatusSync(maxCount);
+        } catch (Exception e) {
+            log.error("获取需要状态同步的订单异常", e);
             return List.of();
         }
     }

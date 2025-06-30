@@ -250,16 +250,28 @@ public class GlobalExceptionHandler {
 
     /**
      * 处理文件上传大小超限异常
+     * 注意：这个异常可能在不同层面被抛出，需要确保能够正确捕获和处理
      */
-    @ExceptionHandler(value = MaxUploadSizeExceededException.class)
+    @ExceptionHandler(value = {MaxUploadSizeExceededException.class})
+    @ResponseStatus(HttpStatus.OK) // 使用200状态码，错误信息在响应体中
     public Result<Map<String, Object>> handleMaxUploadSizeExceededException(MaxUploadSizeExceededException e, HttpServletRequest request) {
         String requestUrl = request.getRequestURL().toString();
         String method = request.getMethod();
         String originalMessage = "上传文件大小超出限制";
 
-        log.warn("文件上传大小超限 [{}] {}: {} - {}", method, requestUrl, originalMessage, e.getMessage());
+        // 使用error级别日志，因为这是一个错误情况
+        log.error("文件上传大小超限 [{}] {}: {} - 最大允许大小: {}, 实际大小: {}",
+                method, requestUrl, originalMessage,
+                e.getMaxUploadSize(),
+                e.getMessage());
 
-        return ErrorResponseUtil.fileSizeExceeded();
+        // 确保返回正确的错误响应
+        Result<Map<String, Object>> result = ErrorResponseUtil.fileSizeExceeded();
+        log.info("返回文件大小超限错误响应: code={}, message={}",
+                result.getData().get("code"),
+                result.getData().get("message"));
+
+        return result;
     }
 
     /**

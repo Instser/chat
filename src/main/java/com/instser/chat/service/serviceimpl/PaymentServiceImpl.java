@@ -12,6 +12,10 @@ import com.instser.chat.entity.UserOrder;
 import com.instser.chat.service.OrderService;
 import com.instser.chat.service.PackageService;
 import com.instser.chat.service.PaymentService;
+import com.instser.chat.service.ExchangeRateService;
+import com.instser.chat.service.PackageActivationService;
+import com.instser.chat.service.PaymentSecurityEnhancer;
+import com.instser.chat.service.RedisPaymentSecurityService;
 import com.instser.chat.strategy.PaymentStrategy;
 import com.instser.chat.strategy.PaymentStrategyFactory;
 import com.instser.chat.util.PaymentSecurityUtil;
@@ -49,6 +53,10 @@ public class PaymentServiceImpl implements PaymentService {
     private final AlipayConfig alipayConfig;
     private final YiPayConfig yiPayConfig;
     private final PaymentSecurityUtil paymentSecurityUtil;
+    private final ExchangeRateService exchangeRateService;
+    private final PackageActivationService packageActivationService;
+    private final PaymentSecurityEnhancer paymentSecurityEnhancer;
+    private final RedisPaymentSecurityService redisPaymentSecurityService;
 
     // 创建ObjectMapper实例，避免依赖注入问题
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -154,22 +162,88 @@ public class PaymentServiceImpl implements PaymentService {
      * 支付安全性验证
      */
     private void validatePaymentSecurity(PaymentRequestVO paymentRequest) {
-        // 测试模式：临时停用频率限制和用户权限验证
-        // TODO: 06-21 01:53 - 为了测试，暂时停用支付请求频率限制和用户权限验证，后续需要重新启用
-        boolean testMode = true; // 测试模式开关
+        Long userId = paymentRequest.getUserId();
 
-        if (!testMode) {
-            // 1. 支付请求频率限制验证
-            validatePaymentRateLimit(paymentRequest);
+        // 启用安全验证
+        boolean securityEnabled = true; // 安全验证开关
 
-            // 3. 用户权限验证
-            validateUserPermissions(paymentRequest);
-        } else {
-            log.warn("支付系统运行在测试模式，已停用频率限制和用户权限验证");
+        if (securityEnabled) {
+            // 1. 生成或验证支付请求ID（防重放攻击）
+            String requestId = paymentRequest.getRequestId();
+            if (requestId == null || requestId.trim().isEmpty()) {
+                // 如果前端未提供requestId，后端自动生成
+                requestId = generatePaymentRequestId(paymentRequest);
+                paymentRequest.setRequestId(requestId);
+            }
+
+            // 2. 检查支付请求是否已处理（防重放攻击）
+            if (redisPaymentSecurityService.isPaymentRequestProcessed(requestId, userId)) {
+                throw new PaymentException("重复的支付请求，请勿重复提交");
+            }
+
+            // 3. 检查用户是否有活跃的支付会话
+            if (redisPaymentSecurityService.hasActivePaymentSession(userId)) {
+                throw new PaymentException("当前有正在进行的支付，请稍后再试");
+            }
+
+            // 4. 获取支付会话锁
+            if (!redisPaymentSecurityService.acquirePaymentSession(userId)) {
+                throw new PaymentException("支付会话获取失败，请稍后再试");
+            }
+
+            try {
+                // 5. 检查支付频率限制
+                if (!paymentSecurityEnhancer.checkPaymentFrequency(userId)) {
+                    throw new PaymentException("支付频率过高，请稍后再试");
+                }
+
+                // 6. 检测异常支付行为
+                if (!paymentSecurityEnhancer.detectAbnormalPayment(paymentRequest)) {
+                    paymentSecurityEnhancer.recordSuspiciousBehavior(userId, "异常支付检测失败");
+                    throw new PaymentException("检测到异常支付行为，请联系客服");
+                }
+
+                log.debug("用户{}支付安全验证通过，请求ID: {}", userId, requestId);
+
+            } catch (PaymentException e) {
+                // 如果安全验证失败，释放支付会话锁
+                redisPaymentSecurityService.releasePaymentSession(userId);
+                throw e;
+            }
         }
 
-        // 2. 支付金额验证 - 保留基本的金额验证
+        // 支付金额验证 - 保留基本的金额验证
         validatePaymentAmount(paymentRequest);
+    }
+
+    /**
+     * 生成支付请求唯一标识
+     * 基于关键业务参数生成，确保相同业务请求有相同ID
+     */
+    private String generatePaymentRequestId(PaymentRequestVO paymentRequest) {
+        // 获取套餐信息用于生成ID
+        Package packageInfo = packageService.getPackageById(paymentRequest.getPackageId());
+        String packageName = packageInfo != null ? packageInfo.getPackageName() : "";
+
+        // 计算金额（需要根据货币类型获取实际金额）
+        BigDecimal amount = BigDecimal.ZERO;
+        try {
+            if ("USD".equalsIgnoreCase(paymentRequest.getCurrency()) && packageInfo != null) {
+                amount = packageInfo.getPriceUsd();
+            } else if ("CNY".equalsIgnoreCase(paymentRequest.getCurrency()) && packageInfo != null) {
+                amount = packageInfo.getPriceCny();
+            }
+        } catch (Exception e) {
+            log.warn("获取套餐价格异常，使用默认值", e);
+        }
+
+        // 使用RedisPaymentSecurityService生成ID
+        return redisPaymentSecurityService.generatePaymentRequestId(
+            paymentRequest.getUserId(),
+            packageName,
+            amount.toString(),
+            paymentRequest.getPaymentMethod()
+        );
     }
 
     /**
@@ -246,7 +320,7 @@ public class PaymentServiceImpl implements PaymentService {
         if (packagePrice.compareTo(BigDecimal.ZERO) == 0) {
             // 免费套餐不需要支付，直接激活
             log.info("检测到免费套餐，用户ID: {}, 套餐ID: {}", paymentRequest.getUserId(), paymentRequest.getPackageId());
-            throw new PaymentException("免费套餐无需支付，请直接激活");
+            throw new PaymentException("免费套餐无需支付，请使用 /api/payment/activate-free 接口直接激活");
         }
 
         log.debug("支付金额验证通过，套餐ID: {}, 金额: {} {}",
@@ -290,8 +364,10 @@ public class PaymentServiceImpl implements PaymentService {
             packagePrice = packageInfo.getPriceCny();
         } else if ("USD".equalsIgnoreCase(currency)) {
             packagePrice = packageInfo.getPriceUsd();
-            // 简单汇率转换，实际应该调用汇率API
-            packagePrice = packagePrice.multiply(new BigDecimal("7.2")); // 假设1美元=7.2人民币
+            // 使用汇率服务进行实时汇率转换
+            BigDecimal exchangeRate = exchangeRateService.getExchangeRate("USD", "CNY");
+            packagePrice = packagePrice.multiply(exchangeRate);
+            log.debug("USD转CNY汇率: {}, 转换后价格: {}", exchangeRate, packagePrice);
         } else {
             packagePrice = packageInfo.getPriceCny(); // 默认使用人民币价格
         }
@@ -385,6 +461,13 @@ public class PaymentServiceImpl implements PaymentService {
         try {
             log.info("收到支付回调通知，clientId: {}, requestTime: {}", clientId, requestTime);
 
+            // 生成回调唯一标识进行防重放攻击检查
+            String callbackId = generateCallbackId(clientId, requestTime, signature);
+            if (redisPaymentSecurityService.isCallbackProcessed(callbackId)) {
+                log.warn("检测到重放攻击，回调ID: {}", callbackId);
+                return false;
+            }
+
             // 验证签名
             if (!verifyNotifySignature("/api/payment/alipay/notify", "POST", clientId, requestTime, signature, notifyBody)) {
                 log.error("支付回调签名验证失败");
@@ -464,6 +547,25 @@ public class PaymentServiceImpl implements PaymentService {
                         oldStatus, getStatusDescription(oldStatus),
                         newStatus, getStatusDescription(newStatus),
                         oldTransactionId, transactionId);
+
+                // 如果支付成功，自动激活套餐
+                if (newStatus == 1) {
+                    try {
+                        boolean activationSuccess = packageActivationService.activatePackageAfterPayment(order.getOrderNo());
+                        if (activationSuccess) {
+                            log.info("支付成功后套餐激活成功，订单号: {}", order.getOrderNo());
+                        } else {
+                            log.error("支付成功后套餐激活失败，订单号: {}", order.getOrderNo());
+                        }
+                    } catch (Exception e) {
+                        log.error("支付成功后套餐激活异常，订单号: {}", order.getOrderNo(), e);
+                    }
+                }
+
+                // 释放用户支付会话锁
+                redisPaymentSecurityService.releasePaymentSession(order.getUserId());
+                log.debug("释放用户{}支付会话锁，订单号: {}", order.getUserId(), order.getOrderNo());
+
                 return true;
 
             } catch (Exception e) {
@@ -554,15 +656,10 @@ public class PaymentServiceImpl implements PaymentService {
                 return false;
             }
 
-            // 生成回调请求唯一标识，防止重复处理
-            String requestId = paymentSecurityUtil.generateCallbackRequestId(
-                outTradeNo,
-                String.valueOf(System.currentTimeMillis()),
-                sign
-            );
-
-            if (!paymentSecurityUtil.checkAndRecordCallback(requestId)) {
-                log.error("检测到重复的易支付回调请求: {}", requestId);
+            // 生成回调唯一标识进行防重放攻击检查
+            String callbackId = generateCallbackId(outTradeNo, String.valueOf(System.currentTimeMillis()), sign);
+            if (redisPaymentSecurityService.isCallbackProcessed(callbackId)) {
+                log.warn("检测到易支付重放攻击，回调ID: {}", callbackId);
                 return false;
             }
 
@@ -577,7 +674,7 @@ public class PaymentServiceImpl implements PaymentService {
                 return false;
             }
 
-            log.debug("易支付回调签名验证成功，requestId: {}", requestId);
+            log.debug("易支付回调签名验证成功，callbackId: {}", callbackId);
 
             // 查找订单
             UserOrder order = orderService.getOrderByOrderNo(outTradeNo);
@@ -628,6 +725,25 @@ public class PaymentServiceImpl implements PaymentService {
                             oldStatus, getStatusDescription(oldStatus),
                             newStatus, getStatusDescription(newStatus),
                             oldTransactionId, tradeNo);
+
+                    // 如果支付成功，自动激活套餐
+                    if (newStatus == 1) {
+                        try {
+                            boolean activationSuccess = packageActivationService.activatePackageAfterPayment(outTradeNo);
+                            if (activationSuccess) {
+                                log.info("易支付成功后套餐激活成功，订单号: {}", outTradeNo);
+                            } else {
+                                log.error("易支付成功后套餐激活失败，订单号: {}", outTradeNo);
+                            }
+                        } catch (Exception e) {
+                            log.error("易支付成功后套餐激活异常，订单号: {}", outTradeNo, e);
+                        }
+                    }
+
+                    // 释放用户支付会话锁
+                    redisPaymentSecurityService.releasePaymentSession(order.getUserId());
+                    log.debug("释放用户{}支付会话锁，订单号: {}", order.getUserId(), outTradeNo);
+
                     return true;
                 } else {
                     log.error("易支付订单状态更新失败，订单号: {}, 状态: {} -> {}",
@@ -881,5 +997,26 @@ public class PaymentServiceImpl implements PaymentService {
         // 未知状态，记录日志并返回未支付
         log.warn("未知的易支付交易状态: {}", tradeStatus);
         return 0; // 默认未支付
+    }
+
+    /**
+     * 生成回调唯一标识
+     */
+    private String generateCallbackId(String clientId, String requestTime, String signature) {
+        String source = (clientId != null ? clientId : "unknown") +
+                       (requestTime != null ? requestTime : String.valueOf(System.currentTimeMillis())) +
+                       (signature != null ? signature : "");
+        try {
+            MessageDigest md = MessageDigest.getInstance("MD5");
+            byte[] digest = md.digest(source.getBytes());
+            StringBuilder sb = new StringBuilder();
+            for (byte b : digest) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            log.error("生成回调ID异常", e);
+            return source.hashCode() + "";
+        }
     }
 }
