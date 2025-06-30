@@ -12,7 +12,7 @@
 - **文档解析**: Apache POI 4.1.2 (Office文档)、Apache PDFBox 2.0.29 (PDF文档)
 - **图片处理**: Base64编码、AI图片解析服务集成
 - **汇率服务**: 完整的实时汇率API系统 (exchangerate-api.com)
-- **缓存系统**: Redis 分布式缓存 (localhost:6379)
+- **缓存系统**: Redis 分布式缓存 (your-db-host.example.com:31122)
 - **分布式锁**: Redisson 3.24.3 (基于Redis实现)
 
 ## 开发环境设置
@@ -59,3 +59,12 @@
 - **兼容性**: 当前技术栈完全兼容MySQL 8.0
 - **实际收益**: 性能提升15-30%，支持窗口函数、CTE等新特性
 - **完成时间**: 2025年6月29日 17:12
+
+## Redis配置更新状态
+- **服务器地址**: your-db-host.example.com:31122
+- **认证信息**: username=default, password=pt7tv2k4
+- **配置状态**: ✅ 已更新application.yml配置文件
+- **更新时间**: 2025年6月30日 15:55
+- **配置文件**: src/main/resources/application.yml
+- **连接池**: Lettuce连接池，最大连接数20，最小空闲连接数5
+- **缓存配置**: 30分钟TTL，支持分布式缓存和分布式锁
