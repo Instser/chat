@@ -108,6 +108,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public PaymentResponseVO createPayment(PaymentRequestVO paymentRequest) {
+        PaymentResponseVO response = null;
         try {
             // 1. 验证支付请求参数
             validatePaymentRequest(paymentRequest);
@@ -122,7 +123,12 @@ public class PaymentServiceImpl implements PaymentService {
             PaymentStrategy strategy = paymentStrategyFactory.getStrategy(paymentMethod);
 
             // 5. 执行支付创建
-            return strategy.createPayment(paymentRequest);
+            response = strategy.createPayment(paymentRequest);
+
+            // 6. 记录支付创建审计日志
+            recordCreatePaymentAudit(paymentRequest, response);
+
+            return response;
 
         } catch (PaymentException | ResourceNotFoundException e) {
             // 业务异常直接抛出，由全局异常处理器处理
@@ -382,23 +388,7 @@ public class PaymentServiceImpl implements PaymentService {
         log.debug("用户权限验证通过，用户ID: {}", userId);
     }
 
-    /**
-     * 获取客户端IP地址
-     */
-    private String getClientIpAddress() {
-        // 这里应该从HttpServletRequest中获取真实IP
-        // 由于当前上下文中没有Request对象，返回默认值
-        // 实际实现中应该通过RequestContextHolder获取
-        try {
-            // 可以通过以下方式获取：
-            // HttpServletRequest request = ((ServletRequestAttributes) RequestContextHolder.currentRequestAttributes()).getRequest();
-            // return getClientIpFromRequest(request);
-            return "127.0.0.1"; // 临时返回本地IP
-        } catch (Exception e) {
-            log.debug("无法获取客户端IP地址: {}", e.getMessage());
-            return null;
-        }
-    }
+
 
 
 
@@ -428,6 +418,9 @@ public class PaymentServiceImpl implements PaymentService {
                 throw new PaymentException("不支持的支付方式: " + order.getPaymentMethod());
             }
 
+            // 记录原始状态
+            Integer originalStatus = order.getPaymentStatus();
+
             // 查询支付状态（策略内部会调用API并同步状态）
             String paymentStatus = strategy.queryPaymentStatus(orderNo);
 
@@ -435,6 +428,11 @@ public class PaymentServiceImpl implements PaymentService {
             UserOrder updatedOrder = orderService.getOrderByOrderNo(orderNo);
             if (updatedOrder == null) {
                 updatedOrder = order; // 使用原订单信息作为备用
+            }
+
+            // 如果状态发生了变化，记录同步审计日志
+            if (!originalStatus.equals(updatedOrder.getPaymentStatus())) {
+                recordSyncAudit(orderNo, order.getPaymentMethod(), originalStatus, updatedOrder.getPaymentStatus(), "API_QUERY_SYNC");
             }
 
             // 构建响应
@@ -549,6 +547,9 @@ public class PaymentServiceImpl implements PaymentService {
                         oldStatus, getStatusDescription(oldStatus),
                         newStatus, getStatusDescription(newStatus),
                         oldTransactionId, transactionId);
+
+                // 记录支付回调审计日志
+                recordCallbackAudit(order.getOrderNo(), order.getPaymentMethod(), oldStatus, newStatus, notifyBody);
 
                 // 如果支付成功，自动激活套餐
                 if (newStatus == 1) {
@@ -1019,6 +1020,148 @@ public class PaymentServiceImpl implements PaymentService {
         } catch (Exception e) {
             log.error("生成回调ID异常", e);
             return source.hashCode() + "";
+        }
+    }
+
+    // ==================== 审计日志相关方法 ====================
+
+    /**
+     * 记录支付创建审计日志
+     */
+    private void recordCreatePaymentAudit(PaymentRequestVO paymentRequest, PaymentResponseVO response) {
+        try {
+            Map<String, Object> auditDetails = new HashMap<>();
+            auditDetails.put("paymentMethod", paymentRequest.getPaymentMethod());
+            auditDetails.put("packageId", paymentRequest.getPackageId());
+            auditDetails.put("currency", paymentRequest.getCurrency());
+            auditDetails.put("timestamp", java.time.LocalDateTime.now().toString());
+
+            if (response != null) {
+                auditDetails.put("orderNo", response.getOrderNo());
+                auditDetails.put("amount", response.getAmount());
+                auditDetails.put("qrCodeUrl", response.getQrCodeUrl());
+            }
+
+            String details = createOperationDetails(auditDetails);
+            paymentAuditService.recordCreateAudit(
+                response != null ? response.getOrderNo() : "UNKNOWN",
+                paymentRequest.getUserId(),
+                details,
+                getClientIpAddress(),
+                getUserAgent()
+            );
+        } catch (Exception e) {
+            log.warn("记录支付创建审计日志失败", e);
+        }
+    }
+
+    /**
+     * 记录支付回调审计日志
+     */
+    private void recordCallbackAudit(String orderNo, String paymentMethod, Integer oldStatus, Integer newStatus, String callbackData) {
+        try {
+            Map<String, Object> auditDetails = new HashMap<>();
+            auditDetails.put("paymentMethod", paymentMethod);
+            auditDetails.put("callbackData", callbackData);
+            auditDetails.put("timestamp", java.time.LocalDateTime.now().toString());
+
+            String details = createOperationDetails(auditDetails);
+            paymentAuditService.recordStatusChangeAudit(
+                orderNo,
+                oldStatus,
+                newStatus,
+                paymentMethod + "回调状态变更",
+                details
+            );
+        } catch (Exception e) {
+            log.warn("记录支付回调审计日志失败，订单号: {}", orderNo, e);
+        }
+    }
+
+    /**
+     * 记录支付状态同步审计日志
+     */
+    private void recordSyncAudit(String orderNo, String paymentMethod, Integer oldStatus, Integer newStatus, String syncType) {
+        try {
+            Map<String, Object> auditDetails = new HashMap<>();
+            auditDetails.put("paymentMethod", paymentMethod);
+            auditDetails.put("syncType", syncType);
+            auditDetails.put("timestamp", java.time.LocalDateTime.now().toString());
+
+            String details = createOperationDetails(auditDetails);
+            paymentAuditService.recordStatusChangeAudit(
+                orderNo,
+                oldStatus,
+                newStatus,
+                paymentMethod + "状态同步",
+                details
+            );
+        } catch (Exception e) {
+            log.warn("记录支付状态同步审计日志失败，订单号: {}", orderNo, e);
+        }
+    }
+
+    /**
+     * 创建操作详情JSON字符串
+     */
+    private String createOperationDetails(Map<String, Object> details) {
+        try {
+            return new com.fasterxml.jackson.databind.ObjectMapper().writeValueAsString(details);
+        } catch (Exception e) {
+            log.warn("创建操作详情JSON失败", e);
+            return "{}";
+        }
+    }
+
+    /**
+     * 获取客户端IP地址
+     */
+    private String getClientIpAddress() {
+        try {
+            org.springframework.web.context.request.ServletRequestAttributes attributes =
+                (org.springframework.web.context.request.ServletRequestAttributes)
+                org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+            if (attributes == null) {
+                return null;
+            }
+
+            jakarta.servlet.http.HttpServletRequest request = attributes.getRequest();
+
+            // 尝试从各种头部获取真实IP
+            String ip = request.getHeader("X-Forwarded-For");
+            if (ip != null && !ip.isEmpty() && !"unknown".equalsIgnoreCase(ip)) {
+                return ip.split(",")[0].trim();
+            }
+
+            ip = request.getHeader("X-Real-IP");
+            if (ip != null && !ip.isEmpty() && !"unknown".equalsIgnoreCase(ip)) {
+                return ip;
+            }
+
+            return request.getRemoteAddr();
+        } catch (Exception e) {
+            log.debug("无法获取客户端IP地址: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 获取用户代理
+     */
+    private String getUserAgent() {
+        try {
+            org.springframework.web.context.request.ServletRequestAttributes attributes =
+                (org.springframework.web.context.request.ServletRequestAttributes)
+                org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+            if (attributes == null) {
+                return null;
+            }
+
+            jakarta.servlet.http.HttpServletRequest request = attributes.getRequest();
+            return request.getHeader("User-Agent");
+        } catch (Exception e) {
+            log.debug("无法获取用户代理: {}", e.getMessage());
+            return null;
         }
     }
 }
