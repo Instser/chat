@@ -1215,7 +1215,7 @@ public class ChatServiceImpl implements ChatService {
 
         try {
             // 获取固定的标题生成模型（ID为1L）
-            AiModel titleModel = aiModelService.getById(1L);
+            AiModel titleModel = aiModelService.getById(4L);
             if (titleModel == null || titleModel.getIsAvailable() != 1) {
                 log.error("标题生成模型（ID=1L）不可用，跳过标题生成");
                 return null;

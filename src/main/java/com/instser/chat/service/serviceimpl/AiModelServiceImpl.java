@@ -32,6 +32,11 @@ public class AiModelServiceImpl extends ServiceImpl<AiModelDao, AiModel> impleme
     }
 
     @Override
+    public List<AiModel> getVisibleModels() {
+        return baseMapper.selectVisibleModels();
+    }
+
+    @Override
     public void initDefaultModels() {
         // 检查是否已有数据
         if (this.count() > 0) {
@@ -48,6 +53,7 @@ public class AiModelServiceImpl extends ServiceImpl<AiModelDao, AiModel> impleme
         gpt4.setTokenLimit(8192);
         gpt4.setPricePer1kTokens(new BigDecimal("0.03"));
         gpt4.setIsAvailable(1);
+        gpt4.setIsVisible(1);
         gpt4.setCreatedTime(LocalDateTime.now());
         gpt4.setUpdateTime(LocalDateTime.now());
 
@@ -60,6 +66,7 @@ public class AiModelServiceImpl extends ServiceImpl<AiModelDao, AiModel> impleme
         gpt35.setTokenLimit(4096);
         gpt35.setPricePer1kTokens(new BigDecimal("0.002"));
         gpt35.setIsAvailable(1);
+        gpt35.setIsVisible(1);
         gpt35.setCreatedTime(LocalDateTime.now());
         gpt35.setUpdateTime(LocalDateTime.now());
 
@@ -72,6 +79,7 @@ public class AiModelServiceImpl extends ServiceImpl<AiModelDao, AiModel> impleme
         qwen.setTokenLimit(8192);
         qwen.setPricePer1kTokens(new BigDecimal("0.001"));
         qwen.setIsAvailable(1);
+        qwen.setIsVisible(1);
         qwen.setCreatedTime(LocalDateTime.now());
         qwen.setUpdateTime(LocalDateTime.now());
 

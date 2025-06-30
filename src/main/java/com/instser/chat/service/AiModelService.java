@@ -29,6 +29,13 @@ public interface AiModelService extends IService<AiModel> {
     List<AiModel> getAvailableModels();
 
     /**
+     * 获取可见的模型列表（用于API返回）
+     *
+     * @return 可见模型列表
+     */
+    List<AiModel> getVisibleModels();
+
+    /**
      * 初始化默认模型数据
      */
     void initDefaultModels();

@@ -13,6 +13,7 @@
         <result column="token_limit" property="tokenLimit" />
         <result column="price_per_1k_tokens" property="pricePer1kTokens" />
         <result column="is_available" property="isAvailable" />
+        <result column="is_visible" property="isVisible" />
         <result column="base_url" property="baseUrl" />
         <result column="api_key" property="apiKey" />
         <result column="create_time" property="createdTime" />
@@ -22,7 +23,7 @@
 
     <!-- 通用查询结果列 -->
     <sql id="Base_Column_List">
-        id, model_code, model_name, description, provider, version, token_limit, price_per_1k_tokens, is_available, base_url, api_key, create_time, update_time, deleted
+        id, model_code, model_name, description, provider, version, token_limit, price_per_1k_tokens, is_available, is_visible, base_url, api_key, create_time, update_time, deleted
     </sql>
 
     <!-- 根据模型代码查询模型 -->
@@ -39,6 +40,16 @@
         SELECT <include refid="Base_Column_List" />
         FROM t_ai_model
         WHERE is_available = 1
+          AND deleted = 0
+        ORDER BY create_time ASC
+    </select>
+
+    <!-- 查询可见的模型列表（用于API返回） -->
+    <select id="selectVisibleModels" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List" />
+        FROM t_ai_model
+        WHERE is_available = 1
+          AND is_visible = 1
           AND deleted = 0
         ORDER BY create_time ASC
     </select>

@@ -30,4 +30,11 @@ public interface AiModelDao extends BaseMapper<AiModel> {
      * @return 可用模型列表
      */
     List<AiModel> selectAvailableModels();
+
+    /**
+     * 查询可见的模型列表（用于API返回）
+     *
+     * @return 可见模型列表
+     */
+    List<AiModel> selectVisibleModels();
 }

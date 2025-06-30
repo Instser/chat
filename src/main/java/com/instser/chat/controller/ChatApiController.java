@@ -76,11 +76,11 @@ public class ChatApiController {
     }
 
     /**
-     * 获取可用模型列表
+     * 获取可见模型列表
      */
     @GetMapping("/models")
     public Result<List<AiModel>> getModels() {
-        List<AiModel> models = aiModelService.getAvailableModels();
+        List<AiModel> models = aiModelService.getVisibleModels();
         return Result.success(models);
     }
 

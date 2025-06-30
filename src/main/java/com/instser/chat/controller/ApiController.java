@@ -422,11 +422,11 @@ public class ApiController {
     // ==================== AI模型相关接口 ====================
 
     /**
-     * 获取可用的AI模型列表
+     * 获取可见的AI模型列表
      */
     @GetMapping("/models")
     public Result<List<AiModelVO>> getModels() {
-        List<AiModel> aiModels = aiModelService.getAvailableModels();
+        List<AiModel> aiModels = aiModelService.getVisibleModels();
         List<AiModelVO> aiModelVOs = VOConverter.toAiModelVOList(aiModels);
         return Result.success(aiModelVOs, "获取模型列表成功");
     }

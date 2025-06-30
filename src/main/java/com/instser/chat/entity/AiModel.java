@@ -76,6 +76,12 @@ public class AiModel implements Serializable {
     private Integer isAvailable;
 
     /**
+     * 是否可见（0-不可见，1-可见）
+     */
+    @TableField("is_visible")
+    private Integer isVisible;
+
+    /**
      * API基础URL
      */
     @TableField("base_url")
