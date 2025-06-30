@@ -195,9 +195,10 @@ public class PaymentServiceImpl implements PaymentService {
                 throw new PaymentException("重复的支付请求，请勿重复提交");
             }
 
-            // 5. 检查用户是否有活跃的支付会话
+            // 5. 检查用户是否有活跃的支付会话，如果有则自动释放旧会话
             if (redisPaymentSecurityService.hasActivePaymentSession(userId)) {
-                throw new PaymentException("当前有正在进行的支付，请稍后再试");
+                log.info("用户{}有活跃的支付会话，将自动释放旧会话以创建新订单", userId);
+                redisPaymentSecurityService.releasePaymentSession(userId);
             }
 
             // 6. 获取支付会话锁
@@ -354,12 +355,9 @@ public class PaymentServiceImpl implements PaymentService {
         // User user = userService.getUserById(userId);
         // 由于当前没有UserService，我们先做基本验证
 
-        // 检查用户是否有未完成的支付订单
-        List<UserOrder> pendingOrders = orderService.getPendingOrdersByUserId(userId);
-        if (pendingOrders != null && pendingOrders.size() >= 3) {
-            log.warn("用户有过多未完成的支付订单，用户ID: {}, 未完成订单数: {}", userId, pendingOrders.size());
-            throw new PaymentException("您有过多未完成的支付订单，请先完成或取消现有订单");
-        }
+        // 注释：移除数据库层的订单检查，统一使用Redis层的会话管理
+        // 原因：Redis会话锁已经能够有效防止并发支付，避免重复检查提升性能
+        // 如果需要清理历史待支付订单，可以通过定时任务或手动接口处理
 
         // 检查用户今日支付次数限制（每天最多10次支付）
         String dailyLimitKey = "payment:daily_limit:user:" + userId;
