@@ -11,6 +11,7 @@ import com.instser.chat.entity.Package;
 import com.instser.chat.entity.UserOrder;
 import com.instser.chat.service.OrderService;
 import com.instser.chat.service.PackageService;
+import com.instser.chat.service.PaymentAuditService;
 import com.instser.chat.service.PaymentService;
 import com.instser.chat.service.ExchangeRateService;
 import com.instser.chat.service.PackageActivationService;
@@ -50,6 +51,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentStrategyFactory paymentStrategyFactory;
     private final OrderService orderService;
     private final PackageService packageService;
+    private final PaymentAuditService paymentAuditService;
     private final AlipayConfig alipayConfig;
     private final YiPayConfig yiPayConfig;
     private final PaymentSecurityUtil paymentSecurityUtil;

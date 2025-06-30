@@ -62,6 +62,12 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
         // 格式化金额精度
         amount = MoneyUtil.formatAmount(amount, currency);
 
+        // 【新增】检查并取消用户的进行中订单
+        int cancelledCount = cancelUserPendingOrders(userId);
+        if (cancelledCount > 0) {
+            log.info("用户{}发起新订单，已取消{}个进行中的订单", userId, cancelledCount);
+        }
+
         // 创建订单
         UserOrder order = new UserOrder();
         order.setOrderNo(generateOrderNo());
@@ -80,7 +86,7 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
             throw new BusinessException("订单创建失败");
         }
 
-        log.info("创建订单成功，订单号: {}, 用户ID: {}, 套餐ID: {}, 金额: {} {}", 
+        log.info("创建订单成功，订单号: {}, 用户ID: {}, 套餐ID: {}, 金额: {} {}",
                 order.getOrderNo(), userId, packageId, amount, currency);
 
         return order;
@@ -221,6 +227,20 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
         } catch (Exception e) {
             log.error("获取需要状态同步的订单异常", e);
             return List.of();
+        }
+    }
+
+    @Override
+    public int cancelUserPendingOrders(Long userId) {
+        try {
+            int cancelledCount = baseMapper.cancelUserPendingOrders(userId);
+            if (cancelledCount > 0) {
+                log.info("取消用户{}的{}个待支付订单", userId, cancelledCount);
+            }
+            return cancelledCount;
+        } catch (Exception e) {
+            log.error("取消用户{}的待支付订单异常", userId, e);
+            return 0;
         }
     }
 

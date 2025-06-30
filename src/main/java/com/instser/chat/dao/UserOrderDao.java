@@ -151,4 +151,14 @@ public interface UserOrderDao extends BaseMapper<UserOrder> {
             "AND update_time < DATE_SUB(NOW(), INTERVAL 1 HOUR) AND deleted = 0 " +
             "ORDER BY update_time ASC LIMIT #{maxCount}")
     List<UserOrder> selectOrdersNeedingStatusSync(@Param("maxCount") int maxCount);
+
+    /**
+     * 取消用户的所有待支付订单
+     *
+     * @param userId 用户ID
+     * @return 取消的订单数量
+     */
+    @Update("UPDATE t_user_order SET payment_status = 2, update_time = NOW() " +
+            "WHERE user_id = #{userId} AND payment_status = 0 AND expire_time > NOW() AND deleted = 0")
+    int cancelUserPendingOrders(Long userId);
 }

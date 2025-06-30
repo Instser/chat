@@ -13,6 +13,8 @@ import com.instser.chat.entity.Package;
 import com.instser.chat.entity.UserOrder;
 import com.instser.chat.service.OrderService;
 import com.instser.chat.service.PackageService;
+import com.instser.chat.service.PaymentAuditService;
+import com.instser.chat.service.serviceimpl.PaymentAuditServiceImpl;
 import com.instser.chat.strategy.PaymentStrategy;
 import com.instser.chat.util.MoneyUtil;
 import com.instser.chat.util.QrCodeUtil;
@@ -23,9 +25,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.http.*;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import jakarta.servlet.http.HttpServletRequest;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -45,6 +51,7 @@ public class AlipayStrategy implements PaymentStrategy {
     private final AlipayConfig alipayConfig;
     private final OrderService orderService;
     private final PackageService packageService;
+    private final PaymentAuditService paymentAuditService;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final RestTemplate restTemplate = new RestTemplate();
 
@@ -117,6 +124,28 @@ public class AlipayStrategy implements PaymentStrategy {
             String qrCodeUrl = QrCodeUtil.generatePaymentQrCodeUrl(paymentUrl);
             response.setQrCodeUrl(qrCodeUrl);
 
+            // 记录支付创建审计日志
+            try {
+                Map<String, Object> auditDetails = new HashMap<>();
+                auditDetails.put("paymentMethod", getPaymentMethod());
+                auditDetails.put("packageId", paymentRequest.getPackageId());
+                auditDetails.put("amount", order.getAmount());
+                auditDetails.put("currency", order.getCurrency());
+                auditDetails.put("paymentUrl", paymentUrl);
+                auditDetails.put("qrCodeUrl", qrCodeUrl);
+
+                String details = ((PaymentAuditServiceImpl) paymentAuditService).createOperationDetails(auditDetails);
+                paymentAuditService.recordCreateAudit(
+                    order.getOrderNo(),
+                    paymentRequest.getUserId(),
+                    details,
+                    getClientIpAddress(),
+                    getUserAgent()
+                );
+            } catch (Exception auditException) {
+                log.warn("记录支付创建审计日志失败，订单号: {}", order.getOrderNo(), auditException);
+            }
+
             log.info("支付宝支付订单创建成功，订单号: {}", order.getOrderNo());
             return response;
 
@@ -185,6 +214,28 @@ public class AlipayStrategy implements PaymentStrategy {
             );
 
             if (updated) {
+                // 记录支付回调审计日志
+                try {
+                    Map<String, Object> auditDetails = new HashMap<>();
+                    auditDetails.put("paymentMethod", getPaymentMethod());
+                    auditDetails.put("callbackData", callback.toString());
+                    auditDetails.put("transactionId", callback.getTransactionId());
+                    auditDetails.put("paymentStatus", callback.getPaymentStatus());
+                    auditDetails.put("amount", callback.getAmount());
+                    auditDetails.put("currency", callback.getCurrency());
+
+                    String details = ((PaymentAuditServiceImpl) paymentAuditService).createOperationDetails(auditDetails);
+                    paymentAuditService.recordStatusChangeAudit(
+                        order.getOrderNo(),
+                        order.getPaymentStatus(),
+                        newStatus,
+                        "支付宝回调状态变更",
+                        details
+                    );
+                } catch (Exception auditException) {
+                    log.warn("记录支付回调审计日志失败，订单号: {}", order.getOrderNo(), auditException);
+                }
+
                 log.info("支付宝回调处理成功，订单号: {}, 状态: {} -> {}",
                         order.getOrderNo(), order.getPaymentStatus(), newStatus);
                 return true;
@@ -248,6 +299,26 @@ public class AlipayStrategy implements PaymentStrategy {
                     // 更新数据库状态
                     boolean updated = orderService.updatePaymentStatus(orderNo, newStatus, null);
                     if (updated) {
+                        // 记录支付状态查询审计日志
+                        try {
+                            Map<String, Object> auditDetails = new HashMap<>();
+                            auditDetails.put("paymentMethod", getPaymentMethod());
+                            auditDetails.put("queryType", "API_SYNC");
+                            auditDetails.put("apiStatus", apiStatus);
+                            auditDetails.put("syncTime", java.time.LocalDateTime.now().toString());
+
+                            String details = ((PaymentAuditServiceImpl) paymentAuditService).createOperationDetails(auditDetails);
+                            paymentAuditService.recordStatusChangeAudit(
+                                orderNo,
+                                order.getPaymentStatus(),
+                                newStatus,
+                                "支付宝API状态同步",
+                                details
+                            );
+                        } catch (Exception auditException) {
+                            log.warn("记录支付状态同步审计日志失败，订单号: {}", orderNo, auditException);
+                        }
+
                         log.info("订单状态同步成功，订单号: {}, 状态: {} -> {}",
                                 orderNo, order.getPaymentStatus(), newStatus);
                         return mapPaymentStatusToString(newStatus);
@@ -647,6 +718,54 @@ public class AlipayStrategy implements PaymentStrategy {
                     ", amount='" + amount + '\'' +
                     ", currency='" + currency + '\'' +
                     '}';
+        }
+    }
+
+    /**
+     * 获取客户端IP地址
+     */
+    private String getClientIpAddress() {
+        try {
+            ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+            if (attributes == null) {
+                return null;
+            }
+
+            HttpServletRequest request = attributes.getRequest();
+
+            // 尝试从各种头部获取真实IP
+            String ip = request.getHeader("X-Forwarded-For");
+            if (ip != null && !ip.isEmpty() && !"unknown".equalsIgnoreCase(ip)) {
+                return ip.split(",")[0].trim();
+            }
+
+            ip = request.getHeader("X-Real-IP");
+            if (ip != null && !ip.isEmpty() && !"unknown".equalsIgnoreCase(ip)) {
+                return ip;
+            }
+
+            return request.getRemoteAddr();
+        } catch (Exception e) {
+            log.debug("无法获取客户端IP地址: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * 获取用户代理
+     */
+    private String getUserAgent() {
+        try {
+            ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+            if (attributes == null) {
+                return null;
+            }
+
+            HttpServletRequest request = attributes.getRequest();
+            return request.getHeader("User-Agent");
+        } catch (Exception e) {
+            log.debug("无法获取用户代理: {}", e.getMessage());
+            return null;
         }
     }
 }

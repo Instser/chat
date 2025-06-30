@@ -23,7 +23,10 @@ public interface PaymentAuditDao extends BaseMapper<PaymentAudit> {
      * @param orderNo 订单号
      * @return 审计日志列表
      */
-    @Select("SELECT * FROM t_payment_audit WHERE order_no = #{orderNo} AND deleted = 0 ORDER BY create_time DESC")
+    @Select("SELECT id, order_no, operation_type, old_status, new_status, operator_id, operator_type, " +
+            "operation_reason, operation_details, client_ip, user_agent, " +
+            "create_time as createTime, update_time as updateTime, deleted " +
+            "FROM t_payment_audit WHERE order_no = #{orderNo} AND deleted = 0 ORDER BY create_time DESC")
     List<PaymentAudit> selectByOrderNo(String orderNo);
 
     /**
@@ -34,7 +37,10 @@ public interface PaymentAuditDao extends BaseMapper<PaymentAudit> {
      * @param endTime 结束时间
      * @return 审计日志列表
      */
-    @Select("SELECT * FROM t_payment_audit WHERE operation_type = #{operationType} " +
+    @Select("SELECT id, order_no, operation_type, old_status, new_status, operator_id, operator_type, " +
+            "operation_reason, operation_details, client_ip, user_agent, " +
+            "create_time as createTime, update_time as updateTime, deleted " +
+            "FROM t_payment_audit WHERE operation_type = #{operationType} " +
             "AND create_time >= #{startTime} AND create_time <= #{endTime} " +
             "AND deleted = 0 ORDER BY create_time DESC")
     List<PaymentAudit> selectByOperationType(String operationType, LocalDateTime startTime, LocalDateTime endTime);
@@ -47,7 +53,10 @@ public interface PaymentAuditDao extends BaseMapper<PaymentAudit> {
      * @param endTime 结束时间
      * @return 审计日志列表
      */
-    @Select("SELECT * FROM t_payment_audit WHERE operator_id = #{operatorId} " +
+    @Select("SELECT id, order_no, operation_type, old_status, new_status, operator_id, operator_type, " +
+            "operation_reason, operation_details, client_ip, user_agent, " +
+            "create_time as createTime, update_time as updateTime, deleted " +
+            "FROM t_payment_audit WHERE operator_id = #{operatorId} " +
             "AND create_time >= #{startTime} AND create_time <= #{endTime} " +
             "AND deleted = 0 ORDER BY create_time DESC")
     List<PaymentAudit> selectByOperator(Long operatorId, LocalDateTime startTime, LocalDateTime endTime);

@@ -105,6 +105,14 @@ public interface OrderService extends IService<UserOrder> {
     int syncPendingOrderStatus();
 
     /**
+     * 取消用户的所有待支付订单
+     *
+     * @param userId 用户ID
+     * @return 取消的订单数量
+     */
+    int cancelUserPendingOrders(Long userId);
+
+    /**
      * 获取指定时间之后的待支付订单
      *
      * @param afterTime 时间阈值
