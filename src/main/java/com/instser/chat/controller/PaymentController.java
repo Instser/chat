@@ -38,7 +38,13 @@ import java.util.Map;
 @RequestMapping("/payment")
 @RequiredArgsConstructor
 @Validated
-@CrossOrigin(originPatterns = "*", allowedHeaders = "*", allowCredentials = "true")
+@CrossOrigin(originPatterns = {
+    "http://localhost:*", "https://localhost:*",
+    "http://127.0.0.1:*", "https://127.0.0.1:*",
+    "http://192.168.1.100:*", "https://192.168.1.100:*",
+    "http://192.168.1.101:*", "https://192.168.1.101:*",
+    "https://chat.example.com", "http://chat.example.com"
+}, allowedHeaders = "*", allowCredentials = "true")
 public class PaymentController {
 
     private final PaymentService paymentService;

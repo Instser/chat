@@ -36,7 +36,7 @@ public class WebConfig implements WebMvcConfigurer {
     private long maxAge;
 
     /**
-     * 跨域配置 - 允许localhost和局域网访问
+     * 跨域配置 - 允许localhost、局域网和生产域名访问
      */
     @Override
     public void addCorsMappings(CorsRegistry registry) {
@@ -49,7 +49,9 @@ public class WebConfig implements WebMvcConfigurer {
                     "http://192.168.1.100:*",
                     "https://192.168.1.100:*",
                     "http://192.168.1.101:*",
-                    "https://192.168.1.101:*"
+                    "https://192.168.1.101:*",
+                    "https://chat.example.com",
+                    "http://chat.example.com"
                 )
                 .allowedMethods("*")         // 允许所有HTTP方法
                 .allowedHeaders("*")         // 允许所有请求头

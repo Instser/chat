@@ -71,13 +71,13 @@ public class SecurityConfig {
     }
 
     /**
-     * CORS配置源 - 允许指定域名和局域网访问
+     * CORS配置源 - 允许指定域名、局域网和生产域名访问
      */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // 允许的源 - 包含localhost和局域网IP
+        // 允许的源 - 包含localhost、局域网IP和生产域名
         configuration.setAllowedOriginPatterns(Arrays.asList(
             "http://localhost:*",
             "https://localhost:*",
@@ -86,7 +86,9 @@ public class SecurityConfig {
             "http://192.168.1.100:*",
             "https://192.168.1.100:*",
             "http://192.168.1.101:*",
-            "https://192.168.1.101:*"
+            "https://192.168.1.101:*",
+            "https://chat.example.com",
+            "http://chat.example.com"
         ));
 
         // 允许所有HTTP方法
@@ -174,9 +176,8 @@ public class SecurityConfig {
                 .requestMatchers("/", "/favicon.ico").permitAll()
                 .requestMatchers("/static/**", "/public/**").permitAll()
 
-                // 支付接口 - 临时允许无需认证（测试模式）
-                // TODO: 06-21 01:53 - 为了测试，暂时允许支付接口无需认证，后续需要重新启用认证
-                .requestMatchers("/payment/**").permitAll()
+                // 支付回调接口 - 允许第三方支付平台回调（无需JWT认证）
+                .requestMatchers("/payment/alipay/notify", "/payment/yipay/notify").permitAll()
 
                 // 聊天接口 - 允许已认证用户访问，但排除SSE流式响应
                 .requestMatchers(HttpMethod.POST, "/chat").permitAll()  // 临时允许SSE流式响应绕过Spring Security
@@ -188,7 +189,7 @@ public class SecurityConfig {
                 // 管理员接口
                 .requestMatchers("/admin/**").hasRole("ADMIN")
 
-                // 其他接口需要认证
+                // 其他接口需要认证（包括支付接口）
                 .anyRequest().authenticated()
             )
 

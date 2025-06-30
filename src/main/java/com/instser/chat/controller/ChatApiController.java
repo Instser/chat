@@ -35,7 +35,13 @@ import java.util.Map;
 @RestController
 @RequestMapping("/chat")
 @RequiredArgsConstructor
-@CrossOrigin(originPatterns = "*", allowedHeaders = "*", allowCredentials = "true")
+@CrossOrigin(originPatterns = {
+    "http://localhost:*", "https://localhost:*",
+    "http://127.0.0.1:*", "https://127.0.0.1:*",
+    "http://192.168.1.100:*", "https://192.168.1.100:*",
+    "http://192.168.1.101:*", "https://192.168.1.101:*",
+    "https://chat.example.com", "http://chat.example.com"
+}, allowedHeaders = "*", allowCredentials = "true")
 public class ChatApiController {
 
     private final ChatMessageService chatMessageService;
@@ -378,7 +384,9 @@ public class ChatApiController {
             "http://192.168.1.101:3000",
             "http://192.168.1.101:3001",
             "https://192.168.1.101:3000",
-            "https://192.168.1.101:3001"
+            "https://192.168.1.101:3001",
+            "https://chat.example.com",
+            "http://chat.example.com"
         };
 
         // 检查请求来源是否在允许列表中

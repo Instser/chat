@@ -176,7 +176,13 @@ public class PaymentServiceImpl implements PaymentService {
         boolean securityEnabled = true; // 安全验证开关
 
         if (securityEnabled) {
-            // 1. 生成或验证支付请求ID（防重放攻击）
+            // 1. 支付请求频率限制验证（用户、IP、套餐级别）
+            validatePaymentRateLimit(paymentRequest);
+
+            // 2. 用户权限验证（未完成订单、每日限制等）
+            validateUserPermissions(paymentRequest);
+
+            // 3. 生成或验证支付请求ID（防重放攻击）
             String requestId = paymentRequest.getRequestId();
             if (requestId == null || requestId.trim().isEmpty()) {
                 // 如果前端未提供requestId，后端自动生成
@@ -184,40 +190,42 @@ public class PaymentServiceImpl implements PaymentService {
                 paymentRequest.setRequestId(requestId);
             }
 
-            // 2. 检查支付请求是否已处理（防重放攻击）
+            // 4. 检查支付请求是否已处理（防重放攻击）
             if (redisPaymentSecurityService.isPaymentRequestProcessed(requestId, userId)) {
                 throw new PaymentException("重复的支付请求，请勿重复提交");
             }
 
-            // 3. 检查用户是否有活跃的支付会话
+            // 5. 检查用户是否有活跃的支付会话
             if (redisPaymentSecurityService.hasActivePaymentSession(userId)) {
                 throw new PaymentException("当前有正在进行的支付，请稍后再试");
             }
 
-            // 4. 获取支付会话锁
+            // 6. 获取支付会话锁
             if (!redisPaymentSecurityService.acquirePaymentSession(userId)) {
                 throw new PaymentException("支付会话获取失败，请稍后再试");
             }
 
             try {
-                // 5. 检查支付频率限制
+                // 7. 检查支付频率限制（Redis分布式验证）
                 if (!paymentSecurityEnhancer.checkPaymentFrequency(userId)) {
                     throw new PaymentException("支付频率过高，请稍后再试");
                 }
 
-                // 6. 检测异常支付行为
+                // 8. 检测异常支付行为
                 if (!paymentSecurityEnhancer.detectAbnormalPayment(paymentRequest)) {
                     paymentSecurityEnhancer.recordSuspiciousBehavior(userId, "异常支付检测失败");
                     throw new PaymentException("检测到异常支付行为，请联系客服");
                 }
 
-                log.debug("用户{}支付安全验证通过，请求ID: {}", userId, requestId);
+                log.info("用户{}支付安全验证通过，请求ID: {}", userId, requestId);
 
             } catch (PaymentException e) {
                 // 如果安全验证失败，释放支付会话锁
                 redisPaymentSecurityService.releasePaymentSession(userId);
                 throw e;
             }
+        } else {
+            log.warn("支付安全验证已关闭，跳过所有安全检查");
         }
 
         // 支付金额验证 - 保留基本的金额验证

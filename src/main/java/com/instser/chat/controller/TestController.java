@@ -4,6 +4,7 @@ import com.instser.chat.common.result.Result;
 import com.instser.chat.service.PaymentSecurityEnhancer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -25,6 +26,13 @@ import java.util.Map;
 @RestController
 @RequestMapping("/test")
 @RequiredArgsConstructor
+@CrossOrigin(originPatterns = {
+    "http://localhost:*", "https://localhost:*",
+    "http://127.0.0.1:*", "https://127.0.0.1:*",
+    "http://192.168.1.100:*", "https://192.168.1.100:*",
+    "http://192.168.1.101:*", "https://192.168.1.101:*",
+    "https://chat.example.com", "http://chat.example.com"
+}, allowedHeaders = "*", allowCredentials = "true")
 public class TestController {
 
     private final PaymentSecurityEnhancer paymentSecurityEnhancer;
