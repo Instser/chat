@@ -89,7 +89,7 @@ public class PaymentServiceImpl implements PaymentService {
                 case "alipay":
                     paymentMethod.setName("支付宝");
                     break;
-                case "wechat":
+                case "wechatpay":
                     paymentMethod.setName("微信支付");
                     break;
                 case "yipay":
@@ -647,6 +647,87 @@ public class PaymentServiceImpl implements PaymentService {
 
         } catch (Exception e) {
             log.error("验证回调签名异常", e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean handleAlipayNotify(Map<String, String> notifyParams) {
+        try {
+            // 验证必要参数
+            String tradeNo = notifyParams.get("trade_no");
+            String outTradeNo = notifyParams.get("out_trade_no");
+            String tradeStatus = notifyParams.get("trade_status");
+
+            if (!StringUtils.hasText(outTradeNo)) {
+                log.error("支付宝回调缺少订单号");
+                return false;
+            }
+
+            // 构建回调数据字符串
+            StringBuilder callbackData = new StringBuilder();
+            boolean first = true;
+            for (Map.Entry<String, String> entry : notifyParams.entrySet()) {
+                if (!first) {
+                    callbackData.append("&");
+                }
+                callbackData.append(entry.getKey()).append("=").append(entry.getValue());
+                first = false;
+            }
+
+            // 使用支付宝策略处理回调
+            PaymentStrategy strategy = paymentStrategyFactory.getStrategy("alipay");
+            boolean result = strategy.handleCallback(callbackData.toString());
+
+            // 记录回调处理审计日志
+            log.info("支付宝回调处理完成，订单号: {}, 交易号: {}, 状态: {}, 结果: {}",
+                    outTradeNo, tradeNo, tradeStatus, result ? "成功" : "失败");
+
+            return result;
+
+        } catch (Exception e) {
+            log.error("处理支付宝回调异常", e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean handleWechatPayNotify(Map<String, String> notifyParams) {
+        try {
+            // 验证必要参数
+            String tradeNo = notifyParams.get("trade_no");
+            String outTradeNo = notifyParams.get("out_trade_no");
+            String tradeStatus = notifyParams.get("trade_status");
+
+            if (!StringUtils.hasText(outTradeNo)) {
+                log.error("微信支付回调缺少订单号");
+                return false;
+            }
+
+            // 构建回调数据字符串
+            StringBuilder callbackData = new StringBuilder();
+            boolean first = true;
+            for (Map.Entry<String, String> entry : notifyParams.entrySet()) {
+                if (!first) {
+                    callbackData.append("&");
+                }
+                callbackData.append(entry.getKey()).append("=").append(entry.getValue());
+                first = false;
+            }
+
+            // 使用微信支付策略处理回调
+            PaymentStrategy strategy = paymentStrategyFactory.getStrategy("wechatpay");
+            boolean result = strategy.handleCallback(callbackData.toString());
+
+            // 记录回调处理审计日志
+            // 注意：这里无法获取到订单状态变更信息，所以使用简化的日志记录
+            log.info("微信支付回调处理完成，订单号: {}, 交易号: {}, 状态: {}, 结果: {}",
+                    outTradeNo, tradeNo, tradeStatus, result ? "成功" : "失败");
+
+            return result;
+
+        } catch (Exception e) {
+            log.error("处理微信支付回调异常", e);
             return false;
         }
     }

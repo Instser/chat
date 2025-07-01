@@ -51,7 +51,8 @@ public class WebConfig implements WebMvcConfigurer {
                     "http://192.168.1.101:*",
                     "https://192.168.1.101:*",
                     "https://chat.example.com",
-                    "http://chat.example.com"
+                    "http://chat.example.com",
+                    "http://203.0.113.16:3000"
                 )
                 .allowedMethods("*")         // 允许所有HTTP方法
                 .allowedHeaders("*")         // 允许所有请求头

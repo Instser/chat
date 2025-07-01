@@ -83,6 +83,22 @@ public interface PaymentService {
     boolean handleYiPayNotify(Map<String, String> notifyParams);
 
     /**
+     * 处理微信支付回调通知（通过易支付）
+     *
+     * @param notifyParams 回调参数
+     * @return 处理结果
+     */
+    boolean handleWechatPayNotify(Map<String, String> notifyParams);
+
+    /**
+     * 处理支付宝回调通知（通过易支付）
+     *
+     * @param notifyParams 回调参数
+     * @return 处理结果
+     */
+    boolean handleAlipayNotify(Map<String, String> notifyParams);
+
+    /**
      * 获取可用的支付方式列表
      *
      * @return 支付方式列表

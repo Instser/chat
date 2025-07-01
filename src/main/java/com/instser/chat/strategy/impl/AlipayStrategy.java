@@ -38,7 +38,7 @@ import java.util.Map;
  * @since 2024-01-01
  */
 @Slf4j
-@Component
+// @Component  // 暂时禁用，使用易支付调用支付宝
 @RequiredArgsConstructor
 public class AlipayStrategy implements PaymentStrategy {
 

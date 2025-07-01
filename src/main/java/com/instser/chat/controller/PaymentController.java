@@ -43,7 +43,8 @@ import java.util.Map;
     "http://127.0.0.1:*", "https://127.0.0.1:*",
     "http://192.168.1.100:*", "https://192.168.1.100:*",
     "http://192.168.1.101:*", "https://192.168.1.101:*",
-    "https://chat.example.com", "http://chat.example.com"
+    "https://chat.example.com", "http://chat.example.com",
+    "http://203.0.113.16:3000"
 }, allowedHeaders = "*", allowCredentials = "true")
 public class PaymentController {
 
@@ -313,37 +314,83 @@ public class PaymentController {
     }
 
     /**
-     * 支付宝支付回调
+     * 支付宝支付回调（通过易支付）
      */
     @PostMapping("/alipay/notify")
-    public ResponseEntity<String> alipayNotify(HttpServletRequest request, @RequestBody String notifyBody) {
+    public ResponseEntity<String> alipayNotify(HttpServletRequest request) {
         try {
             log.info("收到支付宝回调通知");
 
             // 验证回调IP
-            if (!paymentSecurityEnhancer.validateCallbackIP(request, "alipay")) {
+            if (!paymentSecurityEnhancer.validateCallbackIP(request, "yipay")) {
                 log.error("支付宝回调IP验证失败");
                 return ResponseEntity.status(HttpStatus.FORBIDDEN).body("IP not allowed");
             }
 
-            // 获取请求头信息
-            String requestTime = request.getHeader("request-time");
-            String clientId = request.getHeader("client-id");
-            String signature = request.getHeader("signature");
+            // 获取所有参数
+            Map<String, String> notifyParams = new HashMap<>();
+            request.getParameterMap().forEach((key, values) -> {
+                if (values != null && values.length > 0) {
+                    notifyParams.put(key, values[0]);
+                }
+            });
 
-            // 处理回调
-            boolean success = paymentService.handlePaymentNotify(notifyBody, signature, requestTime, clientId);
+            log.info("支付宝回调参数: {}", notifyParams);
+
+            // 处理支付宝回调
+            boolean success = paymentService.handleAlipayNotify(notifyParams);
 
             if (success) {
-                log.info("支付回调处理成功");
-                return ResponseEntity.ok("SUCCESS");
+                log.info("支付宝回调处理成功");
+                return ResponseEntity.ok("success");
             } else {
-                log.error("支付回调处理失败");
-                return ResponseEntity.ok("FAIL");
+                log.error("支付宝回调处理失败");
+                return ResponseEntity.ok("fail");
             }
         } catch (Exception e) {
-            log.error("处理支付回调异常", e);
-            return ResponseEntity.ok("FAIL");
+            log.error("处理支付宝回调异常", e);
+            return ResponseEntity.ok("fail");
+        }
+    }
+
+    /**
+     * 微信支付回调（通过易支付）
+     */
+    @PostMapping("/wechatpay/notify")
+    public ResponseEntity<String> wechatpayNotify(HttpServletRequest request) {
+        try {
+            log.info("收到微信支付回调通知");
+
+            // 验证回调IP
+            if (!paymentSecurityEnhancer.validateCallbackIP(request, "yipay")) {
+                log.error("微信支付回调IP验证失败");
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("IP not allowed");
+            }
+
+            // 获取所有参数
+            Map<String, String> notifyParams = new HashMap<>();
+            request.getParameterMap().forEach((key, values) -> {
+                if (values != null && values.length > 0) {
+                    notifyParams.put(key, values[0]);
+                }
+            });
+
+            log.info("微信支付回调参数: {}", notifyParams);
+
+            // 处理微信支付回调
+            boolean success = paymentService.handleWechatPayNotify(notifyParams);
+
+            if (success) {
+                log.info("微信支付回调处理成功");
+                return ResponseEntity.ok("success");
+            } else {
+                log.error("微信支付回调处理失败");
+                return ResponseEntity.ok("fail");
+            }
+
+        } catch (Exception e) {
+            log.error("处理微信支付回调异常", e);
+            return ResponseEntity.ok("fail");
         }
     }
 

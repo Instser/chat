@@ -4,12 +4,16 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.instser.chat.common.exception.BusinessException;
 import com.instser.chat.dao.UserDao;
 import com.instser.chat.dto.request.UpdateProfileRequest;
+import com.instser.chat.entity.Package;
 import com.instser.chat.entity.User;
+import com.instser.chat.service.PackageService;
+import com.instser.chat.service.UserAccountService;
 import com.instser.chat.service.UserService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 
@@ -24,10 +28,16 @@ import java.time.LocalDateTime;
 public class UserServiceImpl extends ServiceImpl<UserDao, User> implements UserService {
 
     private final PasswordEncoder passwordEncoder;
+    private final PackageService packageService;
+    private final UserAccountService userAccountService;
 
     // 使用@Lazy注解延迟注入PasswordEncoder，打破循环依赖
-    public UserServiceImpl(@Lazy PasswordEncoder passwordEncoder) {
+    public UserServiceImpl(@Lazy PasswordEncoder passwordEncoder,
+                          PackageService packageService,
+                          UserAccountService userAccountService) {
         this.passwordEncoder = passwordEncoder;
+        this.packageService = packageService;
+        this.userAccountService = userAccountService;
     }
 
     @Override
@@ -41,6 +51,7 @@ public class UserServiceImpl extends ServiceImpl<UserDao, User> implements UserS
     }
 
     @Override
+    @Transactional
     public Long registerUser(String username, String email, String password) {
         // 检查邮箱是否已存在
         if (getUserByEmail(email) != null) {
@@ -63,6 +74,30 @@ public class UserServiceImpl extends ServiceImpl<UserDao, User> implements UserS
 
         this.save(user);
         log.info("用户注册成功，用户ID：{}", user.getId());
+
+        // 为新用户自动绑定ID为1的套餐
+        try {
+            Package defaultPackage = packageService.getPackageById(1L);
+            if (defaultPackage != null) {
+                boolean activated = userAccountService.activatePackage(
+                    user.getId(),
+                    1L,
+                    defaultPackage.getValidityDays(),
+                    defaultPackage.getChatCount()
+                );
+
+                if (activated) {
+                    log.info("用户{}自动绑定默认套餐成功，套餐ID：1", user.getId());
+                } else {
+                    log.warn("用户{}自动绑定默认套餐失败，套餐ID：1", user.getId());
+                }
+            } else {
+                log.warn("默认套餐(ID=1)不存在，跳过自动绑定");
+            }
+        } catch (Exception e) {
+            log.error("用户{}自动绑定默认套餐异常", user.getId(), e);
+            // 不抛出异常，避免影响用户注册流程
+        }
 
         return user.getId();
     }
