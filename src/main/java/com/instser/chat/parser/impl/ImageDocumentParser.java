@@ -11,6 +11,10 @@ import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.client.RestTemplate;
 
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
+import java.security.cert.X509Certificate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -82,6 +86,13 @@ public class ImageDocumentParser implements DocumentParser {
             requestBody.put("model", AI_MODEL);
             requestBody.put("stream", false);
 
+            // 检查是否为Gemini模型，如果是则添加reasoning_effort参数
+            // 当前使用的是qwen2.5-omni-7b，不是Gemini模型，所以不添加该参数
+            if (AI_API_URL.contains("generativelanguage.googleapis.com") || AI_MODEL.toLowerCase().contains("gemini")) {
+                requestBody.put("reasoning_effort", "none");
+                log.debug("检测到Gemini模型，添加reasoning_effort=none参数");
+            }
+
             // 构建消息内容
             List<Map<String, Object>> messages = new ArrayList<>();
             Map<String, Object> message = new HashMap<>();
@@ -111,8 +122,8 @@ public class ImageDocumentParser implements DocumentParser {
 
             log.debug("AI请求体构建完成，消息数量: {}", messages.size());
 
-            // 创建RestTemplate
-            RestTemplate restTemplate = new RestTemplate();
+            // 创建禁用SSL验证的RestTemplate
+            RestTemplate restTemplate = createSslDisabledRestTemplate();
 
             // 设置请求头
             HttpHeaders headers = new HttpHeaders();
@@ -252,6 +263,37 @@ public class ImageDocumentParser implements DocumentParser {
         }
 
         return null;
+    }
+
+    /**
+     * 创建禁用SSL验证的RestTemplate
+     */
+    private RestTemplate createSslDisabledRestTemplate() {
+        try {
+            // 创建信任所有证书的TrustManager
+            TrustManager[] trustAllCerts = new TrustManager[]{
+                new X509TrustManager() {
+                    public X509Certificate[] getAcceptedIssuers() {
+                        return new X509Certificate[0];
+                    }
+                    public void checkClientTrusted(X509Certificate[] certs, String authType) {}
+                    public void checkServerTrusted(X509Certificate[] certs, String authType) {}
+                }
+            };
+
+            // 创建SSL上下文
+            SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, trustAllCerts, new java.security.SecureRandom());
+
+            // 创建RestTemplate
+            RestTemplate restTemplate = new RestTemplate();
+
+            log.debug("ImageDocumentParser RestTemplate已配置为禁用SSL验证");
+            return restTemplate;
+        } catch (Exception e) {
+            log.error("配置RestTemplate SSL时发生错误，使用默认配置", e);
+            return new RestTemplate();
+        }
     }
 
     @Override

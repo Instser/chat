@@ -53,6 +53,8 @@ public class ChatServiceImpl implements ChatService {
     private final ChatRateLimitService chatRateLimitService;
     private final FileUploadService fileUploadService;
     private final ChatInterruptService chatInterruptService;
+    private final WebClient.Builder webClientBuilder;
+    private final RestTemplate restTemplate;
 
     // 智能分块响应配置
     private static final boolean ENABLE_SMART_CHUNKING = true;
@@ -670,13 +672,18 @@ public class ChatServiceImpl implements ChatService {
             requestBody.put("model", model.getModelCode());
             requestBody.put("messages", messagesWithPrompt);
             requestBody.put("stream", true);
-            requestBody.put("reasoning_effort", "none");
+
+            // 只有当provider是Gemini时才添加reasoning_effort参数
+            if ("Gemini".equalsIgnoreCase(model.getProvider())) {
+                requestBody.put("reasoning_effort", "none");
+                log.debug("检测到Gemini模型，添加reasoning_effort=none参数");
+            }
 
             // 记录详细的AI请求信息
             logAiRequestDetails(requestBody, model, request.getUserId());
 
-            // 创建WebClient
-            WebClient webClient = WebClient.builder()
+            // 创建WebClient（使用配置的Builder，已禁用SSL验证）
+            WebClient webClient = webClientBuilder
                     .defaultHeader("Authorization", "Bearer " + model.getApiKey())
                     .defaultHeader("Content-Type", "application/json; charset=UTF-8")
                     .defaultHeader("Accept-Charset", "UTF-8")
@@ -1370,13 +1377,18 @@ public class ChatServiceImpl implements ChatService {
             requestBody.put("max_tokens", 50);
             requestBody.put("temperature", 0.7);
 
+            // 只有当provider是Gemini时才添加reasoning_effort参数
+            if ("Gemini".equalsIgnoreCase(model.getProvider())) {
+                requestBody.put("reasoning_effort", "none");
+                log.debug("检测到Gemini模型，添加reasoning_effort=none参数");
+            }
+
             // 记录详细的AI标题生成请求信息
             logAiTitleRequestDetails(requestBody, model);
 
             log.info("AI标题生成请求体构建完成");
 
-            // 使用RestTemplate进行HTTP调用
-            RestTemplate restTemplate = new RestTemplate();
+            // 使用注入的RestTemplate进行HTTP调用（已禁用SSL验证）
 
             // 设置请求头
             HttpHeaders headers = new HttpHeaders();
