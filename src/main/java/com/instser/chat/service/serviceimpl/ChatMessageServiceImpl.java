@@ -8,6 +8,7 @@ import com.instser.chat.entity.ChatSession;
 import com.instser.chat.service.ChatMessageService;
 import com.instser.chat.service.ChatSessionService;
 import com.instser.chat.service.FileUploadService;
+import com.instser.chat.dto.MessageSaveResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -59,7 +60,7 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
         message.setHasAttachments(hasAttachments != null ? hasAttachments : 0); // 设置附件标识
         message.setUserId(userId);
         message.setModelId(modelId != null ? modelId : 1L); // 使用传入的modelId，如果为null则使用默认值
-        message.setTokenCount(content.length() / 4); // 简单估算token数
+        message.setTokenCount(calculateTokenCount(content)); // 使用优化的token计算方法
         message.setStatus(1); // 成功状态
         message.setCreatedTime(LocalDateTime.now());
         message.setUpdateTime(LocalDateTime.now());
@@ -253,5 +254,98 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
             log.warn("从会话{}获取模型ID失败，使用默认值", sessionId, e);
         }
         return 1L; // 默认模型ID
+    }
+
+    /**
+     * 计算文本的token数量
+     * 使用更准确的算法，区分中英文字符
+     *
+     * @param content 文本内容
+     * @return token数量
+     */
+    private Integer calculateTokenCount(String content) {
+        if (content == null || content.trim().isEmpty()) {
+            return 0;
+        }
+
+        int chineseCount = 0;
+        int englishCount = 0;
+        int digitCount = 0;
+        int punctuationCount = 0;
+        int whitespaceCount = 0;
+
+        for (char c : content.toCharArray()) {
+            if (c >= 0x4e00 && c <= 0x9fff) {
+                // 中文字符（包括中文标点）
+                chineseCount++;
+            } else if (Character.isLetter(c)) {
+                // 英文字母
+                englishCount++;
+            } else if (Character.isDigit(c)) {
+                // 数字
+                digitCount++;
+            } else if (Character.isWhitespace(c)) {
+                // 空白字符
+                whitespaceCount++;
+            } else {
+                // 标点符号和其他字符
+                punctuationCount++;
+            }
+        }
+
+        // Token计算规则（调整后更合理）：
+        // - 中文字符：每个字符约1.2个token
+        // - 英文字母：每4个字符约1个token
+        // - 数字：每4个字符约1个token
+        // - 标点符号：每3个字符约1个token
+        // - 空白字符：每8个字符约1个token
+        int totalTokens = (int) Math.ceil(
+            chineseCount * 1.2 +
+            englishCount / 4.0 +
+            digitCount / 4.0 +
+            punctuationCount / 3.0 +
+            whitespaceCount / 8.0
+        );
+
+        // 最小值为1，避免返回0
+        return Math.max(1, totalTokens);
+    }
+
+    @Override
+    public MessageSaveResult sendMessageWithTokenInfo(String sessionId, String role, String content, Long userId, Long modelId) {
+        try {
+            // 计算Token数量
+            Integer tokenCount = calculateTokenCount(content);
+
+            // 创建消息对象
+            ChatMessage message = new ChatMessage();
+            message.setMessageId(java.util.UUID.randomUUID().toString());
+            message.setSessionId(sessionId);
+            message.setRole(role);
+            message.setContent(content);
+            message.setMessageType("text");
+            message.setHasAttachments(0);
+            message.setUserId(userId);
+            message.setModelId(modelId != null ? modelId : 1L);
+            message.setTokenCount(tokenCount);
+            message.setStatus(1);
+            message.setCreatedTime(LocalDateTime.now());
+            message.setUpdateTime(LocalDateTime.now());
+
+            // 保存消息
+            boolean saved = this.save(message);
+
+            if (saved) {
+                log.info("{}消息保存成功，消息ID：{}，角色：{}，模型ID：{}，Token数：{}",
+                        "assistant".equals(role) ? "AI" : "用户", message.getId(), role, modelId, tokenCount);
+                return MessageSaveResult.success(message.getId(), tokenCount);
+            } else {
+                log.error("消息保存失败，会话ID：{}，角色：{}", sessionId, role);
+                return MessageSaveResult.failure();
+            }
+        } catch (Exception e) {
+            log.error("保存消息异常，会话ID：{}，角色：{}", sessionId, role, e);
+            return MessageSaveResult.failure();
+        }
     }
 }

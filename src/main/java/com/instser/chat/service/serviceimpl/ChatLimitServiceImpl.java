@@ -283,4 +283,41 @@ public class ChatLimitServiceImpl implements ChatLimitService {
             return false;
         }
     }
+
+    @Override
+    public boolean recordTokenUsage(Long userId, Integer tokenCount) {
+        if (userId == null || tokenCount == null || tokenCount <= 0) {
+            log.error("记录Token使用参数无效: userId={}, tokenCount={}", userId, tokenCount);
+            return false;
+        }
+
+        try {
+            boolean success = userAccountService.updateTokenUsage(userId, tokenCount);
+
+            if (success) {
+                log.debug("用户{}Token使用记录成功，使用了{}个Token", userId, tokenCount);
+            } else {
+                log.warn("用户{}Token使用记录失败，可能余额不足", userId);
+            }
+
+            return success;
+        } catch (Exception e) {
+            log.error("记录用户{}Token使用异常", userId, e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean hasEnoughTokens(Long userId, Integer tokenCount) {
+        if (userId == null || tokenCount == null || tokenCount <= 0) {
+            return false;
+        }
+
+        try {
+            return userAccountService.hasEnoughTokens(userId, tokenCount);
+        } catch (Exception e) {
+            log.error("检查用户{}Token余额异常", userId, e);
+            return false;
+        }
+    }
 }

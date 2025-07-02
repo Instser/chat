@@ -271,8 +271,89 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
         if (account == null || account.isPackageExpired()) {
             return false;
         }
-        
+
         Integer remaining = account.getChatCountRemaining();
         return remaining != null && remaining > 0;
+    }
+
+    @Override
+    @Transactional
+    public boolean updateTokenUsage(Long userId, Integer tokenCount) {
+        if (userId == null || tokenCount == null || tokenCount <= 0) {
+            log.error("更新Token使用量参数无效: userId={}, tokenCount={}", userId, tokenCount);
+            return false;
+        }
+
+        try {
+            // 原子性扣减Token余额
+            int updated = baseMapper.decrementTokenBalance(userId, tokenCount.longValue());
+
+            if (updated > 0) {
+                // 增加已使用Token统计
+                baseMapper.incrementTokenUsed(userId, tokenCount.longValue());
+                log.debug("用户{}Token使用量更新成功，使用了{}个Token", userId, tokenCount);
+                return true;
+            }
+
+            log.warn("用户{}Token使用量更新失败，可能余额不足", userId);
+            return false;
+        } catch (Exception e) {
+            log.error("更新Token使用量异常: userId={}, tokenCount={}", userId, tokenCount, e);
+            return false;
+        }
+    }
+
+    @Override
+    public boolean hasEnoughTokens(Long userId, Integer tokenCount) {
+        if (userId == null || tokenCount == null || tokenCount <= 0) {
+            return false;
+        }
+
+        UserAccount account = getUserAccount(userId);
+        if (account == null) {
+            return false;
+        }
+
+        Long balance = account.getTokenBalance();
+        return balance != null && balance >= tokenCount;
+    }
+
+    @Override
+    public Long getTokenBalance(Long userId) {
+        if (userId == null) {
+            return 0L;
+        }
+
+        UserAccount account = getUserAccount(userId);
+        if (account == null) {
+            return 0L;
+        }
+
+        Long balance = account.getTokenBalance();
+        return balance != null ? balance : 0L;
+    }
+
+    @Override
+    @Transactional
+    public boolean addTokenBalance(Long userId, Long tokenCount) {
+        if (userId == null || tokenCount == null || tokenCount <= 0) {
+            log.error("增加Token余额参数无效: userId={}, tokenCount={}", userId, tokenCount);
+            return false;
+        }
+
+        try {
+            int updated = baseMapper.incrementTokenBalance(userId, tokenCount);
+
+            if (updated > 0) {
+                log.info("用户{}Token余额增加成功，增加了{}个Token", userId, tokenCount);
+                return true;
+            }
+
+            log.warn("用户{}Token余额增加失败", userId);
+            return false;
+        } catch (Exception e) {
+            log.error("增加Token余额异常: userId={}, tokenCount={}", userId, tokenCount, e);
+            return false;
+        }
     }
 }

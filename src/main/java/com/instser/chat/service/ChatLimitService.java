@@ -51,4 +51,22 @@ public interface ChatLimitService {
      * @return true-记录成功，false-记录失败
      */
     boolean recordModelChatUsage(Long userId, String modelName);
+
+    /**
+     * 记录Token使用量（扣减用户Token余额）
+     *
+     * @param userId     用户ID
+     * @param tokenCount Token数量
+     * @return true-记录成功，false-记录失败或余额不足
+     */
+    boolean recordTokenUsage(Long userId, Integer tokenCount);
+
+    /**
+     * 检查用户Token余额是否充足
+     *
+     * @param userId     用户ID
+     * @param tokenCount 需要的Token数量
+     * @return true-余额充足，false-余额不足
+     */
+    boolean hasEnoughTokens(Long userId, Integer tokenCount);
 }

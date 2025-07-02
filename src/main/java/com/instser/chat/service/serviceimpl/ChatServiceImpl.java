@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.instser.chat.constants.PromptConstants;
 import com.instser.chat.dto.ChatRequestDTO;
 import com.instser.chat.dto.ChatResponseDTO;
+import com.instser.chat.dto.MessageSaveResult;
 import com.instser.chat.entity.AiModel;
 import com.instser.chat.entity.ChatMessage;
 import com.instser.chat.entity.ChatSession;
@@ -440,8 +441,26 @@ public class ChatServiceImpl implements ChatService {
     public void saveAiResponse(String sessionId, Long userId, Long modelId, String content) {
         try {
             if (sessionId != null && userId != null && modelId != null && content != null && !content.trim().isEmpty()) {
-                chatMessageService.sendMessage(sessionId, "assistant", content, userId, modelId);
-                log.info("AI响应已保存到数据库，会话ID：{}，用户ID：{}，模型ID：{}，内容长度：{}", sessionId, userId, modelId, content.length());
+                // 保存AI响应消息到数据库并获取Token信息（避免额外数据库查询）
+                MessageSaveResult result = chatMessageService.sendMessageWithTokenInfo(sessionId, "assistant", content, userId, modelId);
+
+                // 检查保存结果并记录Token使用量
+                if (result.isSuccess() && result.getTokenCount() > 0) {
+                    boolean tokenRecorded = chatLimitService.recordTokenUsage(userId, result.getTokenCount());
+                    if (tokenRecorded) {
+                        log.debug("用户{}AI响应Token使用记录成功，使用了{}个Token", userId, result.getTokenCount());
+                    } else {
+                        log.warn("用户{}AI响应Token使用记录失败，可能余额不足", userId);
+                    }
+
+                    log.info("AI响应已保存到数据库，会话ID：{}，用户ID：{}，模型ID：{}，内容长度：{}，Token数：{}",
+                            sessionId, userId, modelId, content.length(), result.getTokenCount());
+                } else if (result.isSuccess()) {
+                    log.info("AI响应已保存到数据库，会话ID：{}，用户ID：{}，模型ID：{}，内容长度：{}，Token数：0",
+                            sessionId, userId, modelId, content.length());
+                } else {
+                    log.warn("AI响应消息保存失败，无法记录Token使用量");
+                }
             } else {
                 log.warn("无法保存AI响应到数据库，缺少必要参数：sessionId={}, userId={}, modelId={}, contentLength={}",
                         sessionId, userId, modelId, content != null ? content.length() : 0);
@@ -2244,4 +2263,5 @@ public class ChatServiceImpl implements ChatService {
             return "Request failed. Please try again later.";
         }
     }
+
 }

@@ -96,4 +96,31 @@ public interface UserAccountDao extends BaseMapper<UserAccount> {
                              @Param("packageId") Long packageId,
                              @Param("packageExpireTime") LocalDateTime packageExpireTime,
                              @Param("chatCountRemaining") Integer chatCountRemaining);
+
+    /**
+     * 原子性减少Token余额
+     *
+     * @param userId     用户ID
+     * @param tokenCount 减少的Token数量
+     * @return 影响行数
+     */
+    int decrementTokenBalance(@Param("userId") Long userId, @Param("tokenCount") Long tokenCount);
+
+    /**
+     * 增加已使用Token统计
+     *
+     * @param userId     用户ID
+     * @param tokenCount 增加的Token数量
+     * @return 影响行数
+     */
+    int incrementTokenUsed(@Param("userId") Long userId, @Param("tokenCount") Long tokenCount);
+
+    /**
+     * 增加Token余额
+     *
+     * @param userId     用户ID
+     * @param tokenCount 增加的Token数量
+     * @return 影响行数
+     */
+    int incrementTokenBalance(@Param("userId") Long userId, @Param("tokenCount") Long tokenCount);
 }

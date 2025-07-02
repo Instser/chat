@@ -2,6 +2,7 @@ package com.instser.chat.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.instser.chat.entity.ChatMessage;
+import com.instser.chat.dto.MessageSaveResult;
 
 import java.util.List;
 
@@ -58,6 +59,18 @@ public interface ChatMessageService extends IService<ChatMessage> {
      * @return 消息ID
      */
     Long sendMessage(String sessionId, String role, String content, Long userId, Long modelId, Integer hasAttachments);
+
+    /**
+     * 发送消息并返回Token信息（优化版本，避免额外数据库查询）
+     *
+     * @param sessionId 会话ID
+     * @param role      消息角色（user/assistant）
+     * @param content   消息内容
+     * @param userId    用户ID
+     * @param modelId   模型ID
+     * @return 消息保存结果（包含消息ID和Token数量）
+     */
+    MessageSaveResult sendMessageWithTokenInfo(String sessionId, String role, String content, Long userId, Long modelId);
 
     /**
      * 获取会话消息列表

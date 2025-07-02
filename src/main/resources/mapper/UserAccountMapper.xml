@@ -110,4 +110,32 @@
             deleted = 0
     </insert>
 
+    <!-- 原子性减少Token余额 -->
+    <update id="decrementTokenBalance">
+        UPDATE t_user_account
+        SET token_balance = token_balance - #{tokenCount},
+            update_time = NOW()
+        WHERE user_id = #{userId}
+          AND token_balance >= #{tokenCount}
+          AND deleted = 0
+    </update>
+
+    <!-- 增加已使用Token统计 -->
+    <update id="incrementTokenUsed">
+        UPDATE t_user_account
+        SET token_used = COALESCE(token_used, 0) + #{tokenCount},
+            update_time = NOW()
+        WHERE user_id = #{userId}
+          AND deleted = 0
+    </update>
+
+    <!-- 增加Token余额 -->
+    <update id="incrementTokenBalance">
+        UPDATE t_user_account
+        SET token_balance = COALESCE(token_balance, 0) + #{tokenCount},
+            update_time = NOW()
+        WHERE user_id = #{userId}
+          AND deleted = 0
+    </update>
+
 </mapper>

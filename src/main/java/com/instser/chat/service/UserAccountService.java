@@ -68,6 +68,41 @@ public interface UserAccountService extends IService<UserAccount> {
     int getRemainingChatCount(Long userId);
 
     /**
+     * 更新用户Token使用量（原子性操作）
+     *
+     * @param userId     用户ID
+     * @param tokenCount 使用的Token数量
+     * @return true-更新成功，false-更新失败或余额不足
+     */
+    boolean updateTokenUsage(Long userId, Integer tokenCount);
+
+    /**
+     * 检查用户是否有足够的Token余额
+     *
+     * @param userId     用户ID
+     * @param tokenCount 需要的Token数量
+     * @return true-余额充足，false-余额不足
+     */
+    boolean hasEnoughTokens(Long userId, Integer tokenCount);
+
+    /**
+     * 获取用户Token余额
+     *
+     * @param userId 用户ID
+     * @return Token余额，如果用户不存在返回0
+     */
+    Long getTokenBalance(Long userId);
+
+    /**
+     * 增加用户Token余额（充值）
+     *
+     * @param userId     用户ID
+     * @param tokenCount 增加的Token数量
+     * @return true-增加成功，false-增加失败
+     */
+    boolean addTokenBalance(Long userId, Long tokenCount);
+
+    /**
      * 续费套餐
      * 延长现有套餐的有效期
      *
