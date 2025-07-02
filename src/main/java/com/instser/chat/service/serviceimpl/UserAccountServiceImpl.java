@@ -304,19 +304,31 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
     }
 
     @Override
-    public boolean hasEnoughTokens(Long userId, Integer tokenCount) {
+    @Transactional
+    public boolean recordTokenUsageOnly(Long userId, Integer tokenCount) {
         if (userId == null || tokenCount == null || tokenCount <= 0) {
+            log.error("记录Token使用统计参数无效: userId={}, tokenCount={}", userId, tokenCount);
             return false;
         }
 
-        UserAccount account = getUserAccount(userId);
-        if (account == null) {
+        try {
+            // 只增加已使用Token统计，不扣减余额
+            int updated = baseMapper.incrementTokenUsed(userId, tokenCount.longValue());
+
+            if (updated > 0) {
+                log.debug("用户{}Token使用统计记录成功，使用了{}个Token（仅统计）", userId, tokenCount);
+                return true;
+            }
+
+            log.warn("用户{}Token使用统计记录失败", userId);
+            return false;
+        } catch (Exception e) {
+            log.error("记录Token使用统计异常: userId={}, tokenCount={}", userId, tokenCount, e);
             return false;
         }
-
-        Long balance = account.getTokenBalance();
-        return balance != null && balance >= tokenCount;
     }
+
+
 
     @Override
     public Long getTokenBalance(Long userId) {

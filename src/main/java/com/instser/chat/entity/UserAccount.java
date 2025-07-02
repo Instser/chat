@@ -140,13 +140,5 @@ public class UserAccount {
         return membershipExpireTime != null && membershipExpireTime.isBefore(LocalDateTime.now());
     }
 
-    /**
-     * 检查是否有足够的Token余额
-     *
-     * @param requiredTokens 需要的Token数量
-     * @return true-余额充足，false-余额不足
-     */
-    public boolean hasEnoughTokens(Long requiredTokens) {
-        return tokenBalance != null && tokenBalance >= requiredTokens;
-    }
+
 }

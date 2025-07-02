@@ -3,8 +3,6 @@ package com.instser.chat.service;
 import com.baomidou.mybatisplus.extension.service.IService;
 import com.instser.chat.entity.UserAccount;
 
-import java.time.LocalDateTime;
-
 /**
  * 用户账户服务接口
  *
@@ -77,13 +75,13 @@ public interface UserAccountService extends IService<UserAccount> {
     boolean updateTokenUsage(Long userId, Integer tokenCount);
 
     /**
-     * 检查用户是否有足够的Token余额
+     * 仅记录Token使用统计（不扣减余额）
      *
      * @param userId     用户ID
-     * @param tokenCount 需要的Token数量
-     * @return true-余额充足，false-余额不足
+     * @param tokenCount 使用的Token数量
+     * @return true-记录成功，false-记录失败
      */
-    boolean hasEnoughTokens(Long userId, Integer tokenCount);
+    boolean recordTokenUsageOnly(Long userId, Integer tokenCount);
 
     /**
      * 获取用户Token余额

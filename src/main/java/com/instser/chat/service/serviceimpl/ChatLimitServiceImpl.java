@@ -292,12 +292,13 @@ public class ChatLimitServiceImpl implements ChatLimitService {
         }
 
         try {
-            boolean success = userAccountService.updateTokenUsage(userId, tokenCount);
+            // 只记录Token使用统计，不扣减余额，不检查限制
+            boolean success = userAccountService.recordTokenUsageOnly(userId, tokenCount);
 
             if (success) {
-                log.debug("用户{}Token使用记录成功，使用了{}个Token", userId, tokenCount);
+                log.debug("用户{}Token使用记录成功，使用了{}个Token（仅统计，不扣减余额）", userId, tokenCount);
             } else {
-                log.warn("用户{}Token使用记录失败，可能余额不足", userId);
+                log.warn("用户{}Token使用记录失败", userId);
             }
 
             return success;
@@ -307,17 +308,5 @@ public class ChatLimitServiceImpl implements ChatLimitService {
         }
     }
 
-    @Override
-    public boolean hasEnoughTokens(Long userId, Integer tokenCount) {
-        if (userId == null || tokenCount == null || tokenCount <= 0) {
-            return false;
-        }
 
-        try {
-            return userAccountService.hasEnoughTokens(userId, tokenCount);
-        } catch (Exception e) {
-            log.error("检查用户{}Token余额异常", userId, e);
-            return false;
-        }
-    }
 }
