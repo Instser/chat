@@ -33,4 +33,22 @@ public interface ChatLimitService {
      * @return 限制信息
      */
     ChatLimitVO getChatLimitInfo(Long userId);
+
+    /**
+     * 验证用户是否可以使用指定模型进行聊天
+     *
+     * @param userId    用户ID
+     * @param modelName 模型名称
+     * @return 验证结果
+     */
+    ChatLimitVO validateModelChatPermission(Long userId, String modelName);
+
+    /**
+     * 记录用户模型聊天使用
+     *
+     * @param userId    用户ID
+     * @param modelName 模型名称
+     * @return true-记录成功，false-记录失败
+     */
+    boolean recordModelChatUsage(Long userId, String modelName);
 }

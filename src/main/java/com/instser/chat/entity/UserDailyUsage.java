@@ -45,6 +45,12 @@ public class UserDailyUsage implements Serializable {
     private Long packageId;
 
     /**
+     * 模型名称
+     */
+    @TableField("model_name")
+    private String modelName = "STANDARD";
+
+    /**
      * 使用日期
      */
     @TableField("usage_date")

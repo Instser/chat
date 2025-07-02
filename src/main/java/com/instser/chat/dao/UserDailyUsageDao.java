@@ -73,4 +73,46 @@ public interface UserDailyUsageDao extends BaseMapper<UserDailyUsage> {
      * @return 清理的记录数
      */
     int deleteExpiredRecords(@Param("beforeDate") LocalDate beforeDate);
+
+    /**
+     * 根据用户、套餐、模型、日期查询使用记录
+     *
+     * @param userId     用户ID
+     * @param packageId  套餐ID
+     * @param modelName  模型名称
+     * @param usageDate  使用日期
+     * @return 使用记录
+     */
+    UserDailyUsage selectByUserPackageModelDate(@Param("userId") Long userId,
+                                               @Param("packageId") Long packageId,
+                                               @Param("modelName") String modelName,
+                                               @Param("usageDate") LocalDate usageDate);
+
+    /**
+     * 原子性插入或更新模型使用记录
+     *
+     * @param userId     用户ID
+     * @param packageId  套餐ID
+     * @param modelName  模型名称
+     * @param usageDate  使用日期
+     * @param dailyLimit 每日限制次数
+     * @return 影响行数
+     */
+    int insertOrIncrementModelUsage(@Param("userId") Long userId,
+                                   @Param("packageId") Long packageId,
+                                   @Param("modelName") String modelName,
+                                   @Param("usageDate") LocalDate usageDate,
+                                   @Param("dailyLimit") Integer dailyLimit);
+
+    /**
+     * 获取用户指定模型的最近使用记录
+     *
+     * @param userId    用户ID
+     * @param modelName 模型名称
+     * @param days      天数
+     * @return 使用记录列表
+     */
+    List<UserDailyUsage> selectRecentModelUsage(@Param("userId") Long userId,
+                                               @Param("modelName") String modelName,
+                                               @Param("days") Integer days);
 }

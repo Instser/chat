@@ -7,6 +7,7 @@
         <id column="id" property="id" />
         <result column="user_id" property="userId" />
         <result column="package_id" property="packageId" />
+        <result column="model_name" property="modelName" />
         <result column="usage_date" property="usageDate" />
         <result column="chat_count_used" property="chatCountUsed" />
         <result column="daily_limit" property="dailyLimit" />
@@ -17,7 +18,7 @@
 
     <!-- 通用查询结果列 -->
     <sql id="Base_Column_List">
-        id, user_id, package_id, usage_date, chat_count_used, daily_limit, last_chat_time, create_time, update_time
+        id, user_id, package_id, model_name, usage_date, chat_count_used, daily_limit, last_chat_time, create_time, update_time
     </sql>
 
     <!-- 获取用户指定日期的使用记录 -->
@@ -44,8 +45,8 @@
     <!-- 原子性插入或更新用户当日使用记录 -->
     <insert id="insertOrIncrementUsage">
         INSERT INTO t_user_daily_usage
-        (user_id, package_id, usage_date, chat_count_used, daily_limit, last_chat_time, create_time, update_time)
-        VALUES (#{userId}, #{packageId}, #{usageDate}, 1, #{dailyLimit}, NOW(), NOW(), NOW())
+        (user_id, package_id, model_name, usage_date, chat_count_used, daily_limit, last_chat_time, create_time, update_time)
+        VALUES (#{userId}, #{packageId}, 'STANDARD', #{usageDate}, 1, #{dailyLimit}, NOW(), NOW(), NOW())
         ON DUPLICATE KEY UPDATE
             chat_count_used = chat_count_used + 1,
             last_chat_time = NOW(),
@@ -66,5 +67,37 @@
         DELETE FROM t_user_daily_usage
         WHERE usage_date &lt; #{beforeDate}
     </delete>
+
+    <!-- 根据用户、套餐、模型、日期查询使用记录 -->
+    <select id="selectByUserPackageModelDate" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List" />
+        FROM t_user_daily_usage
+        WHERE user_id = #{userId}
+          AND package_id = #{packageId}
+          AND model_name = #{modelName}
+          AND usage_date = #{usageDate}
+        LIMIT 1
+    </select>
+
+    <!-- 原子性插入或更新模型使用记录 -->
+    <insert id="insertOrIncrementModelUsage">
+        INSERT INTO t_user_daily_usage
+        (user_id, package_id, model_name, usage_date, chat_count_used, daily_limit, last_chat_time, create_time, update_time)
+        VALUES (#{userId}, #{packageId}, #{modelName}, #{usageDate}, 1, #{dailyLimit}, NOW(), NOW(), NOW())
+        ON DUPLICATE KEY UPDATE
+            chat_count_used = chat_count_used + 1,
+            last_chat_time = NOW(),
+            update_time = NOW()
+    </insert>
+
+    <!-- 获取用户指定模型的最近使用记录 -->
+    <select id="selectRecentModelUsage" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List" />
+        FROM t_user_daily_usage
+        WHERE user_id = #{userId}
+          AND model_name = #{modelName}
+          AND usage_date &gt;= DATE_SUB(CURDATE(), INTERVAL #{days} DAY)
+        ORDER BY usage_date DESC, model_name ASC
+    </select>
 
 </mapper>

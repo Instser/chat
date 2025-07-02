@@ -2,9 +2,12 @@ package com.instser.chat.service.serviceimpl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.instser.chat.dao.UserAccountDao;
+import com.instser.chat.entity.Package;
 import com.instser.chat.entity.UserAccount;
+import com.instser.chat.service.PackageService;
 import com.instser.chat.service.UserAccountService;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +31,9 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
      */
     private static final ZoneId BUSINESS_ZONE = ZoneId.of("Asia/Shanghai");
 
+    @Autowired
+    private PackageService packageService;
+
     /**
      * 获取业务时间（上海时区）
      */
@@ -47,24 +53,41 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
     @Transactional
     public boolean activatePackage(Long userId, Long packageId, Integer validityDays, Integer totalChatCount) {
         if (userId == null || packageId == null || validityDays == null) {
-            log.error("激活套餐参数不能为空: userId={}, packageId={}, validityDays={}", 
+            log.error("激活套餐参数不能为空: userId={}, packageId={}, validityDays={}",
                     userId, packageId, validityDays);
             return false;
         }
 
         try {
+            // 获取套餐信息以确定限制类型
+            Package packageInfo = packageService.getPackageById(packageId);
+            if (packageInfo == null) {
+                log.error("套餐{}不存在", packageId);
+                return false;
+            }
+
             LocalDateTime expireTime = getBusinessDateTime().plusDays(validityDays);
-            Integer chatCount = totalChatCount != null ? totalChatCount : 0;
-            
+            Integer chatCount;
+
+            // 根据套餐限制类型设置总次数
+            if ("daily".equals(packageInfo.getLimitType())) {
+                // 每日限制模式：总次数不限制
+                chatCount = -1;
+                log.info("套餐{}为每日限制模式，总次数设置为无限制", packageId);
+            } else {
+                // 其他模式：使用传入的总次数或从套餐配置获取
+                chatCount = totalChatCount != null ? totalChatCount : packageInfo.getChatCount();
+            }
+
             // 使用原子性操作创建或更新账户信息
             int updated = baseMapper.insertOrUpdateAccount(userId, packageId, expireTime, chatCount);
-            
+
             if (updated > 0) {
-                log.info("用户{}套餐激活成功，套餐ID：{}，有效期：{}天，总次数：{}", 
-                        userId, packageId, validityDays, chatCount);
+                log.info("用户{}套餐激活成功，套餐ID：{}，有效期：{}天，总次数：{}，限制类型：{}",
+                        userId, packageId, validityDays, chatCount, packageInfo.getLimitType());
                 return true;
             }
-            
+
             log.error("用户{}套餐激活失败", userId);
             return false;
         } catch (Exception e) {

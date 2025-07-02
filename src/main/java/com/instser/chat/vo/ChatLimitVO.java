@@ -61,6 +61,37 @@ public class ChatLimitVO {
      */
     private String errorMessage;
 
+    // ==================== 模型相关字段 ====================
+
+    /**
+     * 模型名称
+     */
+    private String modelName;
+
+    /**
+     * 模型今日剩余使用次数
+     */
+    private Integer modelRemainingToday;
+
+    /**
+     * 模型今日已使用次数
+     */
+    private Integer modelUsedToday;
+
+    /**
+     * 模型每日限制次数
+     */
+    private Integer modelDailyLimit;
+
+    // ==================== 便捷方法 ====================
+
+    /**
+     * 是否可以聊天（便捷方法）
+     */
+    public boolean isCanChat() {
+        return Boolean.TRUE.equals(this.canChat);
+    }
+
     /**
      * 创建成功的聊天限制VO
      */

@@ -213,6 +213,10 @@ public class VOConverter {
         packageVO.setId(packageEntity.getId().toString());
         packageVO.setIsEnabled(packageEntity.getIsEnabled() == 1);
 
+        // 使用兼容方法设置已删除的字段值
+        packageVO.setChatCount(packageEntity.getChatCount());
+        packageVO.setDailyChatLimit(packageEntity.getDailyChatLimit());
+
         // 解析模型权限JSON
         if (packageEntity.getModelPermissions() != null) {
             try {

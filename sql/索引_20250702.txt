@@ -1,0 +1,2 @@
+"instruction"
+"📋 请根据检查结果手动执行相应的DROP INDEX和CREATE INDEX语句"

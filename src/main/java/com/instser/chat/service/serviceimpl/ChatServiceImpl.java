@@ -660,9 +660,6 @@ public class ChatServiceImpl implements ChatService {
 
             log.info("使用{}提示词，消息总数: {}", isDeepThink ? "深度思考" : "默认", messagesWithPrompt.size());
 
-            // 记录详细的AI请求信息
-            logAiRequestDetails(messagesWithPrompt, model, request.getUserId());
-
             // 添加JSON数据缓冲区，用于处理分片数据
             StringBuilder jsonBuffer = new StringBuilder();
             // 添加行缓冲区，用于处理被分割的行
@@ -674,6 +671,9 @@ public class ChatServiceImpl implements ChatService {
             requestBody.put("messages", messagesWithPrompt);
             requestBody.put("stream", true);
             requestBody.put("reasoning_effort", "none");
+
+            // 记录详细的AI请求信息
+            logAiRequestDetails(requestBody, model, request.getUserId());
 
             // 创建WebClient
             WebClient webClient = WebClient.builder()
@@ -1371,7 +1371,7 @@ public class ChatServiceImpl implements ChatService {
             requestBody.put("temperature", 0.7);
 
             // 记录详细的AI标题生成请求信息
-            logAiTitleRequestDetails(titleMessages, model);
+            logAiTitleRequestDetails(requestBody, model);
 
             log.info("AI标题生成请求体构建完成");
 
@@ -1525,26 +1525,19 @@ public class ChatServiceImpl implements ChatService {
     /**
      * 记录详细的AI请求信息
      */
-    private void logAiRequestDetails(List<Map<String, String>> messages, AiModel model, Long userId) {
+    private void logAiRequestDetails(Map<String, Object> requestBody, AiModel model, Long userId) {
         try {
             log.info("=== AI请求详细信息 ===");
             log.info("用户ID: {}", userId);
             log.info("模型: {} ({})", model.getModelCode(), model.getBaseUrl());
-            log.info("消息总数: {}", messages.size());
 
-            // 记录每条消息的详细信息
-            for (int i = 0; i < messages.size(); i++) {
-                Map<String, String> message = messages.get(i);
-                String role = message.get("role");
-                String content = message.get("content");
+            // 处理请求体，截取content字段
+            Map<String, Object> processedRequestBody = truncateRequestBodyContent(requestBody);
 
-                if (content != null) {
-                    String truncatedContent = truncateContent(content);
-                    log.info("消息[{}] - 角色: {}, 内容: {}", i + 1, role, truncatedContent);
-                } else {
-                    log.info("消息[{}] - 角色: {}, 内容: null", i + 1, role);
-                }
-            }
+            // 输出处理后的原始请求体
+            ObjectMapper objectMapper = new ObjectMapper();
+            String requestBodyJson = objectMapper.writeValueAsString(processedRequestBody);
+            log.info("原始请求体: {}", requestBodyJson);
 
             log.info("=== AI请求信息结束 ===");
         } catch (Exception e) {
@@ -1555,25 +1548,18 @@ public class ChatServiceImpl implements ChatService {
     /**
      * 记录详细的AI标题生成请求信息
      */
-    private void logAiTitleRequestDetails(List<Map<String, String>> messages, AiModel model) {
+    private void logAiTitleRequestDetails(Map<String, Object> requestBody, AiModel model) {
         try {
             log.info("=== AI标题生成请求详细信息 ===");
             log.info("模型: {} ({})", model.getModelCode(), model.getBaseUrl());
-            log.info("消息总数: {}", messages.size());
 
-            // 记录每条消息的详细信息
-            for (int i = 0; i < messages.size(); i++) {
-                Map<String, String> message = messages.get(i);
-                String role = message.get("role");
-                String content = message.get("content");
+            // 处理请求体，截取content字段
+            Map<String, Object> processedRequestBody = truncateRequestBodyContent(requestBody);
 
-                if (content != null) {
-                    String truncatedContent = truncateContent(content);
-                    log.info("标题生成消息[{}] - 角色: {}, 提示词: {}", i + 1, role, truncatedContent);
-                } else {
-                    log.info("标题生成消息[{}] - 角色: {}, 提示词: null", i + 1, role);
-                }
-            }
+            // 输出处理后的原始请求体
+            ObjectMapper objectMapper = new ObjectMapper();
+            String requestBodyJson = objectMapper.writeValueAsString(processedRequestBody);
+            log.info("原始请求体: {}", requestBodyJson);
 
             log.info("=== AI标题生成请求信息结束 ===");
         } catch (Exception e) {
@@ -1582,102 +1568,56 @@ public class ChatServiceImpl implements ChatService {
     }
 
     /**
-     * 截取内容，保留前15和后15个字符，并解析文件信息
-     * 如果包含文件内容，则显示完整的文件格式但截取每个文件的content
+     * 截取请求体中messages里的content字段，只保留前30和后30个字符
      */
-    private String truncateContent(String content) {
-        if (content == null) {
-            return "null";
-        }
-
-        if (content.length() <= 30) {
-            return content;
-        }
-
-        // 检查是否包含文件内容
-        if (content.contains("以下是文件内容：[")) {
-            return truncateContentWithFiles(content);
-        }
-
-        // 普通内容截取
-        String prefix = content.substring(0, 15);
-        String suffix = content.substring(content.length() - 15);
-        return prefix + "..." + suffix + " (总长度: " + content.length() + "字符)";
-    }
-
-    /**
-     * 截取包含文件内容的消息，显示完整的文件格式但截取每个文件的content
-     */
-    private String truncateContentWithFiles(String content) {
+    private Map<String, Object> truncateRequestBodyContent(Map<String, Object> requestBody) {
         try {
-            // 查找文件内容部分
-            int fileStartIndex = content.indexOf("以下是文件内容：[");
-            if (fileStartIndex == -1) {
-                // 没有找到文件内容，使用普通截取
-                String prefix = content.substring(0, Math.min(15, content.length()));
-                String suffix = content.length() > 15 ? content.substring(content.length() - 15) : "";
-                return prefix + "..." + suffix + " (总长度: " + content.length() + "字符)";
-            }
+            // 深拷贝请求体，避免修改原始数据
+            ObjectMapper objectMapper = new ObjectMapper();
+            String jsonString = objectMapper.writeValueAsString(requestBody);
+            Map<String, Object> processedBody = objectMapper.readValue(jsonString, Map.class);
 
-            int fileEndIndex = content.lastIndexOf("]");
-            if (fileEndIndex == -1 || fileEndIndex <= fileStartIndex) {
-                // 文件格式不完整，使用普通截取
-                String prefix = content.substring(0, Math.min(15, content.length()));
-                String suffix = content.length() > 15 ? content.substring(content.length() - 15) : "";
-                return prefix + "..." + suffix + " (总长度: " + content.length() + "字符)";
-            }
-
-            // 分离前缀、文件内容和后缀
-            String beforeFiles = content.substring(0, fileStartIndex);
-            String fileContentPart = content.substring(fileStartIndex + "以下是文件内容：[".length(), fileEndIndex);
-            String afterFiles = content.substring(fileEndIndex + 1);
-
-            // 处理文件内容，截取每个文件的content
-            String processedFileContent = processFileContentForLogging(fileContentPart);
-
-            // 构建结果
-            StringBuilder result = new StringBuilder();
-
-            // 添加前缀（截取）
-            if (beforeFiles.length() > 15) {
-                result.append(beforeFiles.substring(0, 15)).append("...");
-            } else {
-                result.append(beforeFiles);
-            }
-
-            // 添加文件内容
-            result.append("以下是文件内容：[").append(processedFileContent).append("]");
-
-            // 添加后缀（截取）
-            if (afterFiles.length() > 15) {
-                result.append("...").append(afterFiles.substring(afterFiles.length() - 15));
-            } else {
-                result.append(afterFiles);
-            }
-
-            result.append(" (总长度: ").append(content.length()).append("字符)");
-
-            // 统计文件数量
-            int fileCount = countFilesInContent(fileContentPart);
-            if (fileCount > 0) {
-                List<String> fileNames = extractFileNames(fileContentPart);
-                if (fileNames.size() == 1) {
-                    result.append(" [包含1个文件: ").append(fileNames.get(0)).append("]");
-                } else {
-                    result.append(" [包含").append(fileCount).append("个文件: ").append(String.join(", ", fileNames)).append("]");
+            // 处理messages数组
+            Object messagesObj = processedBody.get("messages");
+            if (messagesObj instanceof List) {
+                List<Map<String, Object>> messages = (List<Map<String, Object>>) messagesObj;
+                for (Map<String, Object> message : messages) {
+                    Object contentObj = message.get("content");
+                    if (contentObj instanceof String) {
+                        String content = (String) contentObj;
+                        String truncatedContent = truncateContent(content, 30, 30);
+                        message.put("content", truncatedContent);
+                    }
                 }
             }
 
-            return result.toString();
-
+            return processedBody;
         } catch (Exception e) {
-            log.debug("处理文件内容日志失败", e);
-            // 出错时回退到普通截取
-            String prefix = content.substring(0, Math.min(15, content.length()));
-            String suffix = content.length() > 15 ? content.substring(content.length() - 15) : "";
-            return prefix + "..." + suffix + " (总长度: " + content.length() + "字符)";
+            log.warn("处理请求体content字段失败: {}", e.getMessage());
+            return requestBody; // 失败时返回原始请求体
         }
     }
+
+    /**
+     * 截取字符串，保留前n和后n个字符
+     */
+    private String truncateContent(String content, int prefixLength, int suffixLength) {
+        if (content == null) {
+            return null;
+        }
+
+        if (content.length() <= prefixLength + suffixLength) {
+            return content; // 内容较短，直接返回
+        }
+
+        String prefix = content.substring(0, prefixLength);
+        String suffix = content.substring(content.length() - suffixLength);
+        return prefix + "..." + suffix;
+    }
+
+
+
+
 
     /**
      * 获取当前认证用户ID

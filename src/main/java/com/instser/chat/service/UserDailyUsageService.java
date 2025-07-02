@@ -75,4 +75,54 @@ public interface UserDailyUsageService {
      * @return 清理的记录数
      */
     int cleanExpiredRecords(Integer retentionDays);
+
+    // ==================== 模型维度的使用限制方法 ====================
+
+    /**
+     * 检查用户是否可以使用指定模型
+     *
+     * @param userId    用户ID
+     * @param packageId 套餐ID
+     * @param modelName 模型名称
+     * @return true-可以使用，false-已达到限制
+     */
+    boolean canChatWithModel(Long userId, Long packageId, String modelName);
+
+    /**
+     * 记录用户模型使用
+     *
+     * @param userId    用户ID
+     * @param packageId 套餐ID
+     * @param modelName 模型名称
+     * @return true-记录成功，false-已达到限制
+     */
+    boolean recordModelChatUsage(Long userId, Long packageId, String modelName);
+
+    /**
+     * 获取用户模型剩余使用次数
+     *
+     * @param userId    用户ID
+     * @param packageId 套餐ID
+     * @param modelName 模型名称
+     * @return 剩余次数，-1表示无限制
+     */
+    int getRemainingModelChats(Long userId, Long packageId, String modelName);
+
+    /**
+     * 获取用户今日模型使用记录
+     *
+     * @param userId    用户ID
+     * @param packageId 套餐ID
+     * @param modelName 模型名称
+     * @return 使用记录
+     */
+    UserDailyUsage getTodayModelUsage(Long userId, Long packageId, String modelName);
+
+    /**
+     * 获取用户所有模型的今日使用情况
+     *
+     * @param userId 用户ID
+     * @return 模型使用情况列表
+     */
+    List<UserDailyUsage> getUserModelUsageToday(Long userId);
 }

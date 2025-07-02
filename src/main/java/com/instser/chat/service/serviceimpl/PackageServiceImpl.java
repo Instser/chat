@@ -64,8 +64,9 @@ public class PackageServiceImpl extends ServiceImpl<PackageDao, Package> impleme
         basicPackage.setPriceUsd(new BigDecimal("9.99"));
         basicPackage.setPriceCny(new BigDecimal("69.99"));
         basicPackage.setValidityDays(30);
-        basicPackage.setChatCount(1000);
-        basicPackage.setModelPermissions("[\"gpt-3.5-turbo\", \"qwen-turbo\"]");
+        basicPackage.setLimitType("total"); // 总次数限制模式
+        // 使用新的模型权限配置格式
+        basicPackage.setModelPermissions("{\"STANDARD\":{\"daily_limit\":33,\"description\":\"标准模型\"},\"PERFORMANCE\":{\"daily_limit\":10,\"description\":\"性能模型\"},\"BETA_MODEL\":{\"daily_limit\":5,\"description\":\"测试模型\"}}");
         basicPackage.setIsEnabled(1);
         basicPackage.setSortOrder(1);
         this.save(basicPackage);
@@ -78,8 +79,9 @@ public class PackageServiceImpl extends ServiceImpl<PackageDao, Package> impleme
         premiumPackage.setPriceUsd(new BigDecimal("19.99"));
         premiumPackage.setPriceCny(new BigDecimal("139.99"));
         premiumPackage.setValidityDays(30);
-        premiumPackage.setChatCount(5000);
-        premiumPackage.setModelPermissions("[\"gpt-4\", \"claude-3\", \"qwen-max\"]");
+        premiumPackage.setLimitType("total"); // 总次数限制模式
+        // 使用新的模型权限配置格式
+        premiumPackage.setModelPermissions("{\"STANDARD\":{\"daily_limit\":167,\"description\":\"标准模型\"},\"PERFORMANCE\":{\"daily_limit\":50,\"description\":\"性能模型\"},\"BETA_MODEL\":{\"daily_limit\":20,\"description\":\"测试模型\"}}");
         premiumPackage.setIsEnabled(1);
         premiumPackage.setSortOrder(2);
         this.save(premiumPackage);
@@ -92,8 +94,9 @@ public class PackageServiceImpl extends ServiceImpl<PackageDao, Package> impleme
         enterprisePackage.setPriceUsd(new BigDecimal("99.99"));
         enterprisePackage.setPriceCny(new BigDecimal("699.99"));
         enterprisePackage.setValidityDays(30);
-        enterprisePackage.setChatCount(-1); // -1表示无限制
-        enterprisePackage.setModelPermissions("[\"gpt-4\", \"claude-3\", \"qwen-max\", \"all\"]");
+        enterprisePackage.setLimitType("unlimited"); // 无限制模式
+        // 使用新的模型权限配置格式，-1表示无限制
+        enterprisePackage.setModelPermissions("{\"STANDARD\":{\"daily_limit\":-1,\"description\":\"标准模型\"},\"PERFORMANCE\":{\"daily_limit\":-1,\"description\":\"性能模型\"},\"BETA_MODEL\":{\"daily_limit\":-1,\"description\":\"测试模型\"}}");
         enterprisePackage.setIsEnabled(1);
         enterprisePackage.setSortOrder(3);
         this.save(enterprisePackage);
