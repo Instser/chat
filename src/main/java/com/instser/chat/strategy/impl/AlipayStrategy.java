@@ -311,7 +311,8 @@ public class AlipayStrategy implements PaymentStrategy {
         request.setOrder(orderInfo);
         request.setPaymentAmount(amount);
         request.setPaymentMethod(paymentMethod);
-        request.setPaymentRedirectUrl(alipayConfig.getReturnUrl());
+        // 移除跳转URL，前端通过轮询检测支付状态
+        // request.setPaymentRedirectUrl(alipayConfig.getReturnUrl());
         request.setPaymentNotifyUrl(alipayConfig.getNotifyUrl());
 
         return request;

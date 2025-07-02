@@ -4,7 +4,6 @@ import lombok.Data;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
-import java.math.BigDecimal;
 
 /**
  * 支付请求VO类
@@ -33,10 +32,7 @@ public class PaymentRequestVO {
     @NotBlank(message = "支付方式不能为空")
     private String paymentMethod;
 
-    /**
-     * 支付成功后跳转URL
-     */
-    private String returnUrl;
+
 
     /**
      * 用户ID（从token中获取，前端不需要传递）

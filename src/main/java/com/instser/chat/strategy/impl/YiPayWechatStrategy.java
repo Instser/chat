@@ -256,7 +256,8 @@ public class YiPayWechatStrategy implements PaymentStrategy {
             params.put("type", "wxpay"); // 固定使用微信支付
             params.put("out_trade_no", order.getOrderNo());
             params.put("notify_url", yiPayConfig.getNotifyUrl());
-            params.put("return_url", yiPayConfig.getReturnUrl());
+            // 移除跳转URL，前端通过轮询检测支付状态
+            // params.put("return_url", yiPayConfig.getReturnUrl());
             params.put("name", "套餐购买");
             params.put("money", MoneyUtil.formatAmountForYiPay(order.getAmount()));
 

@@ -146,8 +146,7 @@ alipay:
   public-key: ${ALIPAY_PUBLIC_KEY:}
   # 是否沙箱环境
   sandbox: ${ALIPAY_SANDBOX:true}
-  # 支付成功后跳转URL
-  return-url: ${ALIPAY_RETURN_URL:https://example.com/payment/success}
+
   # 支付回调通知URL
   notify-url: ${ALIPAY_NOTIFY_URL:https://api.example.com/api/payment/alipay/notify}
   # 网关地址（可选，默认使用新加坡网关）
@@ -161,8 +160,7 @@ yipay:
   key: ${YIPAY_KEY:your-yipay-merchant-key}
   # 易支付网关地址
   url: ${YIPAY_URL:https://your-pay-gateway.example.com}
-  # 支付成功后跳转URL
-  return-url: ${YIPAY_RETURN_URL:https://example.com/payment/success}
+
   # 支付回调通知URL
   notify-url: ${YIPAY_NOTIFY_URL:https://api.example.com/api/payment/yipay/notify}
   # 默认支付方式（alipay、wxpay、qqpay等）

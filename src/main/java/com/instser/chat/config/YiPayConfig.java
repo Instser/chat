@@ -33,10 +33,7 @@ public class YiPayConfig {
      */
     private String url;
 
-    /**
-     * 支付成功后跳转URL
-     */
-    private String returnUrl;
+
 
     /**
      * 支付回调通知URL

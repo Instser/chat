@@ -41,10 +41,7 @@ public class AlipayConfig {
      */
     private Boolean sandbox = true;
 
-    /**
-     * 支付成功后跳转URL
-     */
-    private String returnUrl;
+
 
     /**
      * 支付回调通知URL

@@ -61,8 +61,7 @@
 {
   "packageId": 1234567890,
   "currency": "USD",
-  "paymentMethod": "alipay",
-  "returnUrl": "http://localhost:3000/payment/success"
+  "paymentMethod": "alipay"
 }
 ```
 
@@ -70,7 +69,6 @@
 - `packageId`: 套餐ID（必填）
 - `currency`: 货币类型，USD或CNY（必填）
 - `paymentMethod`: 支付方式，目前支持alipay（必填）
-- `returnUrl`: 支付成功后跳转URL（可选）
 
 **响应示例**:
 ```json
