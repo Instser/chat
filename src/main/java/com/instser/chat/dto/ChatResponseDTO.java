@@ -56,6 +56,11 @@ public class ChatResponseDTO {
      */
     private boolean interrupted;
 
+    /**
+     * 是否已通过续写完成保存
+     */
+    private boolean savedByContinuation;
+
     public ChatResponseDTO() {
         this.success = true;
         this.hasContentSent = false;
@@ -64,6 +69,7 @@ public class ChatResponseDTO {
         this.titleGenerated = false;
         this.aiResponseContent = "";
         this.interrupted = false;
+        this.savedByContinuation = false;
     }
 
     /**

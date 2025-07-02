@@ -56,6 +56,7 @@ public class ChatServiceImpl implements ChatService {
     private final ChatInterruptService chatInterruptService;
     private final WebClient.Builder webClientBuilder;
     private final RestTemplate restTemplate;
+    private final TruncationDetectionService truncationDetectionService;
 
     // 智能分块响应配置
     private static final boolean ENABLE_SMART_CHUNKING = true;
@@ -168,16 +169,21 @@ public class ChatServiceImpl implements ChatService {
 
             // 处理响应结果
             if (result.isRealAiResponse()) {
-                // 记录使用次数
-                boolean recordSuccess = chatLimitService.recordChatUsage(request.getUserId());
-                if (recordSuccess) {
-                    log.info("用户{}聊天使用次数记录成功", request.getUserId());
+                // 记录使用次数（续写不计入聊天次数）
+                if (!result.isSavedByContinuation()) {
+                    boolean recordSuccess = chatLimitService.recordChatUsage(request.getUserId());
+                    if (recordSuccess) {
+                        log.info("用户{}聊天使用次数记录成功", request.getUserId());
+                    } else {
+                        log.warn("用户{}聊天使用次数记录失败", request.getUserId());
+                    }
                 } else {
-                    log.warn("用户{}聊天使用次数记录失败", request.getUserId());
+                    log.info("用户{}续写完成，不计入聊天次数", request.getUserId());
                 }
 
-                // 保存AI响应到数据库
-                if (request.getSessionId() != null && result.getAiResponseContent() != null && !result.getAiResponseContent().trim().isEmpty()) {
+                // 保存AI响应到数据库（如果未通过续写保存）
+                if (!result.isSavedByContinuation() && request.getSessionId() != null &&
+                    result.getAiResponseContent() != null && !result.getAiResponseContent().trim().isEmpty()) {
                     saveAiResponse(request.getSessionId(), request.getUserId(), model.getId(), result.getAiResponseContent());
                 }
 
@@ -572,16 +578,21 @@ public class ChatServiceImpl implements ChatService {
     private void handleAiResponseResult(ChatResponseDTO result, Long userId, String sessionId,
                                       AiModel model, String operationType) {
         if (result.isRealAiResponse()) {
-            // 记录使用次数
-            boolean recordSuccess = chatLimitService.recordChatUsage(userId);
-            if (recordSuccess) {
-                log.info("用户{}{}聊天使用次数记录成功", userId, operationType);
+            // 记录使用次数（续写不计入聊天次数）
+            if (!result.isSavedByContinuation()) {
+                boolean recordSuccess = chatLimitService.recordChatUsage(userId);
+                if (recordSuccess) {
+                    log.info("用户{}{}聊天使用次数记录成功", userId, operationType);
+                } else {
+                    log.warn("用户{}{}聊天使用次数记录失败", userId, operationType);
+                }
             } else {
-                log.warn("用户{}{}聊天使用次数记录失败", userId, operationType);
+                log.info("用户{}{}续写完成，不计入聊天次数", userId, operationType);
             }
 
-            // 保存AI响应到数据库
-            if (result.getAiResponseContent() != null && !result.getAiResponseContent().trim().isEmpty()) {
+            // 保存AI响应到数据库（如果未通过续写保存）
+            if (!result.isSavedByContinuation() && result.getAiResponseContent() != null &&
+                !result.getAiResponseContent().trim().isEmpty()) {
                 saveAiResponse(sessionId, userId, model.getId(), result.getAiResponseContent());
             }
 
@@ -659,6 +670,7 @@ public class ChatServiceImpl implements ChatService {
         final boolean[] isRealAiResponse = {false};
         final boolean[] isInterrupted = {false};
         final boolean[] interruptSaved = {false}; // 防止多次保存中断内容
+        final boolean[] savedByContinuation = {false}; // 标识是否已通过续写完成保存
         // 用于收集完整的AI响应内容
         final StringBuilder aiResponseContent = new StringBuilder();
 
@@ -788,7 +800,11 @@ public class ChatServiceImpl implements ChatService {
                             if (line.startsWith("data: ")) {
                                 if (line.equals("data: [DONE]")) {
                                     log.info("收到AI响应完成标记，开始处理完成逻辑");
-                                    handleStreamCompletion(response, willGenerateTitle, isRealAiResponse[0], request);
+                                    boolean continuationSaved = handleStreamCompletion(response, willGenerateTitle, isRealAiResponse[0], request, aiResponseContent.toString(), model);
+                                    if (continuationSaved) {
+                                        // 续写已完成保存，设置标识避免重复保存
+                                        savedByContinuation[0] = true;
+                                    }
                                     return;
                                 }
 
@@ -881,7 +897,11 @@ public class ChatServiceImpl implements ChatService {
                                     if (remainingLine.startsWith("data: ")) {
                                         if (remainingLine.equals("data: [DONE]")) {
                                             log.info("收到AI响应完成标记（来自剩余数据）");
-                                            handleStreamCompletion(response, willGenerateTitle, isRealAiResponse[0], request);
+                                            boolean continuationSaved = handleStreamCompletion(response, willGenerateTitle, isRealAiResponse[0], request, aiResponseContent.toString(), model);
+                                            if (continuationSaved) {
+                                                // 续写已完成保存，设置标识避免重复保存
+                                                savedByContinuation[0] = true;
+                                            }
                                         } else {
                                             String jsonData = remainingLine.substring(6).trim();
                                             jsonBuffer.append(jsonData);
@@ -930,7 +950,9 @@ public class ChatServiceImpl implements ChatService {
                 return ChatResponseDTO.interrupted(hasContentSent[0], aiResponseContent.toString());
             }
 
-            return ChatResponseDTO.success(hasContentSent[0], isRealAiResponse[0], aiResponseContent.toString());
+            ChatResponseDTO result = ChatResponseDTO.success(hasContentSent[0], isRealAiResponse[0], aiResponseContent.toString());
+            result.setSavedByContinuation(savedByContinuation[0]);
+            return result;
 
         } catch (Exception e) {
             log.error("流式聊天异常", e);
@@ -970,9 +992,36 @@ public class ChatServiceImpl implements ChatService {
 
     /**
      * 处理流式响应完成
+     * @return true表示已通过续写完成保存，false表示需要正常保存
      */
-    private void handleStreamCompletion(HttpServletResponse response, boolean willGenerateTitle, boolean isRealAiResponse, ChatRequestDTO request) {
+    private boolean handleStreamCompletion(HttpServletResponse response, boolean willGenerateTitle, boolean isRealAiResponse,
+                                      ChatRequestDTO request, String aiResponseContent, AiModel model) {
         try {
+            // 检查是否需要跳过截断检测
+            boolean hasFiles = request.getFilesId() != null && !request.getFilesId().isEmpty();
+            boolean shouldSkip = truncationDetectionService.shouldSkipTruncationDetection(hasFiles, willGenerateTitle);
+
+            if (!shouldSkip && isRealAiResponse && aiResponseContent != null && !aiResponseContent.trim().isEmpty()) {
+                // 进行截断检测
+                log.info("开始截断检测，会话ID：{}，内容长度：{}", request.getSessionId(), aiResponseContent.length());
+
+                boolean isComplete = truncationDetectionService.isContentComplete(aiResponseContent);
+
+                if (!isComplete) {
+                    log.info("检测到内容被截断，开始续写流程，会话ID：{}", request.getSessionId());
+
+                    // 执行续写操作
+                    boolean continuationSuccess = continueAiResponse(response, request, model, aiResponseContent);
+
+                    if (continuationSuccess) {
+                        log.info("续写操作成功完成，会话ID：{}", request.getSessionId());
+                        return true; // 续写成功，已完成保存，不需要继续执行后续逻辑
+                    } else {
+                        log.warn("续写操作失败，继续正常流程，会话ID：{}", request.getSessionId());
+                    }
+                }
+            }
+
             String generatedTitle = null;
 
             // 如果需要生成标题且是真实AI响应，等待标题生成完成
@@ -1009,6 +1058,8 @@ public class ChatServiceImpl implements ChatService {
             response.getWriter().write(completionData);
             response.getWriter().flush();
 
+            return false; // 正常流程，需要调用者进行保存
+
         } catch (Exception e) {
             log.error("处理完成标记时发生异常", e);
             try {
@@ -1018,6 +1069,7 @@ public class ChatServiceImpl implements ChatService {
             } catch (Exception ex) {
                 log.error("发送异常完成标记失败", ex);
             }
+            return false; // 异常情况，需要调用者进行保存
         }
     }
 
@@ -1202,6 +1254,166 @@ public class ChatServiceImpl implements ChatService {
         } catch (Exception e) {
             log.error("构建中断完成标记数据失败", e);
             return "d:{\"finishReason\":\"interrupted\",\"usage\":{\"promptTokens\":0,\"completionTokens\":0},\"title\":false,\"interrupted\":true}\n";
+        }
+    }
+
+    /**
+     * 执行AI响应续写
+     */
+    private boolean continueAiResponse(HttpServletResponse response, ChatRequestDTO request, AiModel model, String originalContent) {
+        try {
+            log.info("开始执行续写操作，会话ID：{}，原内容长度：{}", request.getSessionId(), originalContent.length());
+
+            // 构建续写请求的消息列表
+            List<Map<String, String>> continuationMessages = buildContinuationMessages(request.getMessages(), originalContent);
+
+            // 创建续写请求
+            ChatRequestDTO continuationRequest = new ChatRequestDTO();
+            continuationRequest.setMessages(continuationMessages);
+            continuationRequest.setUserId(request.getUserId());
+            continuationRequest.setModelId(model.getId());
+            continuationRequest.setSessionId(request.getSessionId());
+            continuationRequest.setDeepThinking(request.getDeepThinking());
+
+            // 用于收集续写内容
+            final StringBuilder continuationContent = new StringBuilder();
+            final boolean[] hasContentSent = {false};
+            final boolean[] isRealAiResponse = {false};
+
+            // 执行续写请求（简化版流式处理）
+            boolean success = executeContinuationRequest(continuationRequest, model, response, continuationContent, hasContentSent, isRealAiResponse);
+
+            if (success && hasContentSent[0]) {
+                // 对齐内容
+                String alignedContent = truncationDetectionService.alignContent(originalContent, continuationContent.toString());
+
+                // 保存完整内容到数据库（续写不计入聊天次数，所以直接保存）
+                if (request.getSessionId() != null && request.getUserId() != null) {
+                    saveAiResponse(request.getSessionId(), request.getUserId(), model.getId(), alignedContent);
+                    log.info("续写内容已保存到数据库，会话ID：{}，用户ID：{}，不计入聊天次数",
+                            request.getSessionId(), request.getUserId());
+                }
+
+                // 发送完成标记
+                String completionData = buildCompletionData(false, true, null);
+                response.getWriter().write(completionData);
+                response.getWriter().flush();
+
+                log.info("续写操作成功，最终内容长度：{}，未计入聊天次数", alignedContent.length());
+                return true;
+            }
+
+            return false;
+
+        } catch (Exception e) {
+            log.error("续写操作失败", e);
+            return false;
+        }
+    }
+
+    /**
+     * 构建续写消息列表
+     */
+    private List<Map<String, String>> buildContinuationMessages(List<Map<String, String>> originalMessages, String originalContent) {
+        List<Map<String, String>> continuationMessages = new ArrayList<>(originalMessages);
+
+        // 添加续写提示词作为新的用户消息（但不保存到数据库）
+        Map<String, String> continuationPrompt = new HashMap<>();
+        continuationPrompt.put("role", "user");
+        continuationPrompt.put("content",
+            "RULES (Non-negotiable):\n" +
+            "1. Continue EXACTLY from the truncation point\n" +
+            "2. Match the original language, style, and tone perfectly\n" +
+            "3. NO repetition of existing content\n" +
+            "4. NO explanatory text or transitions\n" +
+            "5. NO formatting changes unless contextually\n" +
+            "Continue from the exact cutoff point:");
+
+        continuationMessages.add(continuationPrompt);
+
+        return continuationMessages;
+    }
+
+    /**
+     * 执行续写请求
+     */
+    private boolean executeContinuationRequest(ChatRequestDTO request, AiModel model, HttpServletResponse response,
+                                             StringBuilder continuationContent, boolean[] hasContentSent, boolean[] isRealAiResponse) {
+        try {
+            // 构建请求体
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("model", model.getModelCode());
+            requestBody.put("messages", request.getMessages());
+            requestBody.put("stream", true);
+
+            // 只有当provider是Gemini时才添加reasoning_effort参数
+            if ("Gemini".equalsIgnoreCase(model.getProvider())) {
+                requestBody.put("reasoning_effort", "none");
+            }
+
+            // 记录请求信息
+            logAiRequestDetails(requestBody, model, request.getUserId());
+
+            // 创建WebClient
+            WebClient webClient = webClientBuilder
+                    .defaultHeader("Authorization", "Bearer " + model.getApiKey())
+                    .defaultHeader("Content-Type", "application/json; charset=UTF-8")
+                    .defaultHeader("Accept-Charset", "UTF-8")
+                    .defaultHeader("User-Agent", "OpenAI/PowerShell")
+                    .build();
+
+            log.info("发送续写请求到AI API: {}", model.getBaseUrl());
+
+            // 处理流式响应
+            StringBuilder jsonBuffer = new StringBuilder();
+
+            webClient.post()
+                    .uri(model.getBaseUrl())
+                    .bodyValue(requestBody)
+                    .retrieve()
+                    .bodyToFlux(DataBuffer.class)
+                    .map(dataBuffer -> {
+                        byte[] bytes = new byte[dataBuffer.readableByteCount()];
+                        dataBuffer.read(bytes);
+                        DataBufferUtils.release(dataBuffer);
+                        return new String(bytes, StandardCharsets.UTF_8);
+                    })
+                    .doOnNext(chunk -> {
+                        try {
+                            String[] lines = chunk.split("\n");
+                            for (String line : lines) {
+                                line = line.trim();
+                                if (line.startsWith("data: ")) {
+                                    if (line.equals("data: [DONE]")) {
+                                        return; // 续写完成
+                                    }
+
+                                    String jsonData = line.substring(6).trim();
+                                    jsonBuffer.append(jsonData);
+
+                                    if (isValidJson(jsonBuffer.toString())) {
+                                        String contentSent = processCompleteJson(jsonBuffer.toString(), response);
+                                        if (contentSent != null) {
+                                            hasContentSent[0] = true;
+                                            isRealAiResponse[0] = true;
+                                            continuationContent.append(contentSent);
+                                        }
+                                        jsonBuffer.setLength(0);
+                                    }
+                                }
+                            }
+                        } catch (Exception e) {
+                            log.error("处理续写响应块失败", e);
+                        }
+                    })
+                    .doOnError(error -> log.error("续写请求失败", error))
+                    .blockLast();
+
+            return hasContentSent[0];
+
+        } catch (Exception e) {
+            log.error("执行续写请求失败", e);
+            return false;
         }
     }
 
@@ -2101,11 +2313,23 @@ public class ChatServiceImpl implements ChatService {
                 // 为中断的响应添加标识
                 String contentToSave = isInterrupted ? partialContent + " [已中断]" : partialContent;
 
-                chatMessageService.sendMessage(sessionId, "assistant", contentToSave, userId, modelId);
+                // 保存部分AI响应消息到数据库并获取Token信息
+                MessageSaveResult result = chatMessageService.sendMessageWithTokenInfo(sessionId, "assistant", contentToSave, userId, modelId);
+
+                // 记录Token使用量（中断响应也应该计入Token）
+                if (result.isSuccess() && result.getTokenCount() > 0) {
+                    boolean tokenRecorded = chatLimitService.recordTokenUsage(userId, result.getTokenCount());
+                    if (tokenRecorded) {
+                        log.debug("用户{}部分AI响应Token使用记录成功，使用了{}个Token", userId, result.getTokenCount());
+                    } else {
+                        log.warn("用户{}部分AI响应Token使用记录失败", userId);
+                    }
+                }
 
                 String logMessage = isInterrupted ? "部分AI响应（中断）已保存到数据库" : "部分AI响应已保存到数据库";
-                log.info("{}，会话ID：{}，用户ID：{}，模型ID：{}，内容长度：{}",
-                        logMessage, sessionId, userId, modelId, partialContent.length());
+                log.info("{}，会话ID：{}，用户ID：{}，模型ID：{}，内容长度：{}，Token数：{}",
+                        logMessage, sessionId, userId, modelId, partialContent.length(),
+                        result.isSuccess() ? result.getTokenCount() : 0);
             } else {
                 log.warn("无法保存部分AI响应到数据库，缺少必要参数：sessionId={}, userId={}, modelId={}, contentLength={}",
                         sessionId, userId, modelId, partialContent != null ? partialContent.length() : 0);
