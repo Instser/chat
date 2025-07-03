@@ -3,6 +3,7 @@ package com.instser.chat.service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 
@@ -23,8 +24,10 @@ public class ExchangeRateUpdateService {
     /**
      * 每小时更新一次汇率（工作时间）
      * 周一到周五，上午9点到下午6点，每小时执行一次
+     * 使用异步执行，避免阻塞定时任务线程池
      */
     @Scheduled(cron = "0 0 9-18 * * MON-FRI")
+    @Async
     public void updateExchangeRatesWorkingHours() {
         log.info("开始工作时间汇率更新任务");
         try {
@@ -37,8 +40,10 @@ public class ExchangeRateUpdateService {
 
     /**
      * 每天早上8点更新一次汇率
+     * 使用异步执行，避免阻塞定时任务线程池
      */
     @Scheduled(cron = "0 0 8 * * *")
+    @Async
     public void updateExchangeRatesDaily() {
         log.info("开始每日汇率更新任务");
         try {
@@ -51,8 +56,10 @@ public class ExchangeRateUpdateService {
 
     /**
      * 每周清理一次缓存（周日凌晨2点）
+     * 使用异步执行，避免阻塞定时任务线程池
      */
     @Scheduled(cron = "0 0 2 * * SUN")
+    @Async
     public void clearExchangeRateCache() {
         log.info("开始清理汇率缓存任务");
         try {

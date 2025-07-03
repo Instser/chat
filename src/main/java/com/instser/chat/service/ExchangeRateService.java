@@ -18,6 +18,7 @@ import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -32,13 +33,15 @@ import java.util.concurrent.ConcurrentHashMap;
 @RequiredArgsConstructor
 public class ExchangeRateService {
 
-    private final RestTemplate restTemplate;
     private final ObjectMapper objectMapper;
     private final ExchangeRateConfig exchangeRateConfig;
 
-    // 支持的货币列表
-    private static final List<String> SUPPORTED_CURRENCIES = List.of(
-        "USD", "CNY", "EUR", "GBP", "JPY", "KRW", "HKD", "SGD", "AUD", "CAD"
+    // 专用的RestTemplate，配置了合理的超时时间
+    private final RestTemplate exchangeRestTemplate;
+
+    // 支持的货币列表 - 只保留美元相关的汇率
+    private static final List<String> USD_RELATED_CURRENCIES = List.of(
+        "CNY", "EUR", "GBP", "JPY", "KRW", "HKD", "SGD", "AUD", "CAD"
     );
 
     // 缓存汇率数据，避免频繁API调用
@@ -46,7 +49,7 @@ public class ExchangeRateService {
     private volatile LocalDateTime lastUpdateTime;
 
     /**
-     * 获取汇率
+     * 获取汇率（优先使用缓存，避免阻塞）
      * 支持缓存，缓存时间30分钟
      *
      * @param fromCurrency 源货币
@@ -73,37 +76,62 @@ public class ExchangeRateService {
             return getDefaultExchangeRate(fromCurrency, toCurrency);
         }
 
-        try {
-            // 调用汇率API
-            BigDecimal rate = fetchExchangeRateFromApi(fromCurrency, toCurrency);
-            if (rate != null && rate.compareTo(BigDecimal.ZERO) > 0) {
-                log.debug("成功获取汇率: {} = {}", rateKey, rate);
-                // 缓存到本地
-                rateCache.put(rateKey, rate);
-                lastUpdateTime = LocalDateTime.now();
-                return rate;
-            }
-        } catch (Exception e) {
-            log.error("获取汇率失败，使用默认汇率: {}", rateKey, e);
+        // 优先从本地缓存获取（避免阻塞）
+        BigDecimal cachedRate = rateCache.get(rateKey);
+        if (cachedRate != null) {
+            log.debug("从本地缓存获取汇率: {} = {}", rateKey, cachedRate);
+            return cachedRate;
         }
 
-        // API失败时使用默认汇率
+        // 缓存未命中时，使用默认汇率并异步更新
+        log.info("汇率缓存未命中，使用默认汇率并异步更新: {}", rateKey);
+
+        // 异步更新汇率（不阻塞当前请求）
+        asyncUpdateExchangeRate(fromCurrency, toCurrency);
+
+        // 立即返回默认汇率，避免阻塞
         return getDefaultExchangeRate(fromCurrency, toCurrency);
     }
 
     /**
-     * 从API获取汇率（支持重试机制）
+     * 异步更新单个汇率
+     */
+    private void asyncUpdateExchangeRate(String fromCurrency, String toCurrency) {
+        CompletableFuture.runAsync(() -> {
+            try {
+                BigDecimal rate = fetchExchangeRateFromApi(fromCurrency, toCurrency);
+                if (rate != null && rate.compareTo(BigDecimal.ZERO) > 0) {
+                    String rateKey = fromCurrency.toUpperCase() + "_" + toCurrency.toUpperCase();
+                    rateCache.put(rateKey, rate);
+                    lastUpdateTime = LocalDateTime.now();
+                    log.info("异步更新汇率成功: {} = {}", rateKey, rate);
+                }
+            } catch (Exception e) {
+                log.warn("异步更新汇率失败: {} -> {}", fromCurrency, toCurrency, e);
+            }
+        });
+    }
+
+    /**
+     * 从新API获取汇率（支持重试机制）
+     * 使用 https://v2.xxapi.cn/api/allrates 一次获取所有汇率
      */
     private BigDecimal fetchExchangeRateFromApi(String fromCurrency, String toCurrency) {
+        // 如果不是美元相关的汇率转换，直接返回null使用默认汇率
+        if (!"USD".equals(fromCurrency.toUpperCase()) && !"USD".equals(toCurrency.toUpperCase())) {
+            return null;
+        }
+
         int retryCount = exchangeRateConfig.getApi().getRetryCount();
 
         for (int attempt = 1; attempt <= retryCount; attempt++) {
             try {
-                String url = exchangeRateConfig.getApi().getUrl() + fromCurrency.toUpperCase();
+                // 使用新的API地址
+                String url = "https://v2.xxapi.cn/api/allrates";
                 log.debug("调用汇率API (第{}次尝试): {}", attempt, url);
 
                 // 使用ResponseEntity获取更详细的响应信息
-                ResponseEntity<String> responseEntity = restTemplate.getForEntity(url, String.class);
+                ResponseEntity<String> responseEntity = exchangeRestTemplate.getForEntity(url, String.class);
 
                 if (responseEntity.getStatusCode() != HttpStatus.OK) {
                     log.warn("汇率API返回非200状态码: {}", responseEntity.getStatusCode());
@@ -119,24 +147,46 @@ public class ExchangeRateService {
                 JsonNode jsonNode = objectMapper.readTree(response);
 
                 // 检查API响应是否成功
-                if (jsonNode.has("success") && !jsonNode.get("success").asBoolean()) {
-                    log.warn("汇率API返回失败状态: {}", jsonNode.get("error-type"));
+                if (!jsonNode.has("code") || jsonNode.get("code").asInt() != 200) {
+                    log.warn("汇率API返回失败状态: {}", jsonNode.has("msg") ? jsonNode.get("msg").asText() : "未知错误");
                     continue;
                 }
 
-                JsonNode ratesNode = jsonNode.get("rates");
+                JsonNode dataNode = jsonNode.get("data");
+                if (dataNode == null) {
+                    log.warn("汇率API响应中缺少data字段");
+                    continue;
+                }
+
+                JsonNode ratesNode = dataNode.get("rates");
                 if (ratesNode == null) {
                     log.warn("汇率API响应中缺少rates字段");
                     continue;
                 }
 
-                JsonNode targetRateNode = ratesNode.get(toCurrency.toUpperCase());
-                if (targetRateNode == null) {
-                    log.warn("汇率API响应中缺少目标货币: {}", toCurrency);
-                    continue;
+                // 根据货币对获取汇率
+                BigDecimal rate = null;
+                if ("USD".equals(fromCurrency.toUpperCase())) {
+                    // USD转其他货币
+                    JsonNode targetRateNode = ratesNode.get(toCurrency.toUpperCase());
+                    if (targetRateNode != null && targetRateNode.has("rate")) {
+                        rate = new BigDecimal(targetRateNode.get("rate").asText());
+                    }
+                } else if ("USD".equals(toCurrency.toUpperCase())) {
+                    // 其他货币转USD，需要计算倒数
+                    JsonNode sourceRateNode = ratesNode.get(fromCurrency.toUpperCase());
+                    if (sourceRateNode != null && sourceRateNode.has("rate")) {
+                        BigDecimal sourceRate = new BigDecimal(sourceRateNode.get("rate").asText());
+                        if (sourceRate.compareTo(BigDecimal.ZERO) > 0) {
+                            rate = BigDecimal.ONE.divide(sourceRate, 6, RoundingMode.HALF_UP);
+                        }
+                    }
                 }
 
-                BigDecimal rate = new BigDecimal(targetRateNode.asText());
+                if (rate == null) {
+                    log.warn("汇率API响应中缺少目标货币: {} -> {}", fromCurrency, toCurrency);
+                    continue;
+                }
 
                 // 验证汇率合理性（避免异常数据）
                 if (rate.compareTo(BigDecimal.ZERO) <= 0 || rate.compareTo(new BigDecimal("1000")) > 0) {
@@ -208,36 +258,121 @@ public class ExchangeRateService {
     }
 
     /**
-     * 批量更新汇率
+     * 批量更新汇率（异步执行，避免阻塞）
+     * 只更新美元相关的汇率
      */
     public void updateAllRates() {
-        log.info("开始批量更新汇率");
+        log.info("开始批量更新美元相关汇率");
 
         if (!exchangeRateConfig.getApi().isEnabled()) {
             log.warn("汇率API未启用，跳过批量更新");
             return;
         }
 
-        for (String baseCurrency : SUPPORTED_CURRENCIES) {
-            for (String targetCurrency : SUPPORTED_CURRENCIES) {
-                if (!baseCurrency.equals(targetCurrency)) {
-                    try {
-                        BigDecimal rate = fetchExchangeRateFromApi(baseCurrency, targetCurrency);
-                        if (rate != null) {
-                            String rateKey = baseCurrency + "_" + targetCurrency;
-                            rateCache.put(rateKey, rate);
+        // 异步执行批量更新，避免阻塞定时任务线程
+        CompletableFuture.runAsync(() -> {
+            try {
+                // 一次性获取所有汇率数据
+                Map<String, BigDecimal> allRates = fetchAllRatesFromApi();
+                if (allRates != null && !allRates.isEmpty()) {
+                    // 更新缓存
+                    rateCache.putAll(allRates);
+                    lastUpdateTime = LocalDateTime.now();
+                    log.info("批量更新汇率完成，成功更新{}个汇率对, 更新时间: {}", allRates.size(), lastUpdateTime);
+                } else {
+                    log.warn("批量更新汇率失败，未获取到有效数据");
+                }
+            } catch (Exception e) {
+                log.error("批量更新汇率异常", e);
+            }
+        });
+    }
+
+    /**
+     * 一次性获取所有美元相关汇率
+     */
+    private Map<String, BigDecimal> fetchAllRatesFromApi() {
+        Map<String, BigDecimal> rates = new ConcurrentHashMap<>();
+        int retryCount = exchangeRateConfig.getApi().getRetryCount();
+
+        for (int attempt = 1; attempt <= retryCount; attempt++) {
+            try {
+                String url = "https://v2.xxapi.cn/api/allrates";
+                log.debug("调用汇率API获取所有汇率 (第{}次尝试): {}", attempt, url);
+
+                ResponseEntity<String> responseEntity = exchangeRestTemplate.getForEntity(url, String.class);
+
+                if (responseEntity.getStatusCode() != HttpStatus.OK) {
+                    log.warn("汇率API返回非200状态码: {}", responseEntity.getStatusCode());
+                    continue;
+                }
+
+                String response = responseEntity.getBody();
+                if (response == null || response.trim().isEmpty()) {
+                    log.warn("汇率API返回空响应");
+                    continue;
+                }
+
+                JsonNode jsonNode = objectMapper.readTree(response);
+
+                // 检查API响应是否成功
+                if (!jsonNode.has("code") || jsonNode.get("code").asInt() != 200) {
+                    log.warn("汇率API返回失败状态: {}", jsonNode.has("msg") ? jsonNode.get("msg").asText() : "未知错误");
+                    continue;
+                }
+
+                JsonNode dataNode = jsonNode.get("data");
+                if (dataNode == null) {
+                    log.warn("汇率API响应中缺少data字段");
+                    continue;
+                }
+
+                JsonNode ratesNode = dataNode.get("rates");
+                if (ratesNode == null) {
+                    log.warn("汇率API响应中缺少rates字段");
+                    continue;
+                }
+
+                // 处理美元相关的汇率
+                for (String currency : USD_RELATED_CURRENCIES) {
+                    JsonNode currencyNode = ratesNode.get(currency);
+                    if (currencyNode != null && currencyNode.has("rate")) {
+                        try {
+                            BigDecimal rate = new BigDecimal(currencyNode.get("rate").asText());
+                            if (rate.compareTo(BigDecimal.ZERO) > 0 && rate.compareTo(new BigDecimal("1000")) <= 0) {
+                                // USD -> 其他货币
+                                rates.put("USD_" + currency, rate.setScale(6, RoundingMode.HALF_UP));
+                                // 其他货币 -> USD (倒数)
+                                BigDecimal reverseRate = BigDecimal.ONE.divide(rate, 6, RoundingMode.HALF_UP);
+                                rates.put(currency + "_USD", reverseRate);
+                            }
+                        } catch (Exception e) {
+                            log.warn("处理货币{}汇率时出错: {}", currency, e.getMessage());
                         }
-                        // 避免API调用过于频繁
-                        Thread.sleep(100);
-                    } catch (Exception e) {
-                        log.warn("更新汇率失败: {} -> {}", baseCurrency, targetCurrency, e);
                     }
                 }
+
+                log.info("成功获取{}个美元相关汇率对 (第{}次尝试)", rates.size(), attempt);
+                return rates;
+
+            } catch (RestClientException e) {
+                log.warn("汇率API调用失败 (第{}次尝试): {}", attempt, e.getMessage());
+                if (attempt < retryCount) {
+                    try {
+                        Thread.sleep(1000 * attempt);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            } catch (Exception e) {
+                log.error("汇率API调用异常 (第{}次尝试)", attempt, e);
+                break;
             }
         }
 
-        lastUpdateTime = LocalDateTime.now();
-        log.info("批量更新汇率完成，更新时间: {}", lastUpdateTime);
+        log.error("获取所有汇率失败，已重试{}次", retryCount);
+        return null;
     }
 
     /**
@@ -252,7 +387,8 @@ public class ExchangeRateService {
      * 检查货币是否支持
      */
     public boolean isCurrencySupported(String currency) {
-        return SUPPORTED_CURRENCIES.contains(currency.toUpperCase());
+        String currencyCode = currency.toUpperCase();
+        return "USD".equals(currencyCode) || USD_RELATED_CURRENCIES.contains(currencyCode);
     }
 
     /**
@@ -263,7 +399,8 @@ public class ExchangeRateService {
         status.put("cacheSize", rateCache.size());
         status.put("lastUpdateTime", lastUpdateTime);
         status.put("apiEnabled", exchangeRateConfig.getApi().isEnabled());
-        status.put("supportedCurrencies", SUPPORTED_CURRENCIES);
+        status.put("supportedCurrencies", USD_RELATED_CURRENCIES);
+        status.put("baseCurrency", "USD");
         return status;
     }
 }

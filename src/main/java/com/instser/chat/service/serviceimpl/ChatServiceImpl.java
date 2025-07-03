@@ -21,6 +21,7 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -33,6 +34,7 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
@@ -57,6 +59,9 @@ public class ChatServiceImpl implements ChatService {
     private final WebClient.Builder webClientBuilder;
     private final RestTemplate restTemplate;
     private final TruncationDetectionService truncationDetectionService;
+
+    @Qualifier("continuationExecutor")
+    private final Executor continuationExecutor;
 
     // 智能分块响应配置
     private static final boolean ENABLE_SMART_CHUNKING = true;
@@ -1001,22 +1006,43 @@ public class ChatServiceImpl implements ChatService {
             boolean shouldApply = truncationDetectionService.shouldApplyTruncationDetection(interfaceType);
 
             if (shouldApply && isRealAiResponse && aiResponseContent != null && !aiResponseContent.trim().isEmpty()) {
-                // 进行截断检测
-                log.info("开始截断检测，会话ID：{}，内容长度：{}", request.getSessionId(), aiResponseContent.length());
+                // 计算Token数量
+                int tokenCount = calculateTokenCount(aiResponseContent);
 
-                boolean isComplete = truncationDetectionService.isContentComplete(aiResponseContent);
+                // 进行截断检测（带Token限制）
+                log.info("开始截断检测，会话ID：{}，内容长度：{}，Token数量：{}",
+                        request.getSessionId(), aiResponseContent.length(), tokenCount);
+
+                boolean isComplete = truncationDetectionService.isContentComplete(aiResponseContent, tokenCount);
 
                 if (!isComplete) {
                     log.info("检测到内容被截断，开始续写流程，会话ID：{}", request.getSessionId());
 
-                    // 执行续写操作
-                    boolean continuationSuccess = continueAiResponse(response, request, model, aiResponseContent);
+                    // 使用线程池执行续写操作，避免在reactor线程中阻塞
+                    CompletableFuture<Boolean> continuationFuture = CompletableFuture
+                        .supplyAsync(() -> {
+                            log.info("续写任务开始执行，线程：{}, 会话ID：{}",
+                                    Thread.currentThread().getName(), request.getSessionId());
+                            return continueAiResponse(response, request, model, aiResponseContent);
+                        }, continuationExecutor)
+                        .exceptionally(throwable -> {
+                            log.error("续写操作异常，线程：{}, 会话ID：{}",
+                                    Thread.currentThread().getName(), request.getSessionId(), throwable);
+                            return false;
+                        });
 
-                    if (continuationSuccess) {
-                        log.info("续写操作成功完成，会话ID：{}", request.getSessionId());
-                        return true; // 续写成功，已完成保存，不需要继续执行后续逻辑
-                    } else {
-                        log.warn("续写操作失败，继续正常流程，会话ID：{}", request.getSessionId());
+                    try {
+                        // 等待续写完成（在专用线程中执行，不阻塞reactor线程）
+                        boolean continuationSuccess = continuationFuture.join();
+
+                        if (continuationSuccess) {
+                            log.info("续写操作成功完成，会话ID：{}", request.getSessionId());
+                            return true; // 续写成功，已完成保存，不需要继续执行后续逻辑
+                        } else {
+                            log.warn("续写操作失败，继续正常流程，会话ID：{}", request.getSessionId());
+                        }
+                    } catch (Exception e) {
+                        log.error("等待续写操作完成时发生异常，会话ID：{}", request.getSessionId(), e);
                     }
                 }
             }
@@ -1090,6 +1116,116 @@ public class ChatServiceImpl implements ChatService {
     }
 
     /**
+     * 处理续写的JSON数据（带对齐功能）
+     */
+    private String processContinuationJson(String jsonData, HttpServletResponse response, String originalContent,
+                                         StringBuilder continuationContent, StringBuilder alignedContentForSaving, boolean[] alignmentDone) {
+        log.debug("=== 开始处理续写JSON数据 ===");
+        log.debug("续写JSON长度: {}, 对齐状态: {}", jsonData.length(), alignmentDone[0]);
+
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode jsonNode = mapper.readTree(jsonData);
+
+            log.debug("处理续写AI API响应: {}", jsonData.length() > 200 ? jsonData.substring(0, 200) + "..." : jsonData);
+
+            JsonNode choices = jsonNode.get("choices");
+            log.debug("续写JSON解析 - choices节点存在: {}", choices != null);
+
+            if (choices != null && choices.isArray() && choices.size() > 0) {
+                log.debug("续写JSON解析 - choices数组长度: {}", choices.size());
+                JsonNode delta = choices.get(0).get("delta");
+                log.debug("续写JSON解析 - delta节点存在: {}", delta != null);
+
+                if (delta != null && delta.has("content")) {
+                    String content = delta.get("content").asText();
+                    log.debug("续写JSON解析 - 原始content: [{}]", content);
+
+                    if (content != null && !content.isEmpty()) {
+                        String cleanContent = cleanContinuationContent(content);
+                        log.debug("续写JSON解析 - 清理后content: [{}]", cleanContent);
+
+                        if (!cleanContent.isEmpty()) {
+                            log.debug("续写AI响应内容: [{}]", cleanContent.length() > 50 ? cleanContent.substring(0, 50) + "..." : cleanContent);
+
+                            // 如果还没有进行对齐，先进行对齐处理
+                            if (!alignmentDone[0]) {
+                                log.info("续写首次内容处理，开始执行对齐算法");
+                                log.debug("续写对齐参数 - 原内容长度: {}, 续写内容: [{}]",
+                                        originalContent.length(), cleanContent);
+
+                                // 执行对齐算法
+                                String alignedContent = truncationDetectionService.alignContent(originalContent, cleanContent);
+                                log.debug("续写对齐结果 - 对齐后内容长度: {}", alignedContent.length());
+
+                                // 计算需要发送给前端的内容（去除重叠部分）
+                                String contentToSend;
+                                if (alignedContent.length() > originalContent.length()) {
+                                    contentToSend = alignedContent.substring(originalContent.length());
+                                    log.debug("续写对齐成功，提取新增内容长度: {}", contentToSend.length());
+                                } else {
+                                    contentToSend = cleanContent; // 如果对齐失败，发送原始内容
+                                    log.warn("续写对齐失败，使用原始内容，长度: {}", cleanContent.length());
+                                }
+
+                                // 初始化对齐后的内容
+                                alignedContentForSaving.append(alignedContent);
+                                alignmentDone[0] = true;
+
+                                log.info("续写对齐完成，原内容长度：{}，对齐后长度：{}，发送给前端：[{}]",
+                                        originalContent.length(), alignedContent.length(),
+                                        contentToSend.length() > 50 ? contentToSend.substring(0, 50) + "..." : contentToSend);
+
+                                // 发送对齐后的内容给前端
+                                if (!contentToSend.isEmpty()) {
+                                    log.debug("续写发送对齐后内容给前端，使用智能分块: {}", ENABLE_SMART_CHUNKING);
+                                    if (ENABLE_SMART_CHUNKING) {
+                                        sendContentBySmartChunking(contentToSend, response, mapper);
+                                    } else {
+                                        sendContentAsBlock(contentToSend, response, mapper);
+                                    }
+                                    log.debug("续写对齐后内容发送完成");
+                                } else {
+                                    log.warn("续写对齐后内容为空，跳过发送");
+                                }
+
+                                return contentToSend;
+                            } else {
+                                // 已经对齐过，直接发送新内容
+                                log.debug("续写后续内容处理，直接发送新内容: [{}]", cleanContent);
+                                alignedContentForSaving.append(cleanContent);
+
+                                log.debug("续写发送后续内容给前端，使用智能分块: {}", ENABLE_SMART_CHUNKING);
+                                if (ENABLE_SMART_CHUNKING) {
+                                    sendContentBySmartChunking(cleanContent, response, mapper);
+                                } else {
+                                    sendContentAsBlock(cleanContent, response, mapper);
+                                }
+                                log.debug("续写后续内容发送完成");
+                                return cleanContent;
+                            }
+                        } else {
+                            log.debug("续写清理后内容为空，跳过处理");
+                        }
+                    } else {
+                        log.debug("续写原始content为空或null");
+                    }
+                } else {
+                    log.debug("续写delta节点不存在content字段");
+                }
+            } else {
+                log.debug("续写choices节点为空或不是数组");
+            }
+
+            log.debug("续写JSON处理完成，返回null");
+            return null;
+        } catch (Exception e) {
+            log.error("处理续写JSON数据失败: {}, JSON内容: {}", e.getMessage(), jsonData.length() > 100 ? jsonData.substring(0, 100) + "..." : jsonData, e);
+            return null;
+        }
+    }
+
+    /**
      * 处理完整的JSON数据
      */
     private String processCompleteJson(String jsonData, HttpServletResponse response) {
@@ -1106,7 +1242,7 @@ public class ChatServiceImpl implements ChatService {
                 if (delta != null && delta.has("content")) {
                     String content = delta.get("content").asText();
                     if (content != null && !content.isEmpty()) {
-                        String cleanContent = cleanContent(content);
+                        String cleanContent = cleanContinuationContent(content);
 
                         if (!cleanContent.isEmpty()) {
                             log.debug("AI响应内容: [{}]", cleanContent.length() > 50 ? cleanContent.substring(0, 50) + "..." : cleanContent);
@@ -1142,9 +1278,134 @@ public class ChatServiceImpl implements ChatService {
             return ""; // 返回空字符串，不向前端发送
         }
 
+        // 基础清理：移除无效字符
         String cleaned = content.replaceAll("[\uFFFD\u0000]", "");
         cleaned = cleaned.replaceAll(" {2,}", " ");
+
         return cleaned;
+    }
+
+    /**
+     * 清理续写内容中的AI标记
+     */
+    private String cleanContinuationContent(String content) {
+        if (content == null || content.trim().isEmpty()) {
+            return content;
+        }
+
+        String cleaned = content;
+        log.debug("开始清理续写内容，原始长度: {}", content.length());
+
+        // 1. 移除完整的 <thinking>...</thinking> 块
+        cleaned = removeThinkingBlocks(cleaned);
+
+        // 2. 移除开头的 <response> 标签
+        cleaned = removeResponseTags(cleaned);
+
+        // 3. 移除开头的代码块标记（```javascript, ```html 等）
+        cleaned = removeCodeBlockMarkers(cleaned);
+
+        // 4. 清理多余的空白行
+        cleaned = cleanExtraWhitespace(cleaned);
+
+        log.debug("续写内容清理完成，清理后长度: {}, 移除字符数: {}",
+                cleaned.length(), content.length() - cleaned.length());
+
+        return cleaned;
+    }
+
+    /**
+     * 移除 <thinking>...</thinking> 块和单独的thinking标记
+     */
+    private String removeThinkingBlocks(String content) {
+        if (content == null) return content;
+
+        String result = content;
+        log.debug("removeThinkingBlocks - 输入内容: [{}], 长度: {}", content, content.length());
+
+        // 1. 移除完整的 thinking 块，支持多行和嵌套
+        String completeBlockPattern = "(?s)<thinking>.*?</thinking>\\s*";
+        String afterCompleteBlock = result.replaceAll(completeBlockPattern, "");
+        if (!afterCompleteBlock.equals(result)) {
+            log.debug("移除了完整thinking块，原长度: {}, 新长度: {}", result.length(), afterCompleteBlock.length());
+        }
+        result = afterCompleteBlock;
+
+        // 2. 移除开头的单独 <thinking> 标记
+        String afterStartTag = result.replaceAll("^\\s*<thinking>\\s*", "");
+        if (!afterStartTag.equals(result)) {
+            log.debug("移除了开头thinking标记，原长度: {}, 新长度: {}", result.length(), afterStartTag.length());
+        }
+        result = afterStartTag;
+
+        // 3. 移除结尾的单独 </thinking> 标记
+        String afterEndTag = result.replaceAll("\\s*</thinking>\\s*$", "");
+        if (!afterEndTag.equals(result)) {
+            log.debug("移除了结尾thinking标记，原长度: {}, 新长度: {}", result.length(), afterEndTag.length());
+        }
+        result = afterEndTag;
+
+        if (!result.equals(content)) {
+            log.debug("thinking块清理完成，原长度: {}, 新长度: {}, 移除字符数: {}",
+                    content.length(), result.length(), content.length() - result.length());
+        } else {
+            log.debug("thinking块清理无变化，内容: [{}]", content);
+        }
+
+        return result;
+    }
+
+    /**
+     * 移除开头的 <response> 标签
+     */
+    private String removeResponseTags(String content) {
+        if (content == null) return content;
+
+        String result = content;
+
+        // 只移除开头的 <response> 标签
+        result = result.replaceAll("^\\s*<response>\\s*", "");
+
+        if (!result.equals(content)) {
+            log.debug("移除了开头的 response 标签，原长度: {}, 新长度: {}", content.length(), result.length());
+        }
+
+        return result;
+    }
+
+    /**
+     * 移除开头的代码块标记
+     */
+    private String removeCodeBlockMarkers(String content) {
+        if (content == null) return content;
+
+        String result = content;
+
+        // 只移除开头的代码块标记，如 ```javascript, ```html, ```css, ```json 等
+        result = result.replaceAll("^\\s*```\\w*\\s*", "");
+
+        if (!result.equals(content)) {
+            log.debug("移除了开头的代码块标记，原长度: {}, 新长度: {}", content.length(), result.length());
+        }
+
+        return result;
+    }
+
+    /**
+     * 清理多余的空白
+     */
+    private String cleanExtraWhitespace(String content) {
+        if (content == null) return content;
+
+        String result = content;
+
+        // 移除开头的空白行
+        result = result.replaceAll("^\\s*\\n+", "");
+
+        // 移除结尾的空白行
+        result = result.replaceAll("\\n+\\s*$", "");
+
+        return result;
     }
 
     /**
@@ -1218,13 +1479,24 @@ public class ChatServiceImpl implements ChatService {
                             Thread.sleep(CHUNK_DELAY_MS);
                         }
                     } catch (InterruptedException e) {
-                        log.warn("分块发送被中断: {}", e.getMessage());
+                        log.warn("续写分块发送被中断: {}", e.getMessage());
                         Thread.currentThread().interrupt();
-                        break;
+                        // 不要break，尝试发送剩余内容
+                        log.info("尝试继续发送剩余内容...");
                     } catch (IOException e) {
-                        log.error("发送分块内容失败: {}", e.getMessage());
+                        log.error("续写发送分块内容失败，尝试重试: {}", e.getMessage());
+                        // 重试一次
+                        try {
+                            String chunkContent = chunk.toString();
+                            String vercelFormat = String.format("0:%s\n", mapper.writeValueAsString(chunkContent));
+                            response.getWriter().write(vercelFormat);
+                            response.getWriter().flush();
+                            sentChars += chunkContent.length();
+                            log.info("续写分块重试发送成功");
+                        } catch (Exception retryException) {
+                            log.error("续写分块重试也失败，跳过此块: {}", retryException.getMessage());
+                        }
                         chunk.setLength(0);
-                        continue;
                     }
                 }
             }
@@ -1319,23 +1591,24 @@ public class ChatServiceImpl implements ChatService {
             continuationRequest.setSessionId(request.getSessionId());
             continuationRequest.setDeepThinking(request.getDeepThinking());
 
-            // 用于收集续写内容
+            // 用于收集续写内容和对齐状态
             final StringBuilder continuationContent = new StringBuilder();
+            final StringBuilder alignedContentForSaving = new StringBuilder();
             final boolean[] hasContentSent = {false};
             final boolean[] isRealAiResponse = {false};
+            final boolean[] alignmentDone = {false};
 
-            // 执行续写请求（简化版流式处理）
-            boolean success = executeContinuationRequest(continuationRequest, model, response, continuationContent, hasContentSent, isRealAiResponse);
+            // 执行续写请求（带对齐的流式处理）
+            boolean success = executeContinuationRequestWithAlignment(continuationRequest, model, response,
+                    originalContent, continuationContent, alignedContentForSaving, hasContentSent, isRealAiResponse, alignmentDone);
 
             if (success && hasContentSent[0]) {
-                // 对齐内容
-                String alignedContent = truncationDetectionService.alignContent(originalContent, continuationContent.toString());
-
                 // 保存完整内容到数据库（续写不计入聊天次数，所以直接保存）
                 if (request.getSessionId() != null && request.getUserId() != null) {
-                    saveAiResponse(request.getSessionId(), request.getUserId(), model.getId(), alignedContent);
-                    log.info("续写内容已保存到数据库，会话ID：{}，用户ID：{}，不计入聊天次数",
-                            request.getSessionId(), request.getUserId());
+                    String finalContent = alignedContentForSaving.toString();
+                    saveAiResponse(request.getSessionId(), request.getUserId(), model.getId(), finalContent);
+                    log.info("续写内容已保存到数据库，会话ID：{}，用户ID：{}，最终长度：{}，不计入聊天次数",
+                            request.getSessionId(), request.getUserId(), finalContent.length());
                 }
 
                 // 发送完成标记
@@ -1343,7 +1616,7 @@ public class ChatServiceImpl implements ChatService {
                 response.getWriter().write(completionData);
                 response.getWriter().flush();
 
-                log.info("续写操作成功，最终内容长度：{}，未计入聊天次数", alignedContent.length());
+                log.info("续写操作成功，未计入聊天次数");
                 return true;
             }
 
@@ -1361,25 +1634,189 @@ public class ChatServiceImpl implements ChatService {
     private List<Map<String, String>> buildContinuationMessages(List<Map<String, String>> originalMessages, String originalContent) {
         List<Map<String, String>> continuationMessages = new ArrayList<>(originalMessages);
 
+        // 添加被截断的assistant回复内容
+        Map<String, String> truncatedAssistantMessage = new HashMap<>();
+        truncatedAssistantMessage.put("role", "assistant");
+        truncatedAssistantMessage.put("content", originalContent);
+        continuationMessages.add(truncatedAssistantMessage);
+
         // 添加续写提示词作为新的用户消息（但不保存到数据库）
         Map<String, String> continuationPrompt = new HashMap<>();
         continuationPrompt.put("role", "user");
         continuationPrompt.put("content",
-            "RULES (Non-negotiable):\n" +
-            "1. Continue EXACTLY from the truncation point\n" +
-            "2. Match the original language, style, and tone perfectly\n" +
-            "3. NO repetition of existing content\n" +
-            "4. NO explanatory text or transitions\n" +
-            "5. NO formatting changes unless contextually\n" +
-            "Continue from the exact cutoff point:");
+            "请直接从上一个回复的截断点继续输出，不要重复已有内容，不要添加解释或分析，保持原有的语言风格和格式。直接继续：");
 
         continuationMessages.add(continuationPrompt);
+
+        log.info("构建续写消息列表完成，原始消息数：{}，添加截断内容长度：{}，最终消息数：{}",
+                originalMessages.size(), originalContent.length(), continuationMessages.size());
 
         return continuationMessages;
     }
 
     /**
-     * 执行续写请求
+     * 执行续写请求（带对齐的流式处理）
+     */
+    private boolean executeContinuationRequestWithAlignment(ChatRequestDTO request, AiModel model, HttpServletResponse response,
+                                                          String originalContent, StringBuilder continuationContent,
+                                                          StringBuilder alignedContentForSaving, boolean[] hasContentSent,
+                                                          boolean[] isRealAiResponse, boolean[] alignmentDone) {
+        log.info("=== 开始执行续写请求 ===");
+        log.info("续写参数 - 用户ID: {}, 模型: {}, 原内容长度: {}", request.getUserId(), model.getModelCode(), originalContent.length());
+
+        try {
+            // 构建请求体
+            Map<String, Object> requestBody = new HashMap<>();
+            requestBody.put("stream", true);
+            requestBody.put("messages", request.getMessages());
+            requestBody.put("model", model.getModelCode());
+
+            // 添加reasoning_effort参数（仅对Gemini模型）
+            if (model.getProvider() != null && model.getProvider().toLowerCase().contains("gemini")) {
+                requestBody.put("reasoning_effort", "none");
+                log.debug("续写请求添加reasoning_effort参数");
+            }
+
+            log.info("构建续写消息列表完成，原始消息数：{}，添加截断内容长度：{}，最终消息数：{}",
+                    request.getMessages().size() - 2, originalContent.length(), request.getMessages().size());
+
+            // 记录详细的AI请求信息
+            logAiRequestDetails(requestBody, model, request.getUserId());
+
+            log.info("发送续写请求到AI API: {}", model.getBaseUrl());
+
+            // 创建WebClient（使用配置的Builder，已禁用SSL验证）
+            WebClient webClient = webClientBuilder
+                    .defaultHeader("Authorization", "Bearer " + model.getApiKey())
+                    .defaultHeader("Content-Type", "application/json; charset=UTF-8")
+                    .defaultHeader("Accept-Charset", "UTF-8")
+                    .defaultHeader("User-Agent", "OpenAI/PowerShell")
+                    .build();
+
+            // 发送请求并处理流式响应
+            final int[] chunkCount = {0};
+            final int[] totalBytes = {0};
+
+            log.info("=== 开始发送续写WebClient请求 ===");
+
+            webClient.post()
+                    .uri(model.getBaseUrl())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(requestBody)
+                    .retrieve()
+                    .bodyToFlux(DataBuffer.class)
+                    .timeout(Duration.ofSeconds(60))  // 续写设置更长的超时时间
+                    .doOnSubscribe(subscription -> log.info("续写WebClient订阅成功，开始接收数据流"))
+                    .doOnRequest(n -> log.debug("续写WebClient请求 {} 个数据块", n))
+                    .map(dataBuffer -> {
+                        int bufferSize = dataBuffer.readableByteCount();
+                        byte[] bytes = new byte[bufferSize];
+                        dataBuffer.read(bytes);
+                        DataBufferUtils.release(dataBuffer);
+                        String chunk = new String(bytes, StandardCharsets.UTF_8);
+
+                        chunkCount[0]++;
+                        totalBytes[0] += bufferSize;
+                        log.debug("续写接收数据块 #{}, 大小: {} bytes, 累计: {} bytes", chunkCount[0], bufferSize, totalBytes[0]);
+
+                        return chunk;
+                    })
+                    .doOnNext(chunk -> {
+                        try {
+                            log.debug("续写处理数据块，内容长度: {}, 完整内容: [{}]",
+                                    chunk.length(), chunk);
+
+                            String[] lines = chunk.split("\n");
+                            log.debug("续写数据块分割为 {} 行", lines.length);
+
+                            for (int i = 0; i < lines.length; i++) {
+                                String line = lines[i].trim();
+                                log.debug("续写处理第 {} 行: [{}]", i + 1, line.length() > 50 ? line.substring(0, 50) + "..." : line);
+
+                                if (line.startsWith("data: ")) {
+                                    if (line.equals("data: [DONE]")) {
+                                        log.info("续写接收到完成标记 [DONE]，流式响应结束");
+                                        return; // 续写完成
+                                    }
+
+                                    String jsonData = line.substring(6).trim();
+                                    log.debug("续写提取JSON数据: [{}]", jsonData.length() > 100 ? jsonData.substring(0, 100) + "..." : jsonData);
+
+                                    // 直接处理单个JSON，不使用缓冲区累积
+                                    if (isValidJson(jsonData)) {
+                                        log.debug("续写JSON验证通过，开始处理");
+                                        try {
+                                            String contentSent = processContinuationJson(jsonData, response,
+                                                    originalContent, continuationContent, alignedContentForSaving, alignmentDone);
+                                            if (contentSent != null) {
+                                                hasContentSent[0] = true;
+                                                isRealAiResponse[0] = true;
+                                                continuationContent.append(contentSent);
+                                                log.debug("续写成功处理内容，发送长度: {}, 累计续写长度: {}",
+                                                        contentSent.length(), continuationContent.length());
+                                            } else {
+                                                log.debug("续写处理返回null，可能是空内容或过滤内容");
+                                            }
+                                        } catch (Exception jsonProcessException) {
+                                            log.error("处理续写JSON失败，跳过此块: {}, JSON内容: [{}]",
+                                                    jsonProcessException.getMessage(),
+                                                    jsonData.length() > 200 ? jsonData.substring(0, 200) + "..." : jsonData);
+                                        }
+                                    } else {
+                                        log.warn("续写JSON验证失败，跳过无效JSON: [{}]",
+                                                jsonData.length() > 100 ? jsonData.substring(0, 100) + "..." : jsonData);
+                                    }
+                                } else if (!line.isEmpty()) {
+                                    log.debug("续写跳过非data行: [{}]", line);
+                                }
+                            }
+                        } catch (Exception e) {
+                            log.error("处理续写响应块失败，但继续处理: {}, 异常详情: ", e.getMessage(), e);
+                            // 不要抛出异常，继续处理下一个chunk
+                        }
+                    })
+                    .doOnComplete(() -> {
+                        log.info("续写WebClient流式响应完成，总接收数据块: {}, 总字节数: {}", chunkCount[0], totalBytes[0]);
+                        log.info("续写完成状态 - hasContentSent: {}, isRealAiResponse: {}, alignmentDone: {}",
+                                hasContentSent[0], isRealAiResponse[0], alignmentDone[0]);
+                        log.info("续写内容统计 - 续写内容长度: {}, 对齐后内容长度: {}",
+                                continuationContent.length(), alignedContentForSaving.length());
+                    })
+                    .doOnCancel(() -> {
+                        log.warn("续写WebClient流式响应被取消");
+                    })
+                    .doOnError(error -> {
+                        log.error("续写请求失败，错误类型: {}, 错误消息: {}", error.getClass().getSimpleName(), error.getMessage(), error);
+                        log.error("续写失败时状态 - 已接收数据块: {}, 总字节数: {}, hasContentSent: {}",
+                                chunkCount[0], totalBytes[0], hasContentSent[0]);
+
+                        // 发送错误信息给前端
+                        try {
+                            String errorContent = "续写请求失败，请重试";
+                            String vercelFormat = String.format("0:%s\n", new ObjectMapper().writeValueAsString(errorContent));
+                            response.getWriter().write(vercelFormat);
+                            response.getWriter().flush();
+                            hasContentSent[0] = true;
+                            log.info("续写错误消息已发送给前端");
+                        } catch (Exception e) {
+                            log.error("发送续写错误消息失败", e);
+                        }
+                    })
+                    .onErrorReturn("")  // 错误时返回空字符串，避免异常传播
+                    .blockLast();
+
+            log.info("续写WebClient.blockLast()执行完成，最终状态 - hasContentSent: {}", hasContentSent[0]);
+
+            return hasContentSent[0];
+
+        } catch (Exception e) {
+            log.error("执行续写请求失败", e);
+            return false;
+        }
+    }
+
+    /**
+     * 执行续写请求（原方法保留用于兼容）
      */
     private boolean executeContinuationRequest(ChatRequestDTO request, AiModel model, HttpServletResponse response,
                                              StringBuilder continuationContent, boolean[] hasContentSent, boolean[] isRealAiResponse) {
@@ -2468,6 +2905,61 @@ public class ChatServiceImpl implements ChatService {
             log.debug("统计文件数量失败", e);
             return 0;
         }
+    }
+
+    /**
+     * 计算文本的token数量
+     * 使用更准确的算法，区分中英文字符
+     *
+     * @param content 文本内容
+     * @return token数量
+     */
+    private int calculateTokenCount(String content) {
+        if (content == null || content.trim().isEmpty()) {
+            return 0;
+        }
+
+        int chineseCount = 0;
+        int englishCount = 0;
+        int digitCount = 0;
+        int punctuationCount = 0;
+        int whitespaceCount = 0;
+
+        for (char c : content.toCharArray()) {
+            if (c >= 0x4e00 && c <= 0x9fff) {
+                // 中文字符（包括中文标点）
+                chineseCount++;
+            } else if (Character.isLetter(c)) {
+                // 英文字母
+                englishCount++;
+            } else if (Character.isDigit(c)) {
+                // 数字
+                digitCount++;
+            } else if (Character.isWhitespace(c)) {
+                // 空白字符
+                whitespaceCount++;
+            } else {
+                // 标点符号和其他字符
+                punctuationCount++;
+            }
+        }
+
+        // Token计算规则：
+        // - 中文字符：每个字符约1.2个token
+        // - 英文字母：每4个字符约1个token
+        // - 数字：每4个字符约1个token
+        // - 标点符号：每3个字符约1个token
+        // - 空白字符：每8个字符约1个token
+        int totalTokens = (int) Math.ceil(
+            chineseCount * 1.2 +
+            englishCount / 4.0 +
+            digitCount / 4.0 +
+            punctuationCount / 3.0 +
+            whitespaceCount / 8.0
+        );
+
+        // 最小值为1，避免返回0
+        return Math.max(1, totalTokens);
     }
 
     /**

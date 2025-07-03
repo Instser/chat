@@ -99,7 +99,9 @@ public class TruncationDetectionServiceImpl implements TruncationDetectionServic
     @Override
     public String alignContent(String originalContent, String continuationContent) {
         if (originalContent == null || originalContent.isEmpty()) {
-            return continuationContent != null ? continuationContent : "";
+            String cleaned = continuationContent != null ? cleanContinuationContent(continuationContent) : "";
+            log.debug("原内容为空，返回清理后的续写内容，长度: {}", cleaned.length());
+            return cleaned;
         }
 
         if (continuationContent == null || continuationContent.isEmpty()) {
@@ -110,8 +112,12 @@ public class TruncationDetectionServiceImpl implements TruncationDetectionServic
             log.info("开始内容对齐，原内容长度：{}，续写内容长度：{}",
                     originalContent.length(), continuationContent.length());
 
+            // 清理续写内容中的AI标记
+            String cleanedContinuation = cleanContinuationContent(continuationContent);
+            log.debug("清理后续写内容长度: {}", cleanedContinuation.length());
+
             // 多策略内容对齐
-            String alignedContent = performAdvancedAlignment(originalContent, continuationContent);
+            String alignedContent = performAdvancedAlignment(originalContent, cleanedContinuation);
 
             log.info("内容对齐完成，最终长度：{}，原始：{}，续写：{}",
                     alignedContent.length(), originalContent.length(), continuationContent.length());
@@ -420,5 +426,116 @@ public class TruncationDetectionServiceImpl implements TruncationDetectionServic
 
         // 如果引号数量为奇数，说明可能在引号内
         return (singleQuotes % 2 == 1) || (doubleQuotes % 2 == 1);
+    }
+
+    /**
+     * 清理续写内容中的AI标记和代码块标记
+     */
+    private String cleanContinuationContent(String content) {
+        if (content == null || content.trim().isEmpty()) {
+            return content;
+        }
+
+        String cleaned = content;
+        log.debug("开始清理续写内容，原始长度: {}", content.length());
+
+        // 1. 移除开头的 <thinking>...</thinking> 块
+        cleaned = removeThinkingBlocks(cleaned);
+
+        // 2. 移除开头的 <response> 标签
+        cleaned = removeResponseTags(cleaned);
+
+        // 3. 移除开头的代码块标记（```javascript, ```html 等）
+        cleaned = removeCodeBlockMarkers(cleaned);
+
+        // 4. 清理多余的空白行
+        cleaned = cleanExtraWhitespace(cleaned);
+
+        log.debug("续写内容清理完成，清理后长度: {}, 移除字符数: {}",
+                cleaned.length(), content.length() - cleaned.length());
+
+        return cleaned;
+    }
+
+    /**
+     * 移除 <thinking>...</thinking> 块和单独的thinking标记
+     */
+    private String removeThinkingBlocks(String content) {
+        if (content == null) return content;
+
+        String result = content;
+
+        // 1. 移除完整的 thinking 块，支持多行和嵌套
+        String completeBlockPattern = "(?s)<thinking>.*?</thinking>\\s*";
+        result = result.replaceAll(completeBlockPattern, "");
+
+        // 2. 移除开头的单独 <thinking> 标记
+        result = result.replaceAll("^\\s*<thinking>\\s*", "");
+
+        // 3. 移除结尾的单独 </thinking> 标记
+        result = result.replaceAll("\\s*</thinking>\\s*$", "");
+
+        if (!result.equals(content)) {
+            log.debug("移除了 thinking 相关标记，原长度: {}, 新长度: {}", content.length(), result.length());
+        }
+
+        return result;
+    }
+
+    /**
+     * 移除开头的 <response> 标签
+     */
+    private String removeResponseTags(String content) {
+        if (content == null) return content;
+
+        String result = content;
+
+        // 只移除开头的 <response> 标签
+        result = result.replaceAll("^\\s*<response>\\s*", "");
+
+        if (!result.equals(content)) {
+            log.debug("移除了开头的 response 标签，原长度: {}, 新长度: {}", content.length(), result.length());
+        }
+
+        return result;
+    }
+
+    /**
+     * 移除开头的代码块标记
+     */
+    private String removeCodeBlockMarkers(String content) {
+        if (content == null) return content;
+
+        String result = content;
+
+        // 只移除开头的代码块标记，如 ```javascript, ```html, ```css, ```json 等
+        result = result.replaceAll("^\\s*```\\w*\\s*", "");
+
+        if (!result.equals(content)) {
+            log.debug("移除了开头的代码块标记，原长度: {}, 新长度: {}", content.length(), result.length());
+        }
+
+        return result;
+    }
+
+    /**
+     * 清理多余的空白行
+     */
+    private String cleanExtraWhitespace(String content) {
+        if (content == null) return content;
+
+        String result = content;
+
+        // 移除开头的空白行
+        result = result.replaceAll("^\\s*\\n+", "");
+
+        // 移除结尾的空白行
+        result = result.replaceAll("\\n+\\s*$", "");
+
+        if (!result.equals(content)) {
+            log.debug("清理了多余空白，原长度: {}, 新长度: {}", content.length(), result.length());
+        }
+
+        return result;
     }
 }

@@ -230,8 +230,8 @@ logging:
 # 汇率服务配置
 exchange:
   api:
-    # 汇率API地址
-    url: ${EXCHANGE_API_URL:https://api.exchangerate-api.com/v4/latest/}
+    # 汇率API地址 - 使用新的API，一次获取所有汇率
+    url: ${EXCHANGE_API_URL:https://v2.xxapi.cn/api/allrates}
     # 是否启用汇率API
     enabled: ${EXCHANGE_API_ENABLED:true}
     # API密钥（如需要）
