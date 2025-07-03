@@ -84,13 +84,21 @@
 
         <!-- 减少第三方库日志输出 -->
         <logger name="com.alibaba.druid" level="WARN"/>
-        <logger name="org.apache.ibatis" level="INFO"/>
+        <logger name="org.apache.ibatis" level="ERROR"/>
         <logger name="org.springframework" level="INFO"/>
         <logger name="org.apache.catalina" level="INFO"/>
         <logger name="org.apache.tomcat" level="INFO"/>
         <logger name="org.hibernate" level="WARN"/>
         <logger name="org.springframework.web" level="INFO"/>
         <logger name="org.springframework.security" level="INFO"/>
+
+        <!-- MyBatis SQL日志配置 - 只在错误时记录 -->
+        <logger name="com.instser.chat.dao" level="ERROR"/>
+        <logger name="org.apache.ibatis.logging.jdbc" level="ERROR"/>
+        <logger name="java.sql.Connection" level="ERROR"/>
+        <logger name="java.sql.Statement" level="ERROR"/>
+        <logger name="java.sql.PreparedStatement" level="ERROR"/>
+        <logger name="java.sql.ResultSet" level="ERROR"/>
 
         <!-- 根日志级别 -->
         <root level="INFO">
@@ -110,10 +118,18 @@
         
         <!-- 减少第三方库日志输出 -->
         <logger name="com.alibaba.druid" level="WARN"/>
-        <logger name="org.apache.ibatis" level="WARN"/>
+        <logger name="org.apache.ibatis" level="ERROR"/>
         <logger name="org.springframework" level="WARN"/>
         <logger name="org.apache.catalina" level="WARN"/>
         <logger name="org.apache.tomcat" level="WARN"/>
+
+        <!-- MyBatis SQL日志配置 - 只在错误时记录 -->
+        <logger name="com.instser.chat.dao" level="ERROR"/>
+        <logger name="org.apache.ibatis.logging.jdbc" level="ERROR"/>
+        <logger name="java.sql.Connection" level="ERROR"/>
+        <logger name="java.sql.Statement" level="ERROR"/>
+        <logger name="java.sql.PreparedStatement" level="ERROR"/>
+        <logger name="java.sql.ResultSet" level="ERROR"/>
         
         <!-- 根日志级别 -->
         <root level="WARN">

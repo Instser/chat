@@ -165,7 +165,7 @@ public class ChatServiceImpl implements ChatService {
             boolean willGenerateTitle = request.getSessionId() != null && isFirstAiResponse(request.getMessages());
 
             // 调用AI服务进行流式响应
-            ChatResponseDTO result = streamChatWithAI(request, model, response, willGenerateTitle);
+            ChatResponseDTO result = streamChatWithAI(request, model, response, willGenerateTitle, "chat");
 
             // 处理响应结果
             if (result.isRealAiResponse()) {
@@ -659,7 +659,7 @@ public class ChatServiceImpl implements ChatService {
     /**
      * 调用AI服务进行流式响应
      */
-    private ChatResponseDTO streamChatWithAI(ChatRequestDTO request, AiModel model, HttpServletResponse response, boolean willGenerateTitle) {
+    private ChatResponseDTO streamChatWithAI(ChatRequestDTO request, AiModel model, HttpServletResponse response, boolean willGenerateTitle, String interfaceType) {
         // 注册活跃会话以支持中断功能
         if (request.getSessionId() != null && request.getUserId() != null) {
             chatInterruptService.registerActiveSession(request.getSessionId(), request.getUserId());
@@ -800,7 +800,7 @@ public class ChatServiceImpl implements ChatService {
                             if (line.startsWith("data: ")) {
                                 if (line.equals("data: [DONE]")) {
                                     log.info("收到AI响应完成标记，开始处理完成逻辑");
-                                    boolean continuationSaved = handleStreamCompletion(response, willGenerateTitle, isRealAiResponse[0], request, aiResponseContent.toString(), model);
+                                    boolean continuationSaved = handleStreamCompletion(response, willGenerateTitle, isRealAiResponse[0], request, aiResponseContent.toString(), model, interfaceType);
                                     if (continuationSaved) {
                                         // 续写已完成保存，设置标识避免重复保存
                                         savedByContinuation[0] = true;
@@ -897,7 +897,7 @@ public class ChatServiceImpl implements ChatService {
                                     if (remainingLine.startsWith("data: ")) {
                                         if (remainingLine.equals("data: [DONE]")) {
                                             log.info("收到AI响应完成标记（来自剩余数据）");
-                                            boolean continuationSaved = handleStreamCompletion(response, willGenerateTitle, isRealAiResponse[0], request, aiResponseContent.toString(), model);
+                                            boolean continuationSaved = handleStreamCompletion(response, willGenerateTitle, isRealAiResponse[0], request, aiResponseContent.toString(), model, interfaceType);
                                             if (continuationSaved) {
                                                 // 续写已完成保存，设置标识避免重复保存
                                                 savedByContinuation[0] = true;
@@ -995,13 +995,12 @@ public class ChatServiceImpl implements ChatService {
      * @return true表示已通过续写完成保存，false表示需要正常保存
      */
     private boolean handleStreamCompletion(HttpServletResponse response, boolean willGenerateTitle, boolean isRealAiResponse,
-                                      ChatRequestDTO request, String aiResponseContent, AiModel model) {
+                                      ChatRequestDTO request, String aiResponseContent, AiModel model, String interfaceType) {
         try {
-            // 检查是否需要跳过截断检测
-            boolean hasFiles = request.getFilesId() != null && !request.getFilesId().isEmpty();
-            boolean shouldSkip = truncationDetectionService.shouldSkipTruncationDetection(hasFiles, willGenerateTitle);
+            // 检查是否应用截断检测
+            boolean shouldApply = truncationDetectionService.shouldApplyTruncationDetection(interfaceType);
 
-            if (!shouldSkip && isRealAiResponse && aiResponseContent != null && !aiResponseContent.trim().isEmpty()) {
+            if (shouldApply && isRealAiResponse && aiResponseContent != null && !aiResponseContent.trim().isEmpty()) {
                 // 进行截断检测
                 log.info("开始截断检测，会话ID：{}，内容长度：{}", request.getSessionId(), aiResponseContent.length());
 
@@ -1130,16 +1129,61 @@ public class ChatServiceImpl implements ChatService {
     }
 
     /**
-     * 清理内容，移除无效字符
+     * 清理内容，移除无效字符并过滤特定内容
      */
     private String cleanContent(String content) {
         if (content == null) {
             return "";
         }
 
+        // 检查是否包含需要过滤的内容
+        if (shouldFilterContent(content)) {
+            log.info("检测到需要过滤的AI响应内容，已阻止向前端发送");
+            return ""; // 返回空字符串，不向前端发送
+        }
+
         String cleaned = content.replaceAll("[\uFFFD\u0000]", "");
         cleaned = cleaned.replaceAll(" {2,}", " ");
         return cleaned;
+    }
+
+    /**
+     * 检查内容是否需要过滤
+     * 过滤包含特定广告或推广内容的AI响应
+     */
+    private boolean shouldFilterContent(String content) {
+        if (content == null || content.trim().isEmpty()) {
+            return false;
+        }
+
+        // 定义需要过滤的关键词和模式
+        String[] filterPatterns = {
+            "欢迎使用 Augment Proxy",
+            "Augment Proxy 官网",
+            "该服务完全免费",
+            "如果你是付费获取的，请前往购买平台举报",
+            "augment.caicode.org"
+        };
+
+        String lowerContent = content.toLowerCase();
+
+        // 检查是否包含任何过滤模式
+        for (String pattern : filterPatterns) {
+            if (content.contains(pattern) || lowerContent.contains(pattern.toLowerCase())) {
+                log.debug("检测到过滤模式: [{}] 在内容中: [{}]", pattern,
+                    content.length() > 100 ? content.substring(0, 100) + "..." : content);
+                return true;
+            }
+        }
+
+        // 检查是否包含markdown链接格式的推广内容
+        if (content.matches(".*\\[.*Augment.*Proxy.*\\]\\(.*\\).*")) {
+            log.debug("检测到Augment Proxy推广链接，内容: [{}]",
+                content.length() > 100 ? content.substring(0, 100) + "..." : content);
+            return true;
+        }
+
+        return false;
     }
 
     /**
@@ -2049,7 +2093,7 @@ public class ChatServiceImpl implements ChatService {
                 messages.stream().filter(msg -> "user".equals(msg.get("role"))).count());
 
             // 调用AI服务进行流式响应
-            ChatResponseDTO result = streamChatWithAI(retryRequest, model, response, willGenerateTitle);
+            ChatResponseDTO result = streamChatWithAI(retryRequest, model, response, willGenerateTitle, "retry");
 
             // 处理响应结果
             handleAiResponseResult(result, userId, sessionId, model, "重新生成");
@@ -2261,7 +2305,7 @@ public class ChatServiceImpl implements ChatService {
                 messages.stream().filter(msg -> "user".equals(msg.get("role"))).count());
 
             // 调用AI服务进行流式响应
-            ChatResponseDTO result = streamChatWithAI(editResendRequest, model, response, willGenerateTitle);
+            ChatResponseDTO result = streamChatWithAI(editResendRequest, model, response, willGenerateTitle, "edit-resend");
 
             // 处理响应结果
             handleAiResponseResult(result, userId, sessionId, model, "编辑重发");

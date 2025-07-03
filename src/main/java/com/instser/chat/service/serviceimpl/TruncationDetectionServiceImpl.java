@@ -31,6 +31,11 @@ public class TruncationDetectionServiceImpl implements TruncationDetectionServic
     private final AiModelService aiModelService;
     private final RestTemplate restTemplate;
 
+    /**
+     * Token数量阈值，只有超过此数量才进行截断检测
+     */
+    private static final int TOKEN_THRESHOLD = 1500;
+
     // 截断检测模型ID
     private static final Long DETECTION_MODEL_ID = 5L;
     
@@ -73,6 +78,25 @@ public class TruncationDetectionServiceImpl implements TruncationDetectionServic
     }
 
     @Override
+    public boolean isContentComplete(String content, int tokenCount) {
+        if (content == null || content.trim().isEmpty()) {
+            log.warn("截断检测：内容为空，默认认为完整");
+            return true;
+        }
+
+        // 检查Token数量是否达到阈值
+        if (tokenCount < TOKEN_THRESHOLD) {
+            log.info("截断检测：Token数量({})未达到阈值({})，跳过检测，默认认为完整", tokenCount, TOKEN_THRESHOLD);
+            return true;
+        }
+
+        log.info("截断检测：Token数量({})达到阈值({})，开始检测", tokenCount, TOKEN_THRESHOLD);
+
+        // 调用原有的检测逻辑
+        return isContentComplete(content);
+    }
+
+    @Override
     public String alignContent(String originalContent, String continuationContent) {
         if (originalContent == null || originalContent.isEmpty()) {
             return continuationContent != null ? continuationContent : "";
@@ -101,15 +125,19 @@ public class TruncationDetectionServiceImpl implements TruncationDetectionServic
     }
 
     @Override
-    public boolean shouldSkipTruncationDetection(boolean hasFiles, boolean isTitleGeneration) {
-        // 文件分析接口和标题生成接口跳过截断检测
-        boolean shouldSkip = hasFiles || isTitleGeneration;
-        
-        if (shouldSkip) {
-            log.info("跳过截断检测 - 文件分析：{}，标题生成：{}", hasFiles, isTitleGeneration);
+    public boolean shouldApplyTruncationDetection(String interfaceType) {
+        // 只在chat、retry、edit-resend接口中应用截断检测
+        boolean shouldApply = "chat".equals(interfaceType) ||
+                             "retry".equals(interfaceType) ||
+                             "edit-resend".equals(interfaceType);
+
+        if (shouldApply) {
+            log.info("应用截断检测 - 接口类型：{}", interfaceType);
+        } else {
+            log.info("跳过截断检测 - 接口类型：{}", interfaceType);
         }
-        
-        return shouldSkip;
+
+        return shouldApply;
     }
 
     /**
@@ -221,12 +249,12 @@ public class TruncationDetectionServiceImpl implements TruncationDetectionServic
             return false;
         }
         
-        // 模糊匹配
-        if (cleanResult.contains("true") || cleanResult.contains("完整") || cleanResult.contains("complete")) {
-            return true;
-        } else if (cleanResult.contains("false") || cleanResult.contains("截断") || cleanResult.contains("不完整") || 
-                   cleanResult.contains("incomplete") || cleanResult.contains("truncated")) {
+        // 模糊匹配 - 先检查否定词，避免被包含的肯定词误判
+        if (cleanResult.contains("false") || cleanResult.contains("截断") || cleanResult.contains("不完整") ||
+            cleanResult.contains("incomplete") || cleanResult.contains("truncated")) {
             return false;
+        } else if (cleanResult.contains("true") || cleanResult.contains("完整") || cleanResult.contains("complete")) {
+            return true;
         }
         
         log.warn("无法解析检测结果：[{}]，默认认为完整", result);
@@ -304,6 +332,11 @@ public class TruncationDetectionServiceImpl implements TruncationDetectionServic
             }
 
             // 否则添加空格分隔
+            return original + " " + continuation;
+        }
+
+        // 情况1.5：字母和非字母的组合，需要添加空格
+        if (Character.isLetter(lastChar) && !Character.isLetter(firstChar) && !Character.isWhitespace(firstChar)) {
             return original + " " + continuation;
         }
 
