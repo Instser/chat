@@ -226,6 +226,9 @@ springdoc:
 # 日志配置 - 使用logback-spring.xml进行详细配置
 logging:
   config: classpath:logback-spring.xml
+  level:
+    com.instser.chat.service.serviceimpl.ChatServiceImpl: DEBUG
+    com.instser.chat.service.serviceimpl.TruncationDetectionServiceImpl: DEBUG
 
 # 汇率服务配置
 exchange:
