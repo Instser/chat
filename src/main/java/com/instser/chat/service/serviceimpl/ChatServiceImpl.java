@@ -35,8 +35,8 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
-import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 聊天业务服务实现类
@@ -1037,6 +1037,52 @@ public class ChatServiceImpl implements ChatService {
 
                         if (continuationSuccess) {
                             log.info("续写操作成功完成，会话ID：{}", request.getSessionId());
+
+                            // 续写完成后也需要检查是否需要生成标题
+                            if (willGenerateTitle && isRealAiResponse) {
+                                log.info("续写完成后开始生成标题，会话ID: {}", request.getSessionId());
+                                try {
+                                    CompletableFuture<String> titleFuture = CompletableFuture.supplyAsync(() -> {
+                                        try {
+                                            return generateSessionTitle(request.getSessionId(), request.getMessages());
+                                        } catch (Exception e) {
+                                            log.error("续写完成后标题生成失败", e);
+                                            return null;
+                                        }
+                                    });
+                                    String generatedTitle = titleFuture.get(5, TimeUnit.SECONDS);
+
+                                    if (generatedTitle != null && !generatedTitle.equals("New Chat")) {
+                                        log.info("续写完成后标题生成成功: {}", generatedTitle);
+                                        // 发送包含标题的完成标记
+                                        String completionData = buildCompletionData(true, true, generatedTitle);
+                                        response.getWriter().write(completionData);
+                                        response.getWriter().flush();
+                                    } else {
+                                        log.info("续写完成后标题生成失败或返回默认标题: {}", generatedTitle);
+                                        // 发送不包含标题的完成标记
+                                        String completionData = buildCompletionData(true, true, null);
+                                        response.getWriter().write(completionData);
+                                        response.getWriter().flush();
+                                    }
+                                } catch (TimeoutException e) {
+                                    log.warn("续写完成后标题生成超时，发送完成标记");
+                                    String completionData = buildCompletionData(true, true, null);
+                                    response.getWriter().write(completionData);
+                                    response.getWriter().flush();
+                                } catch (Exception e) {
+                                    log.error("续写完成后标题生成异常", e);
+                                    String completionData = buildCompletionData(true, true, null);
+                                    response.getWriter().write(completionData);
+                                    response.getWriter().flush();
+                                }
+                            } else {
+                                // 不需要生成标题，直接发送完成标记
+                                String completionData = buildCompletionData(willGenerateTitle, isRealAiResponse, null);
+                                response.getWriter().write(completionData);
+                                response.getWriter().flush();
+                            }
+
                             return true; // 续写成功，已完成保存，不需要继续执行后续逻辑
                         } else {
                             log.warn("续写操作失败，继续正常流程，会话ID：{}", request.getSessionId());
@@ -1115,97 +1161,87 @@ public class ChatServiceImpl implements ChatService {
         }
     }
 
+    // 续写缓存配置常量（简化策略：缓存300字符一次性删除三种标签）
+    private static final int MIN_CACHE_TIME_MS = 500;    // 最小缓存时间
+    private static final int MAX_CACHE_TIME_MS = 2000;   // 最大缓存时间
+    private static final int MIN_CACHE_BLOCKS = 3;       // 最小缓存块数
+    private static final int MAX_CACHE_BLOCKS = 8;       // 最大缓存块数
+    private static final int MIN_CACHE_LENGTH = 300;     // 缓存300字符确保捕获所有AI标记
+
     /**
-     * 处理续写的JSON数据（带对齐功能）
+     * 处理续写的JSON数据（使用自适应缓存策略）
      */
     private String processContinuationJson(String jsonData, HttpServletResponse response, String originalContent,
-                                         StringBuilder continuationContent, StringBuilder alignedContentForSaving, boolean[] alignmentDone) {
-        log.debug("=== 开始处理续写JSON数据 ===");
-        log.debug("续写JSON长度: {}, 对齐状态: {}", jsonData.length(), alignmentDone[0]);
+                                         StringBuilder continuationContent, StringBuilder alignedContentForSaving,
+                                         boolean[] alignmentDone, StringBuilder cacheBuffer, long[] cacheStartTime,
+                                         int[] cacheBlockCount, boolean[] cleaningDone) {
+        log.debug("=== 开始处理续写JSON数据（自适应缓存策略）===");
+        log.debug("续写JSON长度: {}, 对齐状态: {}, 清理状态: {}", jsonData.length(), alignmentDone[0], cleaningDone[0]);
 
         try {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode jsonNode = mapper.readTree(jsonData);
 
-            log.debug("处理续写AI API响应: {}", jsonData.length() > 200 ? jsonData.substring(0, 200) + "..." : jsonData);
-
             JsonNode choices = jsonNode.get("choices");
-            log.debug("续写JSON解析 - choices节点存在: {}", choices != null);
-
             if (choices != null && choices.isArray() && choices.size() > 0) {
-                log.debug("续写JSON解析 - choices数组长度: {}", choices.size());
                 JsonNode delta = choices.get(0).get("delta");
-                log.debug("续写JSON解析 - delta节点存在: {}", delta != null);
 
                 if (delta != null && delta.has("content")) {
                     String content = delta.get("content").asText();
-                    log.debug("续写JSON解析 - 原始content: [{}]", content);
-
                     if (content != null && !content.isEmpty()) {
-                        String cleanContent = cleanContinuationContent(content);
-                        log.debug("续写JSON解析 - 清理后content: [{}]", cleanContent);
+                        log.debug("续写JSON解析 - 原始content: [{}]", content);
 
-                        if (!cleanContent.isEmpty()) {
-                            log.debug("续写AI响应内容: [{}]", cleanContent.length() > 50 ? cleanContent.substring(0, 50) + "..." : cleanContent);
+                        // 如果还没有开始缓存，初始化缓存
+                        if (cacheStartTime[0] == 0) {
+                            cacheStartTime[0] = System.currentTimeMillis();
+                            log.info("续写缓存开始，时间: {}", cacheStartTime[0]);
+                        }
 
-                            // 如果还没有进行对齐，先进行对齐处理
-                            if (!alignmentDone[0]) {
-                                log.info("续写首次内容处理，开始执行对齐算法");
-                                log.debug("续写对齐参数 - 原内容长度: {}, 续写内容: [{}]",
-                                        originalContent.length(), cleanContent);
+                        // 如果清理还没完成，继续缓存
+                        if (!cleaningDone[0]) {
+                            cacheBuffer.append(content);
+                            cacheBlockCount[0]++;
+                            log.info("续写缓存中，块数: {}, 缓存长度: {}, 内容预览: [{}]",
+                                    cacheBlockCount[0], cacheBuffer.length(),
+                                    cacheBuffer.length() > 50 ? cacheBuffer.substring(0, 50) + "..." : cacheBuffer.toString());
 
-                                // 执行对齐算法
-                                String alignedContent = truncationDetectionService.alignContent(originalContent, cleanContent);
-                                log.debug("续写对齐结果 - 对齐后内容长度: {}", alignedContent.length());
+                            // 检查是否应该停止缓存并进行清理
+                            if (shouldStopCaching(cacheBuffer, cacheStartTime[0], cacheBlockCount[0])) {
+                                // 一次性清理所有标签
+                                String cachedContent = cacheBuffer.toString();
+                                String cleanedCache = cleanAllTagsOnce(cachedContent);
+                                log.info("续写缓存清理完成，原长度: {}, 清理后长度: {}, 缓存时间: {}ms, 缓存块数: {}",
+                                        cachedContent.length(), cleanedCache.length(),
+                                        System.currentTimeMillis() - cacheStartTime[0], cacheBlockCount[0]);
 
-                                // 计算需要发送给前端的内容（去除重叠部分）
-                                String contentToSend;
-                                if (alignedContent.length() > originalContent.length()) {
-                                    contentToSend = alignedContent.substring(originalContent.length());
-                                    log.debug("续写对齐成功，提取新增内容长度: {}", contentToSend.length());
-                                } else {
-                                    contentToSend = cleanContent; // 如果对齐失败，发送原始内容
-                                    log.warn("续写对齐失败，使用原始内容，长度: {}", cleanContent.length());
+                                cleaningDone[0] = true;
+                                cacheBuffer.setLength(0); // 清空缓存
+
+                                // 处理清理后的内容
+                                if (!cleanedCache.isEmpty()) {
+                                    return processCachedContent(cleanedCache, originalContent, continuationContent,
+                                                              alignedContentForSaving, alignmentDone, response, mapper);
                                 }
+                            }
+                            return null; // 继续缓存
+                        } else {
+                            // 清理已完成，后续内容直接使用，不再检测删除
+                            log.debug("续写后续处理 - 直接使用content: [{}]", content.length() > 100 ? content.substring(0, 100) + "..." : content);
 
-                                // 初始化对齐后的内容
-                                alignedContentForSaving.append(alignedContent);
-                                alignmentDone[0] = true;
+                            if (!content.isEmpty()) {
+                                // 对齐完成后，直接添加内容（不再清理）
+                                alignedContentForSaving.append(content);
+                                continuationContent.append(content);
 
-                                log.info("续写对齐完成，原内容长度：{}，对齐后长度：{}，发送给前端：[{}]",
-                                        originalContent.length(), alignedContent.length(),
-                                        contentToSend.length() > 50 ? contentToSend.substring(0, 50) + "..." : contentToSend);
-
-                                // 发送对齐后的内容给前端
-                                if (!contentToSend.isEmpty()) {
-                                    log.debug("续写发送对齐后内容给前端，使用智能分块: {}", ENABLE_SMART_CHUNKING);
-                                    if (ENABLE_SMART_CHUNKING) {
-                                        sendContentBySmartChunking(contentToSend, response, mapper);
-                                    } else {
-                                        sendContentAsBlock(contentToSend, response, mapper);
-                                    }
-                                    log.debug("续写对齐后内容发送完成");
-                                } else {
-                                    log.warn("续写对齐后内容为空，跳过发送");
-                                }
-
-                                return contentToSend;
-                            } else {
-                                // 已经对齐过，直接发送新内容
-                                log.debug("续写后续内容处理，直接发送新内容: [{}]", cleanContent);
-                                alignedContentForSaving.append(cleanContent);
-
+                                // 发送后续内容给前端
                                 log.debug("续写发送后续内容给前端，使用智能分块: {}", ENABLE_SMART_CHUNKING);
                                 if (ENABLE_SMART_CHUNKING) {
-                                    sendContentBySmartChunking(cleanContent, response, mapper);
+                                    sendContentBySmartChunking(content, response, mapper);
                                 } else {
-                                    sendContentAsBlock(cleanContent, response, mapper);
+                                    sendContentAsBlock(content, response, mapper);
                                 }
-                                log.debug("续写后续内容发送完成");
-                                return cleanContent;
+                                return content;
                             }
-                        } else {
-                            log.debug("续写清理后内容为空，跳过处理");
                         }
                     } else {
                         log.debug("续写原始content为空或null");
@@ -1226,6 +1262,191 @@ public class ChatServiceImpl implements ChatService {
     }
 
     /**
+     * 判断是否应该停止缓存并进行清理（更保守的策略）
+     */
+    private boolean shouldStopCaching(StringBuilder cache, long startTime, int blockCount) {
+        long elapsed = System.currentTimeMillis() - startTime;
+        String cacheContent = cache.toString();
+
+        // 安全边界：超过最大限制必须停止
+        if (elapsed > MAX_CACHE_TIME_MS || blockCount > MAX_CACHE_BLOCKS) {
+            log.info("达到缓存上限，强制停止缓存 - 时间: {}ms, 块数: {}, 长度: {}", elapsed, blockCount, cache.length());
+            return true;
+        }
+
+        // 最小要求：未达到最小要求继续缓存
+        if (elapsed < MIN_CACHE_TIME_MS ||
+            blockCount < MIN_CACHE_BLOCKS ||
+            cache.length() < MIN_CACHE_LENGTH) {
+            log.debug("未达到最小缓存要求，继续缓存 - 时间: {}ms, 块数: {}, 长度: {}", elapsed, blockCount, cache.length());
+            return false;
+        }
+
+        // 智能检测：如果有未闭合标签，必须继续缓存
+        boolean hasUnclosed = hasUnclosedTags(cacheContent);
+        if (hasUnclosed) {
+            log.debug("检测到未闭合标签，继续缓存 - 时间: {}ms, 块数: {}, 长度: {}", elapsed, blockCount, cache.length());
+            return false;
+        }
+
+        // 保守策略：即使没有未闭合标签，也要确保缓存足够的内容
+        // 如果内容看起来像是AI回复的开头（包含特定模式），继续缓存
+        if (looksLikeAiResponseStart(cacheContent) && elapsed < MAX_CACHE_TIME_MS * 0.7) {
+            log.debug("内容疑似AI回复开头，继续缓存 - 时间: {}ms, 块数: {}, 长度: {}", elapsed, blockCount, cache.length());
+            return false;
+        }
+
+        log.info("缓存条件满足，停止缓存 - 时间: {}ms, 块数: {}, 长度: {}", elapsed, blockCount, cache.length());
+        return true;
+    }
+
+    /**
+     * 检查内容是否看起来像AI回复的开头
+     */
+    private boolean looksLikeAiResponseStart(String content) {
+        // 检查是否包含常见的AI回复开头模式
+        return content.contains("```") ||
+               content.contains("<") ||
+               content.contains("•") ||
+               content.contains("User") ||
+               content.contains("function") ||
+               content.contains("class") ||
+               content.length() < 500; // 内容较短时继续缓存
+    }
+
+    /**
+     * 检查是否有未闭合的标签
+     */
+    private boolean hasUnclosedTags(String content) {
+        // 检查thinking标签
+        if (content.contains("<thinking>") && !content.contains("</thinking>")) {
+            return true;
+        }
+
+        // 检查response标签
+        if (content.contains("<response>") && !content.contains("</response>")) {
+            return true;
+        }
+
+        // 检查代码块标记（```）
+        int codeBlockCount = 0;
+        int index = 0;
+        while ((index = content.indexOf("```", index)) != -1) {
+            codeBlockCount++;
+            index += 3;
+        }
+        if (codeBlockCount % 2 != 0) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * 一次性清理所有AI标记
+     */
+    private String cleanAllTagsOnce(String content) {
+        if (content == null || content.trim().isEmpty()) {
+            return content;
+        }
+
+        String cleaned = content;
+        log.debug("开始一次性清理所有标签，原始长度: {}", content.length());
+
+        // 1. 清理thinking标签块
+        cleaned = removeThinkingBlocks(cleaned);
+
+        // 2. 清理response标签
+        cleaned = removeResponseTags(cleaned);
+
+        // 3. 清理代码块开头标记
+        cleaned = removeCodeBlockMarkers(cleaned);
+
+        // 4. 清理多余空白
+        cleaned = cleanExtraWhitespace(cleaned);
+
+        log.debug("一次性清理完成，原长度: {}, 清理后长度: {}, 移除字符数: {}",
+                content.length(), cleaned.length(), content.length() - cleaned.length());
+
+        return cleaned;
+    }
+
+    /**
+     * 处理缓存清理后的内容（修复保存逻辑）
+     */
+    private String processCachedContent(String cleanedCache, String originalContent, StringBuilder continuationContent,
+                                      StringBuilder alignedContentForSaving, boolean[] alignmentDone,
+                                      HttpServletResponse response, ObjectMapper mapper) {
+        if (!alignmentDone[0]) {
+            // 第一次处理，需要对齐
+            log.info("续写首次内容处理，开始执行对齐算法");
+            log.debug("续写对齐参数 - 原内容长度: {}, 续写内容长度: {}", originalContent.length(), cleanedCache.length());
+
+            // 执行对齐算法
+            String alignedContent = truncationDetectionService.alignContent(originalContent, cleanedCache);
+            log.debug("续写对齐结果 - 对齐后内容长度: {}", alignedContent.length());
+
+            // 计算需要发送给前端的内容（去除重叠部分）
+            String contentToSend;
+            if (alignedContent.length() > originalContent.length()) {
+                contentToSend = alignedContent.substring(originalContent.length());
+                log.debug("续写对齐成功，提取新增内容长度: {}", contentToSend.length());
+            } else {
+                contentToSend = cleanedCache; // 如果对齐失败，发送原始内容
+                log.warn("续写对齐失败，使用原始内容，长度: {}", cleanedCache.length());
+            }
+
+            // 重要修复：保存完整的对齐内容（包含原内容+续写内容）
+            alignedContentForSaving.append(alignedContent);
+            continuationContent.append(contentToSend);
+            alignmentDone[0] = true;
+
+            // 调试日志：检查发送给前端的清理后内容
+            String sendPreview = contentToSend.length() > 200 ?
+                "开头: [" + contentToSend.substring(0, 100) + "...] 结尾: [..." + contentToSend.substring(contentToSend.length() - 100) + "]" :
+                "完整内容: [" + contentToSend + "]";
+            log.info("续写对齐详情 - 原内容长度: {}, 对齐后长度: {}, 发送长度: {}, 保存长度: {}",
+                    originalContent.length(), alignedContent.length(), contentToSend.length(), alignedContentForSaving.length());
+            log.info("续写发送给前端的清理后内容预览: {}", sendPreview);
+
+            // 额外日志：显示保存内容的预览（用于调试保存逻辑）
+            String savePreview = alignedContentForSaving.length() > 200 ?
+                "开头: [" + alignedContentForSaving.substring(0, 100) + "...] 结尾: [..." + alignedContentForSaving.substring(alignedContentForSaving.length() - 100) + "]" :
+                "完整内容: [" + alignedContentForSaving + "]";
+            log.info("续写保存内容预览: {}", savePreview);
+
+            // 发送对齐后的内容给前端
+            if (!contentToSend.isEmpty()) {
+                log.debug("续写发送对齐后内容给前端，使用智能分块: {}", ENABLE_SMART_CHUNKING);
+                if (ENABLE_SMART_CHUNKING) {
+                    sendContentBySmartChunking(contentToSend, response, mapper);
+                } else {
+                    sendContentAsBlock(contentToSend, response, mapper);
+                }
+                log.debug("续写对齐后内容发送完成");
+            } else {
+                log.warn("续写对齐后内容为空，跳过发送");
+            }
+
+            return contentToSend;
+        } else {
+            // 已经对齐过，直接发送新内容
+            log.debug("续写后续内容处理，直接发送新内容长度: {}", cleanedCache.length());
+            alignedContentForSaving.append(cleanedCache);
+            continuationContent.append(cleanedCache);
+
+            log.debug("续写发送后续内容给前端，使用智能分块: {}", ENABLE_SMART_CHUNKING);
+            if (ENABLE_SMART_CHUNKING) {
+                sendContentBySmartChunking(cleanedCache, response, mapper);
+            } else {
+                sendContentAsBlock(cleanedCache, response, mapper);
+            }
+            log.debug("续写后续内容发送完成");
+            return cleanedCache;
+        }
+    }
+
+    /**
      * 处理完整的JSON数据
      */
     private String processCompleteJson(String jsonData, HttpServletResponse response) {
@@ -1242,7 +1463,7 @@ public class ChatServiceImpl implements ChatService {
                 if (delta != null && delta.has("content")) {
                     String content = delta.get("content").asText();
                     if (content != null && !content.isEmpty()) {
-                        String cleanContent = cleanContinuationContent(content);
+                        String cleanContent = cleanContent(content);
 
                         if (!cleanContent.isEmpty()) {
                             log.debug("AI响应内容: [{}]", cleanContent.length() > 50 ? cleanContent.substring(0, 50) + "..." : cleanContent);
@@ -1286,7 +1507,7 @@ public class ChatServiceImpl implements ChatService {
     }
 
     /**
-     * 清理续写内容中的AI标记
+     * 清理续写内容中的AI标记（在流式响应开始时执行）
      */
     private String cleanContinuationContent(String content) {
         if (content == null || content.trim().isEmpty()) {
@@ -1296,7 +1517,7 @@ public class ChatServiceImpl implements ChatService {
         String cleaned = content;
         log.debug("开始清理续写内容，原始长度: {}", content.length());
 
-        // 1. 移除完整的 <thinking>...</thinking> 块
+        // 1. 移除完整的 <thinking>...</thinking> 块（最重要的清理）
         cleaned = removeThinkingBlocks(cleaned);
 
         // 2. 移除开头的 <response> 标签
@@ -1314,8 +1535,52 @@ public class ChatServiceImpl implements ChatService {
         return cleaned;
     }
 
+
+
     /**
-     * 移除 <thinking>...</thinking> 块和单独的thinking标记
+     * 清理thinking标记和内容（续写保存时使用）
+     */
+    private String cleanThinkingContent(String content) {
+        if (content == null || content.trim().isEmpty()) {
+            return content;
+        }
+
+        String result = content;
+        log.debug("开始清理thinking内容，原始长度: {}", content.length());
+
+        // 检测并删除完整的thinking块
+        while (true) {
+            int thinkingStart = result.indexOf("<thinking>");
+            int thinkingEnd = result.indexOf("</thinking>");
+
+            if (thinkingStart != -1 && thinkingEnd != -1 && thinkingEnd > thinkingStart) {
+                // 找到完整的thinking块，删除从<thinking>到</thinking>的所有内容
+                String beforeThinking = result.substring(0, thinkingStart);
+                String afterThinking = result.substring(thinkingEnd + "</thinking>".length());
+                result = beforeThinking + afterThinking;
+
+                log.info("删除了一个完整thinking块，位置: {} - {}", thinkingStart, thinkingEnd + "</thinking>".length());
+            } else {
+                break; // 没有更多完整的thinking块
+            }
+        }
+
+        // 删除单独的thinking标记
+        result = result.replaceAll("(?m)^\\s*<thinking>\\s*$", "");
+        result = result.replaceAll("(?m)^\\s*</thinking>\\s*$", "");
+
+        // 清理多余的空白行
+        result = result.replaceAll("\n{3,}", "\n\n");
+        result = result.trim();
+
+        log.debug("thinking内容清理完成，清理后长度: {}, 移除字符数: {}",
+                result.length(), content.length() - result.length());
+
+        return result;
+    }
+
+    /**
+     * 移除 <thinking>...</thinking> 块和单独的thinking标记，以及无标签的thinking内容
      */
     private String removeThinkingBlocks(String content) {
         if (content == null) return content;
@@ -1323,27 +1588,47 @@ public class ChatServiceImpl implements ChatService {
         String result = content;
         log.debug("removeThinkingBlocks - 输入内容: [{}], 长度: {}", content, content.length());
 
-        // 1. 移除完整的 thinking 块，支持多行和嵌套
-        String completeBlockPattern = "(?s)<thinking>.*?</thinking>\\s*";
-        String afterCompleteBlock = result.replaceAll(completeBlockPattern, "");
-        if (!afterCompleteBlock.equals(result)) {
-            log.debug("移除了完整thinking块，原长度: {}, 新长度: {}", result.length(), afterCompleteBlock.length());
-        }
-        result = afterCompleteBlock;
+        // 1. 移除完整的 thinking 块，包括标签和内部所有内容
+        // 使用循环确保删除所有thinking块
+        while (result.contains("<thinking>") && result.contains("</thinking>")) {
+            int startIndex = result.indexOf("<thinking>");
+            int endIndex = result.indexOf("</thinking>");
 
-        // 2. 移除开头的单独 <thinking> 标记
-        String afterStartTag = result.replaceAll("^\\s*<thinking>\\s*", "");
+            if (startIndex != -1 && endIndex != -1 && endIndex > startIndex) {
+                String beforeThinking = result.substring(0, startIndex);
+                String afterThinking = result.substring(endIndex + "</thinking>".length());
+                String removedContent = result.substring(startIndex, endIndex + "</thinking>".length());
+
+                result = beforeThinking + afterThinking;
+                log.info("移除了thinking块，完整移除内容: [{}]", removedContent);
+            } else {
+                break; // 防止无限循环
+            }
+        }
+
+        // 2. 移除任何位置的单独 <thinking> 标记
+        String afterStartTag = result.replaceAll("<thinking>\\s*", "");
         if (!afterStartTag.equals(result)) {
-            log.debug("移除了开头thinking标记，原长度: {}, 新长度: {}", result.length(), afterStartTag.length());
+            log.debug("移除了thinking开始标记，原长度: {}, 新长度: {}", result.length(), afterStartTag.length());
         }
         result = afterStartTag;
 
-        // 3. 移除结尾的单独 </thinking> 标记
-        String afterEndTag = result.replaceAll("\\s*</thinking>\\s*$", "");
+        // 3. 移除任何位置的单独 </thinking> 标记
+        String afterEndTag = result.replaceAll("\\s*</thinking>", "");
         if (!afterEndTag.equals(result)) {
-            log.debug("移除了结尾thinking标记，原长度: {}, 新长度: {}", result.length(), afterEndTag.length());
+            log.debug("移除了thinking结束标记，原长度: {}, 新长度: {}", result.length(), afterEndTag.length());
         }
         result = afterEndTag;
+
+        // 4. 移除无标签的thinking内容模式（以 • 开头的AI分析内容）
+        String thinkingPattern = "(?s)•\\s*[^\\n]*(?:\\n•\\s*[^\\n]*)*";
+        String afterThinkingContent = result.replaceAll(thinkingPattern, "");
+        if (!afterThinkingContent.equals(result)) {
+            log.debug("移除了无标签thinking内容，原长度: {}, 新长度: {}", result.length(), afterThinkingContent.length());
+        }
+        result = afterThinkingContent;
+
+
 
         if (!result.equals(content)) {
             log.debug("thinking块清理完成，原长度: {}, 新长度: {}, 移除字符数: {}",
@@ -1356,36 +1641,42 @@ public class ChatServiceImpl implements ChatService {
     }
 
     /**
-     * 移除开头的 <response> 标签
+     * 移除 <response> 和 </response> 标签（任何位置）
      */
     private String removeResponseTags(String content) {
         if (content == null) return content;
 
         String result = content;
 
-        // 只移除开头的 <response> 标签
-        result = result.replaceAll("^\\s*<response>\\s*", "");
+        // 1. 移除所有 <response> 标签
+        result = result.replaceAll("<response>", "");
+
+        // 2. 移除所有 </response> 标签
+        result = result.replaceAll("</response>", "");
 
         if (!result.equals(content)) {
-            log.debug("移除了开头的 response 标签，原长度: {}, 新长度: {}", content.length(), result.length());
+            log.info("移除了 response 标签，原内容: [{}], 清理后: [{}]", content, result);
         }
 
         return result;
     }
 
     /**
-     * 移除开头的代码块标记
+     * 移除代码块标记（任何位置）
      */
     private String removeCodeBlockMarkers(String content) {
         if (content == null) return content;
 
         String result = content;
 
-        // 只移除开头的代码块标记，如 ```javascript, ```html, ```css, ```json 等
-        result = result.replaceAll("^\\s*```\\w*\\s*", "");
+        // 移除任何位置的代码块开始标记，如 ```javascript, ```html, ```css, ```json 等
+        result = result.replaceAll("```\\w*", "");
+
+        // 移除单独的 ``` 标记
+        result = result.replaceAll("```", "");
 
         if (!result.equals(content)) {
-            log.debug("移除了开头的代码块标记，原长度: {}, 新长度: {}", content.length(), result.length());
+            log.info("移除了代码块标记，原内容: [{}], 清理后: [{}]", content, result);
         }
 
         return result;
@@ -1605,7 +1896,19 @@ public class ChatServiceImpl implements ChatService {
             if (success && hasContentSent[0]) {
                 // 保存完整内容到数据库（续写不计入聊天次数，所以直接保存）
                 if (request.getSessionId() != null && request.getUserId() != null) {
-                    String finalContent = alignedContentForSaving.toString();
+                    // 简化逻辑：直接拼接原内容和续写内容（续写内容已在缓存阶段清理过）
+                    String continuationContentStr = continuationContent.toString();
+
+                    // 拼接完整内容：原内容 + 续写内容（不再清理，因为已在缓存阶段清理过）
+                    String finalContent = originalContent + continuationContentStr;
+
+                    // 调试日志：检查保存内容的开头和结尾
+                    log.info("续写保存详情 - 原内容长度: {}, 续写长度: {}, 最终长度: {}",
+                            originalContent.length(), continuationContentStr.length(), finalContent.length());
+                    log.info("续写保存 - 原内容: [{}]", originalContent.length() > 500 ? originalContent.substring(0, 500) + "..." : originalContent);
+                    log.info("续写保存 - 续写内容: [{}]", continuationContentStr);
+                    log.info("续写保存 - 最终完整内容: [{}]", finalContent.length() > 1000 ? finalContent.substring(0, 1000) + "..." : finalContent);
+
                     saveAiResponse(request.getSessionId(), request.getUserId(), model.getId(), finalContent);
                     log.info("续写内容已保存到数据库，会话ID：{}，用户ID：{}，最终长度：{}，不计入聊天次数",
                             request.getSessionId(), request.getUserId(), finalContent.length());
@@ -1661,8 +1964,14 @@ public class ChatServiceImpl implements ChatService {
                                                           String originalContent, StringBuilder continuationContent,
                                                           StringBuilder alignedContentForSaving, boolean[] hasContentSent,
                                                           boolean[] isRealAiResponse, boolean[] alignmentDone) {
-        log.info("=== 开始执行续写请求 ===");
+        log.info("=== 开始执行续写请求（自适应缓存策略）===");
         log.info("续写参数 - 用户ID: {}, 模型: {}, 原内容长度: {}", request.getUserId(), model.getModelCode(), originalContent.length());
+
+        // 初始化缓存相关变量
+        StringBuilder cacheBuffer = new StringBuilder();
+        long[] cacheStartTime = {0};
+        int[] cacheBlockCount = {0};
+        boolean[] cleaningDone = {false};
 
         try {
             // 构建请求体
@@ -1697,6 +2006,10 @@ public class ChatServiceImpl implements ChatService {
             final int[] chunkCount = {0};
             final int[] totalBytes = {0};
 
+            // 添加缓冲区机制（参考主聊天，防止数据丢失）
+            StringBuilder jsonBuffer = new StringBuilder();
+            StringBuilder lineBuffer = new StringBuilder();
+
             log.info("=== 开始发送续写WebClient请求 ===");
 
             webClient.post()
@@ -1721,54 +2034,110 @@ public class ChatServiceImpl implements ChatService {
 
                         return chunk;
                     })
-                    .doOnNext(chunk -> {
+                    .flatMap(chunk -> {
+                        // 将chunk添加到行缓冲区（参考主聊天的处理方式）
+                        lineBuffer.append(chunk);
+
+                        // 按换行符分割，但保留最后一个不完整的行
+                        String bufferedContent = lineBuffer.toString();
+                        String[] lines = bufferedContent.split("\n", -1);
+                        List<String> validLines = new ArrayList<>();
+
+                        // 处理除最后一行外的所有行（这些都是完整的行）
+                        for (int i = 0; i < lines.length - 1; i++) {
+                            String line = lines[i].trim();
+                            if (!line.isEmpty()) {
+                                validLines.add(line);
+                            }
+                        }
+
+                        // 最后一行可能不完整，保留在缓冲区中
+                        String lastLine = lines[lines.length - 1];
+                        lineBuffer.setLength(0);
+                        if (!lastLine.isEmpty()) {
+                            lineBuffer.append(lastLine);
+                        }
+
+                        return Flux.fromIterable(validLines);
+                    })
+                    .doOnNext(line -> {
                         try {
-                            log.debug("续写处理数据块，内容长度: {}, 完整内容: [{}]",
-                                    chunk.length(), chunk);
+                            log.debug("续写处理完整行，内容长度: {}, 完整内容: [{}]",
+                                    line.length(), line.length() > 100 ? line.substring(0, 100) + "..." : line);
 
-                            String[] lines = chunk.split("\n");
-                            log.debug("续写数据块分割为 {} 行", lines.length);
-
-                            for (int i = 0; i < lines.length; i++) {
-                                String line = lines[i].trim();
-                                log.debug("续写处理第 {} 行: [{}]", i + 1, line.length() > 50 ? line.substring(0, 50) + "..." : line);
-
-                                if (line.startsWith("data: ")) {
-                                    if (line.equals("data: [DONE]")) {
-                                        log.info("续写接收到完成标记 [DONE]，流式响应结束");
-                                        return; // 续写完成
-                                    }
-
-                                    String jsonData = line.substring(6).trim();
-                                    log.debug("续写提取JSON数据: [{}]", jsonData.length() > 100 ? jsonData.substring(0, 100) + "..." : jsonData);
-
-                                    // 直接处理单个JSON，不使用缓冲区累积
-                                    if (isValidJson(jsonData)) {
-                                        log.debug("续写JSON验证通过，开始处理");
-                                        try {
-                                            String contentSent = processContinuationJson(jsonData, response,
-                                                    originalContent, continuationContent, alignedContentForSaving, alignmentDone);
-                                            if (contentSent != null) {
-                                                hasContentSent[0] = true;
-                                                isRealAiResponse[0] = true;
-                                                continuationContent.append(contentSent);
-                                                log.debug("续写成功处理内容，发送长度: {}, 累计续写长度: {}",
-                                                        contentSent.length(), continuationContent.length());
-                                            } else {
-                                                log.debug("续写处理返回null，可能是空内容或过滤内容");
-                                            }
-                                        } catch (Exception jsonProcessException) {
-                                            log.error("处理续写JSON失败，跳过此块: {}, JSON内容: [{}]",
-                                                    jsonProcessException.getMessage(),
-                                                    jsonData.length() > 200 ? jsonData.substring(0, 200) + "..." : jsonData);
-                                        }
-                                    } else {
-                                        log.warn("续写JSON验证失败，跳过无效JSON: [{}]",
-                                                jsonData.length() > 100 ? jsonData.substring(0, 100) + "..." : jsonData);
-                                    }
-                                } else if (!line.isEmpty()) {
-                                    log.debug("续写跳过非data行: [{}]", line);
+                            if (line.startsWith("data: ")) {
+                                if (line.equals("data: [DONE]")) {
+                                    log.info("续写接收到完成标记 [DONE]，流式响应结束");
+                                    return; // 续写完成
                                 }
+
+                                String jsonData = line.substring(6).trim();
+                                log.debug("续写提取JSON数据: [{}]", jsonData.length() > 100 ? jsonData.substring(0, 100) + "..." : jsonData);
+
+                                // 使用JSON缓冲区处理（参考主聊天）
+                                jsonBuffer.append(jsonData);
+
+                                // 尝试解析完整的JSON
+                                String bufferedJson = jsonBuffer.toString();
+                                if (isValidJson(bufferedJson)) {
+                                    log.debug("续写JSON验证通过，开始处理");
+                                    try {
+                                        String contentSent = processContinuationJson(bufferedJson, response,
+                                                originalContent, continuationContent, alignedContentForSaving, alignmentDone,
+                                                cacheBuffer, cacheStartTime, cacheBlockCount, cleaningDone);
+                                        if (contentSent != null) {
+                                            hasContentSent[0] = true;
+                                            isRealAiResponse[0] = true;
+                                            // 注意：contentSent已经在processContinuationJson中添加到continuationContent了
+
+                                            log.debug("续写成功处理内容，发送长度: {}, 累计续写长度: {}",
+                                                    contentSent.length(), continuationContent.length());
+                                        } else {
+                                            log.debug("续写处理返回null，可能是空内容或缓存中");
+                                        }
+                                    } catch (Exception jsonProcessException) {
+                                        log.error("处理续写JSON失败，跳过此块: {}, JSON内容: [{}]",
+                                                jsonProcessException.getMessage(),
+                                                bufferedJson.length() > 200 ? bufferedJson.substring(0, 200) + "..." : bufferedJson);
+                                    }
+                                    jsonBuffer.setLength(0); // 清空JSON缓冲区
+                                } else {
+                                    log.debug("续写JSON仍不完整，继续等待: 当前长度 {}", bufferedJson.length());
+                                }
+                            } else if (!line.trim().isEmpty() && jsonBuffer.length() > 0) {
+                                // 处理跨行的JSON片段（参考主聊天）
+                                log.debug("续写处理跨行JSON片段: [{}]", line);
+
+                                // 防止缓冲区无限增长
+                                if (jsonBuffer.length() > 10000) {
+                                    log.warn("续写JSON缓冲区过大，清空重新开始: {}", jsonBuffer.length());
+                                    jsonBuffer.setLength(0);
+                                    return;
+                                }
+
+                                jsonBuffer.append(line.trim());
+
+                                // 尝试解析完整的JSON
+                                String bufferedJson = jsonBuffer.toString();
+                                if (isValidJson(bufferedJson)) {
+                                    log.debug("续写跨行JSON重组成功，长度: {}", bufferedJson.length());
+                                    try {
+                                        String contentSent = processContinuationJson(bufferedJson, response,
+                                                originalContent, continuationContent, alignedContentForSaving, alignmentDone,
+                                                cacheBuffer, cacheStartTime, cacheBlockCount, cleaningDone);
+                                        if (contentSent != null) {
+                                            hasContentSent[0] = true;
+                                            isRealAiResponse[0] = true;
+                                        }
+                                    } catch (Exception jsonProcessException) {
+                                        log.error("处理续写跨行JSON失败: {}", jsonProcessException.getMessage());
+                                    }
+                                    jsonBuffer.setLength(0);
+                                } else {
+                                    log.debug("续写跨行JSON仍不完整，继续等待: 当前长度 {}", bufferedJson.length());
+                                }
+                            } else if (!line.isEmpty()) {
+                                log.debug("续写跳过非data行: [{}]", line);
                             }
                         } catch (Exception e) {
                             log.error("处理续写响应块失败，但继续处理: {}, 异常详情: ", e.getMessage(), e);
@@ -1781,6 +2150,48 @@ public class ChatServiceImpl implements ChatService {
                                 hasContentSent[0], isRealAiResponse[0], alignmentDone[0]);
                         log.info("续写内容统计 - 续写内容长度: {}, 对齐后内容长度: {}",
                                 continuationContent.length(), alignedContentForSaving.length());
+
+                        // 处理剩余的行缓冲区数据（参考主聊天）
+                        if (lineBuffer.length() > 0) {
+                            String remainingLine = lineBuffer.toString().trim();
+                            if (!remainingLine.isEmpty()) {
+                                log.info("续写处理流完成时剩余的行数据: [{}]", remainingLine);
+                                try {
+                                    if (remainingLine.startsWith("data: ")) {
+                                        if (remainingLine.equals("data: [DONE]")) {
+                                            log.info("续写收到完成标记（来自剩余数据）");
+                                        } else {
+                                            String jsonData = remainingLine.substring(6).trim();
+                                            jsonBuffer.append(jsonData);
+                                            String bufferedJson = jsonBuffer.toString();
+                                            if (isValidJson(bufferedJson)) {
+                                                log.debug("续写处理剩余JSON成功");
+                                                try {
+                                                    String contentSent = processContinuationJson(bufferedJson, response,
+                                                            originalContent, continuationContent, alignedContentForSaving, alignmentDone,
+                                                            cacheBuffer, cacheStartTime, cacheBlockCount, cleaningDone);
+                                                    if (contentSent != null) {
+                                                        hasContentSent[0] = true;
+                                                        isRealAiResponse[0] = true;
+                                                    }
+                                                } catch (Exception e) {
+                                                    log.error("处理续写剩余JSON失败: {}", e.getMessage());
+                                                }
+                                            }
+                                        }
+                                    }
+                                } catch (Exception e) {
+                                    log.error("续写处理剩余行数据失败: {}", e.getMessage());
+                                }
+                            }
+                            lineBuffer.setLength(0);
+                        }
+
+                        // 清理JSON缓冲区
+                        if (jsonBuffer.length() > 0) {
+                            log.warn("续写流完成时JSON缓冲区仍有数据，长度: {}, 内容: [{}]", jsonBuffer.length(), jsonBuffer.toString());
+                            jsonBuffer.setLength(0);
+                        }
                     })
                     .doOnCancel(() -> {
                         log.warn("续写WebClient流式响应被取消");
