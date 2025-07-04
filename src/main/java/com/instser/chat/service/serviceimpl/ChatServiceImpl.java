@@ -761,36 +761,39 @@ public class ChatServiceImpl implements ChatService {
 
                         return Flux.fromIterable(validLines);
                     })
+                    .takeWhile(line -> {
+                        // 检查是否被中断，如果中断则停止整个流
+                        if (request.getSessionId() != null && chatInterruptService.isInterrupted(request.getSessionId())) {
+                            log.info("检测到聊天中断信号，停止流处理，会话ID：{}", request.getSessionId());
+                            isInterrupted[0] = true;
+
+                            // 只保存一次中断内容，防止重复保存
+                            if (!interruptSaved[0] && aiResponseContent.length() > 0) {
+                                savePartialAiResponse(request.getSessionId(), request.getUserId(), model.getId(),
+                                                    aiResponseContent.toString(), true);
+                                interruptSaved[0] = true; // 标记已保存
+                                log.debug("已保存中断前的部分AI响应，内容长度：{}", aiResponseContent.length());
+                            }
+
+                            // 发送中断完成标记（只发送一次）
+                            if (!interruptSaved[0] || aiResponseContent.length() == 0) {
+                                try {
+                                    String interruptData = buildInterruptCompletionData();
+                                    response.getWriter().write(interruptData);
+                                    response.getWriter().flush();
+                                    log.info("已发送中断完成标记");
+                                    interruptSaved[0] = true; // 标记已处理
+                                } catch (Exception e) {
+                                    log.error("发送中断完成标记失败", e);
+                                }
+                            }
+
+                            return false; // 停止整个流
+                        }
+                        return true; // 继续处理
+                    })
                     .doOnNext(line -> {
                         try {
-                            // 检查是否被中断
-                            if (request.getSessionId() != null && chatInterruptService.isInterrupted(request.getSessionId())) {
-                                log.info("检测到聊天中断信号，会话ID：{}", request.getSessionId());
-                                isInterrupted[0] = true;
-
-                                // 只保存一次中断内容，防止重复保存
-                                if (!interruptSaved[0] && aiResponseContent.length() > 0) {
-                                    savePartialAiResponse(request.getSessionId(), request.getUserId(), model.getId(),
-                                                        aiResponseContent.toString(), true);
-                                    interruptSaved[0] = true; // 标记已保存
-                                    log.debug("已保存中断前的部分AI响应，内容长度：{}", aiResponseContent.length());
-                                }
-
-                                // 发送中断完成标记（只发送一次）
-                                if (!interruptSaved[0] || aiResponseContent.length() == 0) {
-                                    try {
-                                        String interruptData = buildInterruptCompletionData();
-                                        response.getWriter().write(interruptData);
-                                        response.getWriter().flush();
-                                        log.info("已发送中断完成标记");
-                                        interruptSaved[0] = true; // 标记已处理
-                                    } catch (Exception e) {
-                                        log.error("发送中断完成标记失败", e);
-                                    }
-                                }
-
-                                return; // 停止处理后续数据
-                            }
 
                             log.debug("收到AI响应行: [{}]", line.length() > 100 ? line.substring(0, 100) + "..." : line);
 
@@ -1008,7 +1011,15 @@ public class ChatServiceImpl implements ChatService {
             // 检查是否应用截断检测
             boolean shouldApply = truncationDetectionService.shouldApplyTruncationDetection(interfaceType);
 
-            if (shouldApply && isRealAiResponse && currentContent != null && !currentContent.trim().isEmpty()) {
+            // 检查会话是否被用户手动中断，如果是则跳过截断检测
+            boolean isManuallyInterrupted = request.getSessionId() != null &&
+                                          chatInterruptService.isInterrupted(request.getSessionId());
+
+            if (isManuallyInterrupted) {
+                log.info("检测到用户手动中断聊天，跳过截断检测，会话ID：{}", request.getSessionId());
+            }
+
+            if (shouldApply && isRealAiResponse && currentContent != null && !currentContent.trim().isEmpty() && !isManuallyInterrupted) {
                 // 计算Token数量
                 int tokenCount = calculateTokenCount(currentContent);
 
@@ -1870,6 +1881,12 @@ public class ChatServiceImpl implements ChatService {
         try {
             log.debug("开始执行续写操作，会话ID：{}，原内容长度：{}", request.getSessionId(), originalContent.length());
 
+            // 在续写开始前检查是否已被用户中断
+            if (request.getSessionId() != null && chatInterruptService.isInterrupted(request.getSessionId())) {
+                log.info("续写开始前检测到用户已中断聊天，取消续写操作，会话ID：{}", request.getSessionId());
+                return null; // 直接返回，不执行续写
+            }
+
             // 构建续写请求的消息列表
             List<Map<String, String>> continuationMessages = buildContinuationMessages(request.getMessages(), originalContent);
 
@@ -2040,8 +2057,17 @@ public class ChatServiceImpl implements ChatService {
 
                         return Flux.fromIterable(validLines);
                     })
+                    .takeWhile(line -> {
+                        // 检查是否被用户中断，如果中断则停止整个流
+                        if (request.getSessionId() != null && chatInterruptService.isInterrupted(request.getSessionId())) {
+                            log.info("检测到续写过程中用户中断聊天，停止续写流，会话ID：{}", request.getSessionId());
+                            return false; // 停止整个流
+                        }
+                        return true; // 继续处理
+                    })
                     .doOnNext(line -> {
                         try {
+
                             // 简化续写处理日志
 
                             if (line.startsWith("data: ")) {
