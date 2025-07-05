@@ -227,8 +227,7 @@ springdoc:
 logging:
   config: classpath:logback-spring.xml
   level:
-    com.instser.chat.service.serviceimpl.ChatServiceImpl: DEBUG
-    com.instser.chat.service.serviceimpl.TruncationDetectionServiceImpl: DEBUG
+    com.instser.chat: DEBUG
 
 # 汇率服务配置
 exchange:

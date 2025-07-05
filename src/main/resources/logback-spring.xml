@@ -76,21 +76,7 @@
     <!-- 开发环境配置 -->
     <springProfile name="dev,default">
         <!-- 应用日志级别 -->
-        <logger name="com.instser.chat" level="INFO" additivity="false">
-            <appender-ref ref="CONSOLE"/>
-            <appender-ref ref="ASYNC_FILE"/>
-            <appender-ref ref="ASYNC_ERROR_FILE"/>
-        </logger>
-
-        <!-- 聊天服务详细日志控制 - 减少详细输出 -->
-        <logger name="com.instser.chat.service.serviceimpl.ChatServiceImpl" level="INFO" additivity="false">
-            <appender-ref ref="CONSOLE"/>
-            <appender-ref ref="ASYNC_FILE"/>
-            <appender-ref ref="ASYNC_ERROR_FILE"/>
-        </logger>
-
-        <!-- 截断检测服务日志控制 -->
-        <logger name="com.instser.chat.service.serviceimpl.TruncationDetectionServiceImpl" level="INFO" additivity="false">
+        <logger name="com.instser.chat" level="DEBUG" additivity="false">
             <appender-ref ref="CONSOLE"/>
             <appender-ref ref="ASYNC_FILE"/>
             <appender-ref ref="ASYNC_ERROR_FILE"/>

@@ -313,13 +313,19 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
 
     @Override
     public MessageSaveResult sendMessageWithTokenInfo(String sessionId, String role, String content, Long userId, Long modelId) {
+        log.info("=== ChatMessageService.sendMessageWithTokenInfo 开始 ===");
+        log.info("参数 - sessionId: {}, role: {}, userId: {}, modelId: {}, content长度: {}",
+                sessionId, role, userId, modelId, content != null ? content.length() : 0);
+
         try {
             // 计算Token数量
             Integer tokenCount = calculateTokenCount(content);
+            log.info("Token计算完成: {}", tokenCount);
 
             // 创建消息对象
             ChatMessage message = new ChatMessage();
-            message.setMessageId(java.util.UUID.randomUUID().toString());
+            String messageId = java.util.UUID.randomUUID().toString();
+            message.setMessageId(messageId);
             message.setSessionId(sessionId);
             message.setRole(role);
             message.setContent(content);
@@ -332,19 +338,26 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
             message.setCreatedTime(LocalDateTime.now());
             message.setUpdateTime(LocalDateTime.now());
 
+            log.info("消息对象创建完成，messageId: {}, 准备调用this.save()", messageId);
+
             // 保存消息
             boolean saved = this.save(message);
 
+            log.info("this.save() 调用完成，结果: {}, 消息数据库ID: {}", saved, message.getId());
+
             if (saved) {
-                log.info("{}消息保存成功，消息ID：{}，角色：{}，模型ID：{}，Token数：{}",
-                        "assistant".equals(role) ? "AI" : "用户", message.getId(), role, modelId, tokenCount);
+                log.info("{}消息保存成功，数据库ID：{}，messageId：{}，角色：{}，模型ID：{}，Token数：{}",
+                        "assistant".equals(role) ? "AI" : "用户", message.getId(), messageId, role, modelId, tokenCount);
+                log.info("=== ChatMessageService.sendMessageWithTokenInfo 成功完成 ===");
                 return MessageSaveResult.success(message.getId(), tokenCount);
             } else {
-                log.error("消息保存失败，会话ID：{}，角色：{}", sessionId, role);
+                log.error("消息保存失败，会话ID：{}，角色：{}，messageId：{}", sessionId, role, messageId);
+                log.error("=== ChatMessageService.sendMessageWithTokenInfo 失败完成 ===");
                 return MessageSaveResult.failure();
             }
         } catch (Exception e) {
             log.error("保存消息异常，会话ID：{}，角色：{}", sessionId, role, e);
+            log.error("=== ChatMessageService.sendMessageWithTokenInfo 异常完成 ===");
             return MessageSaveResult.failure();
         }
     }
