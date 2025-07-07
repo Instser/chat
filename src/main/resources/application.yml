@@ -2,6 +2,22 @@ server:
   port: 8080
   servlet:
     context-path: /api
+  # Tomcat服务器优化配置 (8核8G服务器)
+  tomcat:
+    # 线程配置优化
+    threads:
+      max: 400                    # 最大工作线程数 (8核 * 50)
+      min-spare: 50              # 最小空闲线程数
+    # 连接配置优化
+    max-connections: 2000         # 最大连接数
+    accept-count: 200            # 等待队列长度
+    connection-timeout: 20000    # 连接超时时间 (20秒)
+    # 性能优化
+    max-http-post-size: 10MB     # 最大POST请求大小
+    uri-encoding: UTF-8          # URI编码
+    # Keep-Alive优化
+    keep-alive-timeout: 60000    # Keep-Alive超时时间 (60秒)
+    max-keep-alive-requests: 1000 # 最大Keep-Alive请求数
 
 spring:
   application:
@@ -42,54 +58,37 @@ spring:
     username: root
     password: wsq54wg4
 
-    # Druid 连接池配置
+    # Druid 连接池配置 (8核8G服务器优化)
     druid:
-      # 初始连接数
-      initial-size: 5
-      # 最小连接池数量
-      min-idle: 10
-      # 最大连接池数量
-      max-active: 20
-      # 配置获取连接等待超时的时间
-      max-wait: 60000
-      # 配置间隔多久才进行一次检测，检测需要关闭的空闲连接，单位是毫秒
-      time-between-eviction-runs-millis: 60000
-      # 配置一个连接在池中最小生存的时间，单位是毫秒
-      min-evictable-idle-time-millis: 300000
-      # 配置一个连接在池中最大生存的时间，单位是毫秒
-      max-evictable-idle-time-millis: 900000
-      # 配置检测连接是否有效
-      validation-query: SELECT 1 FROM DUAL
-      test-while-idle: true
-      test-on-borrow: false
-      test-on-return: false
-      # 打开PSCache，并且指定每个连接上PSCache的大小
-      pool-prepared-statements: true
-      max-pool-prepared-statement-per-connection-size: 20
-      # 配置监控统计拦截的filters，去掉后监控界面sql无法统计，'wall'用于防火墙
-      # 移除slf4j过滤器，避免记录正常SQL日志
-      filters: stat,wall
-      # 通过connectProperties属性来打开mergeSql功能；慢SQL记录
-      connection-properties: druid.stat.mergeSql\=true;druid.stat.slowSqlMillis\=5000
-      # 配置DruidStatFilter
+      # 基础连接池配置
+      initial-size: 15                    # 初始连接数 (提升到15)
+      min-idle: 20                        # 最小空闲连接数 (提升到20)
+      max-active: 80                      # 最大连接数 (提升到80，支持更高并发)
+      max-wait: 15000                     # 获取连接等待超时 (降低到15秒)
+
+      # 连接检测和回收配置
+      time-between-eviction-runs-millis: 30000    # 检测空闲连接间隔 (30秒)
+      min-evictable-idle-time-millis: 180000      # 连接最小空闲时间 (3分钟)
+      max-evictable-idle-time-millis: 600000      # 连接最大空闲时间 (10分钟)
+      # 连接验证配置
+      validation-query: SELECT 1                  # 验证查询语句 (MySQL优化)
+      test-while-idle: true                       # 空闲时检测连接有效性
+      test-on-borrow: false                       # 获取连接时不检测 (性能优化)
+      test-on-return: false                       # 归还连接时不检测 (性能优化)
+      validation-query-timeout: 3                 # 验证查询超时时间 (3秒)
+
+      # 预编译语句缓存优化
+      pool-prepared-statements: true              # 开启预编译语句缓存
+      max-pool-prepared-statement-per-connection-size: 50  # 每连接最大缓存数 (提升到50)
+
+      # 监控和性能配置 (移除DruidStatViewServlet)
+      filters: stat,wall                          # 监控统计和防火墙
+      connection-properties: druid.stat.mergeSql=true;druid.stat.slowSqlMillis=1000;useServerPrepStmts=true;cachePrepStmts=true;rewriteBatchedStatements=true
+      # 禁用Druid Web监控功能
       web-stat-filter:
-        enabled: true
-        url-pattern: "/*"
-        exclusions: "*.js,*.gif,*.jpg,*.bmp,*.png,*.css,*.ico,/druid/*"
-      # 配置DruidStatViewServlet
+        enabled: false                            # 禁用Web统计过滤器
       stat-view-servlet:
-        enabled: true
-        url-pattern: "/druid/*"
-        # IP白名单(没有配置或者为空，则允许所有访问)
-        allow: 127.0.0.1,192.168.163.1
-        # IP黑名单 (存在共同时，deny优先于allow)
-        deny: 192.168.1.73
-        # 禁用HTML页面上的"Reset All"功能
-        reset-enable: false
-        # 登录名
-        login-username: admin
-        # 登录密码
-        login-password: 123456
+        enabled: false                            # 禁用Druid监控页面
 
   # Jackson配置
   jackson:
@@ -113,8 +112,13 @@ mybatis-plus:
   configuration:
     # 是否开启自动驼峰命名规则映射
     map-underscore-to-camel-case: true
-    # 开启Mybatis二级缓存，默认为 true
-    cache-enabled: false
+    # 开启Mybatis二级缓存 (性能优化)
+    cache-enabled: true
+    # 延迟加载配置 (性能优化)
+    lazy-loading-enabled: true
+    aggressive-lazy-loading: false
+    # 批量操作优化
+    default-executor-type: REUSE
     # 当查询数据为空时字段返回为null，不加这个查询数据为空时，字段将被隐藏
     call-setters-on-nulls: true
     # 使用SLF4J日志实现，只在错误时记录SQL
@@ -299,3 +303,34 @@ app:
     allowed-headers: ${CORS_ALLOWED_HEADERS:*}
     allow-credentials: ${CORS_ALLOW_CREDENTIALS:true}
     max-age: ${CORS_MAX_AGE:3600}
+
+# ========================================
+# 性能优化配置 (8核8G服务器)
+# ========================================
+
+# 管理端点配置
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+# 异步任务配置优化
+async:
+  # 核心线程池大小 (CPU核数)
+  core-pool-size: 8
+  # 最大线程池大小 (CPU核数 * 2)
+  max-pool-size: 16
+  # 队列容量
+  queue-capacity: 200
+  # 线程名前缀
+  thread-name-prefix: "ChatAsync-"
+  # 线程存活时间 (秒)
+  keep-alive-seconds: 60

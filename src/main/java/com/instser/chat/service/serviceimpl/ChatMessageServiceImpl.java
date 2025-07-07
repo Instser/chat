@@ -51,6 +51,9 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
 
     @Override
     public Long sendMessage(String sessionId, String role, String content, Long userId, Long modelId, Integer hasAttachments) {
+        log.debug("【消息入库】开始保存消息，用户ID：{}，会话ID：{}，角色：{}，模型ID：{}",
+                userId, sessionId, role, modelId);
+
         ChatMessage message = new ChatMessage();
         message.setMessageId(java.util.UUID.randomUUID().toString());
         message.setSessionId(sessionId);
@@ -66,9 +69,12 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
         message.setUpdateTime(LocalDateTime.now());
 
         this.save(message);
-        log.info("{}消息保存成功，消息ID：{}，角色：{}，模型ID：{}，附件：{}",
-                "assistant".equals(role) ? "AI" : "用户", message.getId(), role, modelId,
-                hasAttachments != null && hasAttachments > 0 ? "有" : "无");
+        log.info("【消息入库】{}消息保存成功，用户ID：{}，会话ID：{}，消息ID：{}，内容长度：{}",
+                "assistant".equals(role) ? "AI" : "用户", userId, sessionId, message.getMessageId(),
+                content != null ? content.length() : 0);
+        log.debug("【消息入库】详细信息 - 数据库ID：{}，模型ID：{}，附件：{}，Token数：{}",
+                message.getId(), modelId, hasAttachments != null && hasAttachments > 0 ? "有" : "无",
+                message.getTokenCount());
 
         return message.getId();
     }
@@ -85,6 +91,8 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
 
     @Override
     public void updateMessageStatus(Long messageId, Integer status, String errorMessage) {
+        log.debug("【消息状态】开始更新消息状态，消息ID：{}，状态：{}", messageId, status);
+
         ChatMessage message = new ChatMessage();
         message.setId(messageId);
         message.setStatus(status);
@@ -92,7 +100,10 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
         message.setUpdateTime(LocalDateTime.now());
 
         this.updateById(message);
-        log.info("消息状态更新成功，消息ID：{}，状态：{}", messageId, status);
+        log.info("【消息状态】消息状态更新成功，消息ID：{}，状态：{}", messageId, status);
+        if (errorMessage != null && !errorMessage.trim().isEmpty()) {
+            log.debug("【消息状态】错误信息：{}", errorMessage);
+        }
     }
 
     @Override
@@ -109,18 +120,22 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
 
     @Override
     public int deleteMessagesFromPoint(String messageId, String sessionId) {
+        log.info("【消息删除】开始删除消息，会话ID：{}，起始消息ID：{}", sessionId, messageId);
+
         try {
             // 获取指定消息
             ChatMessage targetMessage = getByMessageId(messageId);
             if (targetMessage == null) {
-                log.warn("未找到要删除的消息，messageId：{}", messageId);
+                log.warn("【消息删除】未找到要删除的消息，消息ID：{}", messageId);
                 return 0;
             }
 
             if (!targetMessage.getSessionId().equals(sessionId)) {
-                log.warn("消息不属于指定会话，messageId：{}，sessionId：{}", messageId, sessionId);
+                log.warn("【消息删除】消息不属于指定会话，消息ID：{}，会话ID：{}", messageId, sessionId);
                 return 0;
             }
+
+            log.debug("【消息删除】找到目标消息，用户ID：{}，角色：{}", targetMessage.getUserId(), targetMessage.getRole());
 
             // 获取该会话的所有消息，按创建时间排序
             List<ChatMessage> allMessages = getSessionMessages(sessionId);
@@ -141,32 +156,34 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
             }
 
             if (messagesToDelete.isEmpty()) {
-                log.warn("未找到要删除的消息范围，messageId：{}", messageId);
+                log.warn("【消息删除】未找到要删除的消息范围，消息ID：{}", messageId);
                 return 0;
             }
+
+            log.debug("【消息删除】准备删除{}条消息", messagesToDelete.size());
 
             // 先删除关联的文件
             int deletedFilesCount = 0;
             try {
                 deletedFilesCount = fileUploadService.deleteFilesByMessageIds(messageIdsToDelete, targetMessage.getUserId());
-                log.info("删除消息关联文件完成，文件数量：{}，消息数量：{}", deletedFilesCount, messageIdsToDelete.size());
+                log.debug("【消息删除】删除关联文件完成，文件数量：{}", deletedFilesCount);
             } catch (Exception e) {
-                log.error("删除消息关联文件失败，继续删除消息", e);
+                log.error("【消息删除】删除关联文件失败，继续删除消息", e);
             }
 
             // 执行删除消息
             boolean deleted = this.removeByIds(messagesToDelete);
             if (deleted) {
-                log.info("成功删除{}条消息和{}个关联文件，起始messageId：{}，sessionId：{}",
-                        messagesToDelete.size(), deletedFilesCount, messageId, sessionId);
+                log.info("【消息删除】删除成功，用户ID：{}，会话ID：{}，消息数：{}，文件数：{}",
+                        targetMessage.getUserId(), sessionId, messagesToDelete.size(), deletedFilesCount);
                 return messagesToDelete.size();
             } else {
-                log.error("删除消息失败，messageId：{}，sessionId：{}", messageId, sessionId);
+                log.error("【消息删除】删除失败，消息ID：{}，会话ID：{}", messageId, sessionId);
                 return 0;
             }
 
         } catch (Exception e) {
-            log.error("删除指定消息及之后消息失败，messageId：{}，sessionId：{}", messageId, sessionId, e);
+            log.error("【消息删除】删除异常，消息ID：{}，会话ID：{}", messageId, sessionId, e);
             return 0;
         }
     }

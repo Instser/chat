@@ -73,7 +73,23 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public ChatResponseDTO processStreamChat(ChatRequestDTO request, Authentication authentication, HttpServletResponse response) {
-        log.info("开始处理流式聊天请求，用户ID：{}，模型ID：{}", request.getUserId(), request.getModelId());
+        // 首先从认证信息中获取真实的用户ID
+        Long authenticatedUserId = getCurrentUserId(authentication);
+        if (authenticatedUserId == null) {
+            log.warn("【聊天开始】用户未认证，拒绝请求");
+            try {
+                writeErrorResponse(response, "用户未认证");
+            } catch (IOException e) {
+                log.error("发送错误响应失败", e);
+            }
+            return ChatResponseDTO.failure("用户未认证");
+        }
+
+        // 使用认证用户ID覆盖请求中的用户ID，确保安全性
+        request.setUserId(authenticatedUserId);
+
+        log.info("【聊天开始】用户ID：{}，会话ID：{}，模型ID：{}",
+                request.getUserId(), request.getSessionId(), request.getModelId());
 
         try {
             // 设置响应头
@@ -82,24 +98,32 @@ public class ChatServiceImpl implements ChatService {
             // 执行前置验证
             ChatResponseDTO validationResult = performPreValidation(request, authentication, response);
             if (validationResult != null) {
+                log.info("【聊天结束】用户ID：{}，会话ID：{}，结果：前置验证失败",
+                        request.getUserId(), request.getSessionId());
                 return validationResult;
             }
 
             // 获取并验证模型配置
             AiModel model = validateAndGetModel(request, response);
             if (model == null) {
+                log.info("【聊天结束】用户ID：{}，会话ID：{}，结果：模型验证失败",
+                        request.getUserId(), request.getSessionId());
                 return ChatResponseDTO.errorWithContent("Request failed. Please try again later.");
             }
 
             // 验证用户聊天权限
             ChatResponseDTO permissionResult = validateChatPermission(request, model, response);
             if (permissionResult != null) {
+                log.info("【聊天结束】用户ID：{}，会话ID：{}，结果：权限验证失败",
+                        request.getUserId(), request.getSessionId());
                 return permissionResult;
             }
 
             // 准备会话和消息
             ChatResponseDTO sessionResult = prepareSessionAndMessage(request, model, response);
             if (sessionResult != null) {
+                log.info("【聊天结束】用户ID：{}，会话ID：{}，结果：会话准备失败",
+                        request.getUserId(), request.getSessionId());
                 return sessionResult;
             }
 
@@ -108,11 +132,16 @@ public class ChatServiceImpl implements ChatService {
             if (messages == null) {
                 String errorContent = "会话中没有可用的消息";
                 writeErrorResponse(response, errorContent);
+                log.info("【聊天结束】用户ID：{}，会话ID：{}，结果：消息构建失败",
+                        request.getUserId(), request.getSessionId());
                 return ChatResponseDTO.failure(errorContent);
             }
 
             // 更新request中的messages为从数据库构建的完整上下文
             request.setMessages(messages);
+
+            log.info("【AI调用开始】用户ID：{}，会话ID：{}，模型：{}，消息数：{}",
+                    request.getUserId(), request.getSessionId(), model.getModelCode(), messages.size());
 
             // 执行AI流式响应
             ChatResponseDTO result = executeAiStreamResponse(request, model, response);
@@ -120,9 +149,16 @@ public class ChatServiceImpl implements ChatService {
             // 注释掉原有的保存逻辑，现在在handleStreamCompletionWithInterruptStatus中提前保存
             // handleAiResponseProcessing(result, request, model);
 
+            log.info("【聊天结束】用户ID：{}，会话ID：{}，结果：{}，内容长度：{}",
+                    request.getUserId(), request.getSessionId(),
+                    result.isSuccess() ? "成功" : (result.isInterrupted() ? "中断" : "失败"),
+                    result.getAiResponseContent() != null ? result.getAiResponseContent().length() : 0);
+
             return result;
 
         } catch (Exception e) {
+            log.info("【聊天结束】用户ID：{}，会话ID：{}，结果：异常",
+                    request.getUserId(), request.getSessionId());
             return handleStreamChatException(e, request, response);
         }
     }
@@ -156,6 +192,18 @@ public class ChatServiceImpl implements ChatService {
         if (authentication == null || !authentication.isAuthenticated()) {
             return "用户未认证";
         }
+
+        // 验证认证用户ID与请求用户ID是否一致（额外安全检查）
+        Long authenticatedUserId = getCurrentUserId(authentication);
+        if (authenticatedUserId == null) {
+            return "无法获取认证用户信息";
+        }
+
+        if (!authenticatedUserId.equals(userId)) {
+            log.warn("用户ID不匹配，认证用户ID：{}，请求用户ID：{}", authenticatedUserId, userId);
+            return "用户权限验证失败";
+        }
+
         return null; // 验证通过
     }
 
@@ -168,9 +216,12 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public String saveUserMessage(List<Map<String, String>> messages, String sessionId, Long userId, Long modelId) {
+        log.debug("【消息保存】开始保存用户消息，用户ID：{}，会话ID：{}，模型ID：{}", userId, sessionId, modelId);
+
         try {
             if (messages == null || messages.isEmpty() || sessionId == null || userId == null) {
-                log.warn("无法保存用户消息到数据库，缺少必要参数");
+                log.warn("【消息保存】参数验证失败，用户ID：{}，会话ID：{}，消息数：{}",
+                        userId, sessionId, messages != null ? messages.size() : 0);
                 return null;
             }
 
@@ -190,16 +241,18 @@ public class ChatServiceImpl implements ChatService {
                     // 获取刚创建的消息以获取messageId
                     ChatMessage savedMessage = chatMessageService.getById(messageDbId);
                     if (savedMessage != null) {
-                        log.debug("用户消息已保存到数据库，会话ID：{}，用户ID：{}，消息ID：{}，模型ID：{}，内容长度：{}",
-                                sessionId, userId, savedMessage.getMessageId(), modelId, lastUserMessage.length());
+                        log.info("【消息保存】用户消息保存成功，用户ID：{}，会话ID：{}，消息ID：{}，内容长度：{}",
+                                userId, sessionId, savedMessage.getMessageId(), lastUserMessage.length());
+                        log.debug("【消息保存】详细信息 - 模型ID：{}，内容预览：{}",
+                                modelId, lastUserMessage.length() > 50 ? lastUserMessage.substring(0, 50) + "..." : lastUserMessage);
                         return savedMessage.getMessageId();
                     }
                 }
             } else {
-                log.warn("未找到有效的用户消息，跳过保存");
+                log.warn("【消息保存】未找到有效的用户消息，用户ID：{}，会话ID：{}", userId, sessionId);
             }
         } catch (Exception e) {
-            log.error("保存用户消息到数据库失败", e);
+            log.error("【消息保存】保存用户消息失败，用户ID：{}，会话ID：{}", userId, sessionId, e);
         }
         return null;
     }
@@ -304,6 +357,8 @@ public class ChatServiceImpl implements ChatService {
      * @return 如果验证失败返回错误响应，验证通过返回null
      */
     private ChatResponseDTO validateChatPermission(ChatRequestDTO request, AiModel model, HttpServletResponse response) {
+        log.debug("【权限验证】开始验证聊天权限，用户ID：{}，会话ID：{}", request.getUserId(), request.getSessionId());
+
         try {
             ChatLimitVO limitCheck = chatLimitService.validateChatPermission(request.getUserId());
             if (!limitCheck.getCanChat()) {
@@ -313,26 +368,28 @@ public class ChatServiceImpl implements ChatService {
                 // 保存错误响应到数据库
                 if (request.getSessionId() != null && request.getUserId() != null) {
                     saveErrorResponse(request.getSessionId(), request.getUserId(), model.getId(), errorContent);
-                    log.info("聊天权限验证失败错误响应已保存到数据库，会话ID：{}，用户ID：{}，原因：{}",
-                            request.getSessionId(), request.getUserId(),
-                            limitCheck.getLimitReason() != null ? limitCheck.getLimitReason() : "Chat permission verification failed");
+                    log.info("【权限验证】验证失败，用户ID：{}，会话ID：{}，原因：{}",
+                            request.getUserId(), request.getSessionId(),
+                            limitCheck.getLimitReason() != null ? limitCheck.getLimitReason() : "权限验证失败");
                 }
 
                 return ChatResponseDTO.errorWithContent(errorContent);
             }
 
-            log.info("用户{}聊天权限验证通过，套餐：{}，限制类型：{}",
+            log.info("【权限验证】验证通过，用户ID：{}，套餐：{}，限制类型：{}",
                     request.getUserId(), limitCheck.getPackageName(), limitCheck.getLimitType());
+            log.debug("【权限验证】详细信息 - 会话ID：{}，剩余次数：{}，每日限制：{}",
+                    request.getSessionId(), limitCheck.getRemainingToday(), limitCheck.getDailyLimit());
 
             return null; // 验证通过
         } catch (Exception e) {
-            log.error("验证用户聊天权限异常", e);
+            log.error("【权限验证】验证异常，用户ID：{}，会话ID：{}", request.getUserId(), request.getSessionId(), e);
             try {
                 String errorContent = "Request failed. Please try again later.";
                 writeErrorResponse(response, errorContent);
                 return ChatResponseDTO.errorWithContent(errorContent);
             } catch (IOException ioException) {
-                log.error("发送错误响应失败", ioException);
+                log.error("【权限验证】发送错误响应失败，用户ID：{}", request.getUserId(), ioException);
                 return ChatResponseDTO.failure("System error");
             }
         }
@@ -474,12 +531,14 @@ public class ChatServiceImpl implements ChatService {
             // 处理文件内容并附加到用户消息中（仅用于AI处理）
             // 正常聊天使用request中的filesId参数，而不是从数据库查找
             if (request.getFilesId() != null && !request.getFilesId().trim().isEmpty()) {
-                log.info("正常聊天检测到文件附件，开始处理文件内容，文件ID：{}", request.getFilesId());
+                log.info("【文件处理】开始处理文件附件，用户ID：{}，会话ID：{}，文件ID：{}",
+                        request.getUserId(), request.getSessionId(), request.getFilesId());
                 List<Map<String, String>> processedMessages = processFilesContent(messages, request.getFilesId(), request.getUserId());
                 messages = processedMessages;
-                log.info("正常聊天文件内容处理完成");
+                log.info("【文件处理】文件内容处理完成，用户ID：{}，会话ID：{}",
+                        request.getUserId(), request.getSessionId());
             } else {
-                log.debug("正常聊天没有文件附件");
+                log.debug("【文件处理】无文件附件，用户ID：{}，会话ID：{}", request.getUserId(), request.getSessionId());
             }
 
             // 处理联网搜索内容并附加到用户消息中（仅用于AI处理）
@@ -487,15 +546,18 @@ public class ChatServiceImpl implements ChatService {
                 // 提取用户查询内容（从最后一条用户消息中获取）
                 String userQuery = extractUserQuery(messages);
                 if (userQuery != null && !userQuery.trim().isEmpty()) {
-                    log.info("正常聊天检测到联网搜索请求，开始处理联网内容，查询：{}", userQuery);
+                    log.info("【联网搜索】开始处理联网搜索，用户ID：{}，会话ID：{}，查询：{}",
+                            request.getUserId(), request.getSessionId(), userQuery);
                     List<Map<String, String>> processedMessages = processNetworkContent(messages, userQuery);
                     messages = processedMessages;
-                    log.info("正常聊天联网内容处理完成");
+                    log.info("【联网搜索】联网内容处理完成，用户ID：{}，会话ID：{}",
+                            request.getUserId(), request.getSessionId());
                 } else {
-                    log.warn("联网搜索请求但无法提取用户查询内容");
+                    log.warn("【联网搜索】无法提取用户查询内容，用户ID：{}，会话ID：{}",
+                            request.getUserId(), request.getSessionId());
                 }
             } else {
-                log.debug("正常聊天没有启用联网搜索");
+                log.debug("【联网搜索】未启用联网搜索，用户ID：{}，会话ID：{}", request.getUserId(), request.getSessionId());
             }
 
             return messages;
@@ -745,51 +807,48 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public void saveAiResponse(String sessionId, Long userId, Long modelId, String content) {
-        log.info("=== saveAiResponse 开始 ===");
-        log.info("参数检查 - sessionId: {}, userId: {}, modelId: {}, content长度: {}",
-                sessionId, userId, modelId, content != null ? content.length() : 0);
+        log.info("【AI响应保存】开始保存，用户ID：{}，会话ID：{}，模型ID：{}，内容长度：{}",
+                userId, sessionId, modelId, content != null ? content.length() : 0);
 
         try {
             if (sessionId != null && userId != null && modelId != null && content != null && !content.trim().isEmpty()) {
-                log.info("参数验证通过，开始调用chatMessageService.sendMessageWithTokenInfo");
-                log.debug("内容预览: {}", content.length() > 100 ? content.substring(0, 100) + "..." : content);
+                log.debug("【AI响应保存】参数验证通过，内容预览：{}",
+                        content.length() > 100 ? content.substring(0, 100) + "..." : content);
 
                 // 保存AI响应消息到数据库并获取Token信息（避免额外数据库查询）
                 MessageSaveResult result = chatMessageService.sendMessageWithTokenInfo(sessionId, "assistant", content, userId, modelId);
 
-                log.info("chatMessageService.sendMessageWithTokenInfo 调用完成，结果: success={}, tokenCount={}",
+                log.debug("【AI响应保存】数据库操作完成，成功：{}，Token数：{}",
                         result.isSuccess(), result.getTokenCount());
 
                 // 检查保存结果并记录Token使用量
                 if (result.isSuccess() && result.getTokenCount() > 0) {
-                    log.info("消息保存成功，开始记录Token使用量: {}", result.getTokenCount());
                     boolean tokenRecorded = chatLimitService.recordTokenUsage(userId, result.getTokenCount());
                     if (tokenRecorded) {
-                        log.info("用户{}AI响应Token使用记录成功，使用了{}个Token", userId, result.getTokenCount());
+                        log.info("【AI响应保存】保存成功，用户ID：{}，会话ID：{}，Token数：{}",
+                                userId, sessionId, result.getTokenCount());
+                        log.debug("【AI响应保存】Token使用记录成功，模型ID：{}，内容长度：{}",
+                                modelId, content.length());
                     } else {
-                        log.warn("用户{}AI响应Token使用记录失败，可能余额不足", userId);
+                        log.warn("【AI响应保存】Token使用记录失败，用户ID：{}，会话ID：{}，Token数：{}",
+                                userId, sessionId, result.getTokenCount());
                     }
-
-                    log.info("AI响应已保存到数据库，会话ID：{}，用户ID：{}，模型ID：{}，内容长度：{}，Token数：{}",
-                            sessionId, userId, modelId, content.length(), result.getTokenCount());
                 } else if (result.isSuccess()) {
-                    log.info("AI响应已保存到数据库（无Token），会话ID：{}，用户ID：{}，模型ID：{}，内容长度：{}，Token数：0",
-                            sessionId, userId, modelId, content.length());
+                    log.info("【AI响应保存】保存成功（无Token计费），用户ID：{}，会话ID：{}，内容长度：{}",
+                            userId, sessionId, content.length());
                 } else {
-                    log.error("AI响应消息保存失败，无法记录Token使用量，会话ID：{}，用户ID：{}，模型ID：{}",
-                             sessionId, userId, modelId);
+                    log.error("【AI响应保存】数据库保存失败，用户ID：{}，会话ID：{}，模型ID：{}",
+                             userId, sessionId, modelId);
                 }
-
-                log.info("=== saveAiResponse 完成 ===");
             } else {
-                log.error("无法保存AI响应到数据库，缺少必要参数：sessionId={}, userId={}, modelId={}, contentLength={}",
-                        sessionId, userId, modelId, content != null ? content.length() : 0);
-                log.error("参数详细检查 - sessionId null: {}, userId null: {}, modelId null: {}, content null: {}, content empty: {}",
+                log.warn("【AI响应保存】参数验证失败，用户ID：{}，会话ID：{}，模型ID：{}，内容长度：{}",
+                        userId, sessionId, modelId, content != null ? content.length() : 0);
+                log.debug("【AI响应保存】参数详细检查 - sessionId null: {}, userId null: {}, modelId null: {}, content null: {}, content empty: {}",
                          sessionId == null, userId == null, modelId == null, content == null,
                          content != null ? content.trim().isEmpty() : "N/A");
             }
         } catch (Exception e) {
-            log.error("保存AI响应到数据库异常，sessionId：{}，userId：{}，modelId：{}", sessionId, userId, modelId, e);
+            log.error("【AI响应保存】保存异常，用户ID：{}，会话ID：{}，模型ID：{}", userId, sessionId, modelId, e);
         }
     }
 
@@ -1396,57 +1455,25 @@ public class ChatServiceImpl implements ChatService {
                 if (!isComplete) {
                     log.info("检测到内容被截断，开始续写流程，会话ID：{}", request.getSessionId());
 
-                    // 使用线程池执行续写操作，避免在reactor线程中阻塞
-                    CompletableFuture<String> continuationFuture = CompletableFuture
-                        .supplyAsync(() -> {
-                            log.debug("续写任务开始执行，线程：{}, 会话ID：{}",
-                                    Thread.currentThread().getName(), request.getSessionId());
-                            return continueAiResponse(response, request, model, currentContent);
-                        }, continuationExecutor)
-                        .exceptionally(throwable -> {
-                            log.error("续写操作异常，线程：{}, 会话ID：{}",
-                                    Thread.currentThread().getName(), request.getSessionId(), throwable);
-                            return null;
-                        });
+                    // 执行多次续写（最多2次）
+                    String finalContent = performMultipleContinuations(response, request, model, currentContent, aiResponseContentRef);
 
-                    try {
-                        // 等待续写完成（在专用线程中执行，不阻塞reactor线程）
-                        String continuationContent = continuationFuture.join();
+                    // 检查续写结果
+                    if (finalContent != null) {
+                        if (finalContent.startsWith("CONTINUATION_INTERRUPTED:")) {
+                            String actualContent = finalContent.substring("CONTINUATION_INTERRUPTED:".length());
+                            log.info("续写被中断，会话ID：{}，部分续写内容长度：{}",
+                                    request.getSessionId(), actualContent.length());
 
-                        if (continuationContent != null && !continuationContent.trim().isEmpty()) {
-                            log.debug("续写返回内容检查 - 内容长度: {}, 是否以CONTINUATION_INTERRUPTED开头: {}",
-                                     continuationContent.length(), continuationContent.startsWith("CONTINUATION_INTERRUPTED:"));
-
-                            // 检查是否是续写中断标记
-                            if (continuationContent.startsWith("CONTINUATION_INTERRUPTED:")) {
-                                String actualContent = continuationContent.substring("CONTINUATION_INTERRUPTED:".length());
-                                log.info("续写被中断，会话ID：{}，部分续写内容长度：{}",
-                                        request.getSessionId(), actualContent.length());
-
-                                // 将部分续写内容拼接到原内容后面
-                                aiResponseContentRef.append(actualContent);
-
-                                log.debug("中断内容拼接完成 - 原内容长度: {}, 部分续写长度: {}, 最终长度: {}",
-                                        currentContent.length(), actualContent.length(), aiResponseContentRef.length());
-
-                                // 设置最终中断状态为true（续写被中断）
-                                finalInterruptedStatus = true;
-                                log.info("设置 finalInterruptedStatus = true (续写中断)");
-                            } else {
-                                log.info("续写操作完成，会话ID：{}，续写内容长度：{}",
-                                        request.getSessionId(), continuationContent.length());
-
-                                // 将续写内容拼接到原内容后面
-                                aiResponseContentRef.append(continuationContent);
-
-                                log.debug("内容拼接完成 - 原内容长度: {}, 续写长度: {}, 最终长度: {}",
-                                        currentContent.length(), continuationContent.length(), aiResponseContentRef.length());
-                            }
+                            // 设置最终中断状态为true（续写被中断）
+                            finalInterruptedStatus = true;
+                            log.info("设置 finalInterruptedStatus = true (续写中断)");
                         } else {
-                            log.warn("续写操作失败或无内容生成，继续正常流程，会话ID：{}", request.getSessionId());
+                            log.info("续写流程完成，会话ID：{}，最终内容长度：{}",
+                                    request.getSessionId(), aiResponseContentRef.length());
                         }
-                    } catch (Exception e) {
-                        log.error("等待续写操作完成时发生异常，会话ID：{}", request.getSessionId(), e);
+                    } else {
+                        log.warn("续写操作失败或无内容生成，继续正常流程，会话ID：{}", request.getSessionId());
                     }
                 }
             }
@@ -1467,12 +1494,13 @@ public class ChatServiceImpl implements ChatService {
                             request.getSessionId(), contentToSave.length(), finalInterruptedStatus);
                     saveAiResponse(request.getSessionId(), request.getUserId(), model.getId(), contentToSave);
 
-                    // 记录聊天使用次数
-                    boolean recordSuccess = chatLimitService.recordChatUsage(request.getUserId());
-                    if (recordSuccess) {
-                        log.info("用户{}聊天使用次数记录成功", request.getUserId());
+                    // 记录模型使用次数（使用实际模型名称）
+                    String modelName = model.getModelName();
+                    boolean modelRecordSuccess = chatLimitService.recordModelChatUsage(request.getUserId(), modelName);
+                    if (modelRecordSuccess) {
+                        log.info("用户{}模型{}使用记录成功", request.getUserId(), modelName);
                     } else {
-                        log.warn("用户{}聊天使用次数记录失败", request.getUserId());
+                        log.warn("用户{}模型{}使用记录失败", request.getUserId(), modelName);
                     }
                 }
             } else if (contentToSave != null && contentToSave.contains("Request failed")) {
@@ -2334,6 +2362,117 @@ public class ChatServiceImpl implements ChatService {
             log.error("构建中断完成标记数据失败", e);
             return "d:{\"finishReason\":\"interrupted\",\"usage\":{\"promptTokens\":0,\"completionTokens\":0},\"title\":false,\"interrupted\":true}\n";
         }
+    }
+
+    /**
+     * 执行多次续写（最多2次）
+     * @param response HTTP响应对象
+     * @param request 聊天请求
+     * @param model AI模型
+     * @param originalContent 原始内容
+     * @param aiResponseContentRef 用于累积内容的StringBuilder引用
+     * @return 最终状态标识，如果被中断返回CONTINUATION_INTERRUPTED:内容，否则返回"SUCCESS"
+     */
+    private String performMultipleContinuations(HttpServletResponse response, ChatRequestDTO request,
+                                              AiModel model, String originalContent, StringBuilder aiResponseContentRef) {
+        final int maxContinuations = 2; // 最多续写2次
+        String currentContent = originalContent;
+
+        for (int round = 1; round <= maxContinuations; round++) {
+            final int continuationRound = round; // 创建final变量供lambda使用
+            final String contentForThisRound = currentContent; // 创建final变量供lambda使用
+
+            log.info("开始第{}次续写，会话ID：{}，当前内容长度：{}",
+                    continuationRound, request.getSessionId(), contentForThisRound.length());
+
+            // 使用线程池执行续写操作，避免在reactor线程中阻塞
+            CompletableFuture<String> continuationFuture = CompletableFuture
+                .supplyAsync(() -> {
+                    log.debug("第{}次续写任务开始执行，线程：{}, 会话ID：{}",
+                            continuationRound, Thread.currentThread().getName(), request.getSessionId());
+                    return continueAiResponse(response, request, model, contentForThisRound);
+                }, continuationExecutor)
+                .exceptionally(throwable -> {
+                    log.error("第{}次续写操作异常，线程：{}, 会话ID：{}",
+                            continuationRound, Thread.currentThread().getName(), request.getSessionId(), throwable);
+                    return null;
+                });
+
+            try {
+                // 等待续写完成
+                String continuationContent = continuationFuture.join();
+
+                if (continuationContent != null && !continuationContent.trim().isEmpty()) {
+                    log.debug("第{}次续写返回内容检查 - 内容长度: {}, 是否以CONTINUATION_INTERRUPTED开头: {}",
+                             continuationRound, continuationContent.length(),
+                             continuationContent.startsWith("CONTINUATION_INTERRUPTED:"));
+
+                    // 检查是否是续写中断标记
+                    if (continuationContent.startsWith("CONTINUATION_INTERRUPTED:")) {
+                        String actualContent = continuationContent.substring("CONTINUATION_INTERRUPTED:".length());
+                        log.info("第{}次续写被中断，会话ID：{}，部分续写内容长度：{}",
+                                continuationRound, request.getSessionId(), actualContent.length());
+
+                        // 将部分续写内容拼接到原内容后面
+                        aiResponseContentRef.append(actualContent);
+
+                        log.debug("第{}次续写中断内容拼接完成 - 原内容长度: {}, 部分续写长度: {}, 最终长度: {}",
+                                continuationRound, contentForThisRound.length(), actualContent.length(), aiResponseContentRef.length());
+
+                        // 续写被中断，直接返回中断标记
+                        return "CONTINUATION_INTERRUPTED:" + actualContent;
+                    } else {
+                        log.info("第{}次续写操作完成，会话ID：{}，续写内容长度：{}",
+                                continuationRound, request.getSessionId(), continuationContent.length());
+
+                        // 将续写内容拼接到原内容后面
+                        aiResponseContentRef.append(continuationContent);
+
+                        // 更新当前内容为拼接后的完整内容，用于下一轮检测
+                        currentContent = aiResponseContentRef.toString();
+
+                        log.debug("第{}次续写内容拼接完成 - 续写长度: {}, 最终长度: {}",
+                                continuationRound, continuationContent.length(), aiResponseContentRef.length());
+
+                        // 如果这是最后一次续写，直接返回成功，不再检测截断
+                        if (continuationRound >= maxContinuations) {
+                            log.info("已完成最大续写次数({})，不再检测截断，会话ID：{}",
+                                    maxContinuations, request.getSessionId());
+                            return "SUCCESS";
+                        }
+
+                        // 检测续写后的内容是否仍然被截断
+                        int tokenCount = calculateTokenCount(currentContent);
+                        log.info("第{}次续写完成后进行截断检测，内容长度：{}，Token数量：{}",
+                                continuationRound, currentContent.length(), tokenCount);
+
+                        boolean isStillTruncated = !truncationDetectionService.isContentComplete(currentContent, tokenCount);
+
+                        if (isStillTruncated) {
+                            log.info("第{}次续写后内容仍被截断，准备进行第{}次续写，会话ID：{}",
+                                    continuationRound, continuationRound + 1, request.getSessionId());
+                            // 继续下一轮续写
+                            continue;
+                        } else {
+                            log.info("第{}次续写后内容已完整，无需继续续写，会话ID：{}",
+                                    continuationRound, request.getSessionId());
+                            return "SUCCESS";
+                        }
+                    }
+                } else {
+                    log.warn("第{}次续写操作失败或无内容生成，会话ID：{}",
+                            continuationRound, request.getSessionId());
+                    return null;
+                }
+            } catch (Exception e) {
+                log.error("第{}次续写操作异常，会话ID：{}", continuationRound, request.getSessionId(), e);
+                return null;
+            }
+        }
+
+        // 如果执行到这里，说明已完成所有续写轮次
+        log.info("续写流程完成，共执行{}次续写，会话ID：{}", maxContinuations, request.getSessionId());
+        return "SUCCESS";
     }
 
     /**
@@ -3403,7 +3542,8 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public void processRetryChat(String sessionId, String messageId, Long modelId, Boolean network, Authentication authentication, HttpServletResponse response) {
-        log.info("开始处理重新生成请求，sessionId：{}，messageId：{}，modelId：{}，network：{}", sessionId, messageId, modelId, network);
+        log.info("【重试开始】用户重试请求，会话ID：{}，消息ID：{}，模型ID：{}，联网：{}",
+                sessionId, messageId, modelId, network);
 
         try {
             // 设置响应头
@@ -3413,12 +3553,14 @@ public class ChatServiceImpl implements ChatService {
             ChatValidationResult validation = validateChatPermissions(sessionId, messageId, "assistant", authentication);
             if (!validation.isSuccess()) {
                 writeErrorResponse(response, validation.getErrorMessage());
+                log.info("【重试结束】验证失败，会话ID：{}，消息ID：{}，原因：{}",
+                        sessionId, messageId, validation.getErrorMessage());
                 return;
             }
 
             Long userId = validation.getUserId();
             ChatSession chatSession = validation.getChatSession();
-            log.info("重新生成请求 - 验证通过，用户ID：{}，会话ID：{}", userId, sessionId);
+            log.info("【重试验证】验证通过，用户ID：{}，会话ID：{}", userId, sessionId);
 
             // 检查聊天频率限制
             String rateLimitError = validateChatRateLimit(userId);

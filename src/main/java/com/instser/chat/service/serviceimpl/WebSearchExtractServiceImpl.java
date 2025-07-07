@@ -30,22 +30,22 @@ public class WebSearchExtractServiceImpl implements WebSearchExtractService {
     @Override
     public TavilyExtractResponse searchAndExtract(String query, int maxResults, int extractCount) {
         if (!StringUtils.hasText(query)) {
-            log.warn("搜索查询内容为空");
+            log.warn("【联网搜索】查询内容为空");
             throw new IllegalArgumentException("搜索查询内容不能为空");
         }
 
         if (maxResults <= 0 || extractCount <= 0) {
-            log.warn("参数无效: maxResults={}, extractCount={}", maxResults, extractCount);
+            log.warn("【联网搜索】参数无效: maxResults={}, extractCount={}", maxResults, extractCount);
             throw new IllegalArgumentException("maxResults和extractCount必须大于0");
         }
 
         if (extractCount > maxResults) {
-            log.warn("extractCount({})不能大于maxResults({})", extractCount, maxResults);
+            log.warn("【联网搜索】extractCount({})不能大于maxResults({})", extractCount, maxResults);
             extractCount = maxResults;
         }
 
         try {
-            log.info("开始执行搜索和提取，查询: {}, 最大结果数: {}, 提取数量: {}", query, maxResults, extractCount);
+            log.info("【联网搜索】开始搜索和提取，查询: {}, 最大结果数: {}, 提取数量: {}", query, maxResults, extractCount);
 
             // 第一步：执行搜索
             TavilySearchRequest searchRequest = TavilySearchRequest.builder()
@@ -55,16 +55,19 @@ public class WebSearchExtractServiceImpl implements WebSearchExtractService {
                     .includeFavicon(true)
                     .build();
 
+            log.debug("【联网搜索】发送搜索请求，深度: basic，包含图标: true");
             TavilySearchResponse searchResponse = webSearchService.search(searchRequest);
 
             if (searchResponse == null || searchResponse.getResults() == null || searchResponse.getResults().isEmpty()) {
-                log.warn("搜索未返回任何结果");
+                log.warn("【联网搜索】搜索未返回任何结果，查询: {}", query);
                 return null;
             }
 
             // 第二步：提取前N个结果的URL
             List<TavilySearchResult> searchResults = searchResponse.getResults();
             int actualExtractCount = Math.min(extractCount, searchResults.size());
+
+            log.debug("【联网搜索】搜索返回{}个结果，计划提取{}个", searchResults.size(), actualExtractCount);
 
             String[] urlsToExtract = searchResults.stream()
                     .limit(actualExtractCount)
@@ -73,11 +76,12 @@ public class WebSearchExtractServiceImpl implements WebSearchExtractService {
                     .toArray(String[]::new);
 
             if (urlsToExtract.length == 0) {
-                log.warn("搜索结果中没有有效的URL可供提取");
+                log.warn("【联网搜索】搜索结果中没有有效的URL可供提取，查询: {}", query);
                 return null;
             }
 
-            log.info("准备提取{}个URL的详细内容", urlsToExtract.length);
+            log.info("【联网搜索】开始提取{}个URL的详细内容", urlsToExtract.length);
+            log.debug("【联网搜索】提取配置 - 包含图片: false, 包含图标: true, 深度: basic, 格式: markdown");
 
             // 第三步：执行内容提取
             TavilyExtractRequest extractRequest = TavilyExtractRequest.builder()
@@ -90,15 +94,15 @@ public class WebSearchExtractServiceImpl implements WebSearchExtractService {
 
             TavilyExtractResponse extractResponse = webSearchService.extract(extractRequest);
 
-            log.info("搜索和提取完成，搜索结果: {}, 提取成功: {}, 提取失败: {}",
-                    searchResults.size(),
+            log.info("【联网搜索】搜索和提取完成，查询: {}, 搜索结果: {}, 提取成功: {}, 提取失败: {}",
+                    query, searchResults.size(),
                     extractResponse != null && extractResponse.getResults() != null ? extractResponse.getResults().size() : 0,
                     extractResponse != null ? getFailedResultsCount(extractResponse.getFailedResults()) : 0);
 
             return extractResponse;
 
         } catch (Exception e) {
-            log.error("执行搜索和提取时发生异常，查询: {}", query, e);
+            log.error("【联网搜索】搜索和提取异常，查询: {}", query, e);
             throw new RuntimeException("搜索和提取服务异常: " + e.getMessage(), e);
         }
     }

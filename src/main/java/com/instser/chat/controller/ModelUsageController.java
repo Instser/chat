@@ -2,6 +2,7 @@ package com.instser.chat.controller;
 
 import com.instser.chat.common.result.Result;
 import com.instser.chat.entity.UserDailyUsage;
+import com.instser.chat.security.UserDetailsServiceImpl;
 import com.instser.chat.service.ChatLimitService;
 import com.instser.chat.service.UserDailyUsageService;
 import com.instser.chat.vo.ChatLimitVO;
@@ -13,6 +14,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -34,6 +36,30 @@ public class ModelUsageController {
 
     @Autowired
     private UserDailyUsageService userDailyUsageService;
+
+    /**
+     * 获取当前认证用户ID
+     */
+    private Long getCurrentUserId(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return null;
+        }
+        try {
+            // 检查是否是CustomUserDetails类型
+            Object principal = authentication.getPrincipal();
+            if (principal instanceof UserDetailsServiceImpl.CustomUserDetails) {
+                UserDetailsServiceImpl.CustomUserDetails userDetails =
+                    (UserDetailsServiceImpl.CustomUserDetails) principal;
+                return userDetails.getUserId();
+            }
+            // 如果不是CustomUserDetails，返回null表示认证失败
+            log.warn("认证主体不是CustomUserDetails类型：{}", principal.getClass().getName());
+            return null;
+        } catch (Exception e) {
+            log.warn("获取用户ID失败", e);
+            return null;
+        }
+    }
 
     /**
      * 检查用户模型使用权限
@@ -72,15 +98,20 @@ public class ModelUsageController {
     })
     @PostMapping("/record-usage")
     public ResponseEntity<?> recordModelUsage(
-            @Parameter(description = "用户ID", required = true)
-            @RequestParam Long userId,
             @Parameter(description = "模型名称", required = true)
-            @RequestParam String modelName) {
+            @RequestParam String modelName,
+            Authentication authentication) {
         try {
+            // 从认证信息中获取用户ID
+            Long userId = getCurrentUserId(authentication);
+            if (userId == null) {
+                return ResponseEntity.ok(Result.unauthorized("用户未认证"));
+            }
+
             log.info("(用户ID:{})记录模型{}使用", userId, modelName);
-            
+
             boolean success = chatLimitService.recordModelChatUsage(userId, modelName);
-            
+
             if (success) {
                 return ResponseEntity.ok(Result.success(null, "使用记录成功"));
             } else {
@@ -88,7 +119,7 @@ public class ModelUsageController {
             }
 
         } catch (Exception e) {
-            log.error("记录用户{}模型{}使用异常", userId, modelName, e);
+            log.error("记录模型{}使用异常", modelName, e);
             return ResponseEntity.ok(Result.failed("使用记录失败，请稍后重试"));
         }
     }
@@ -103,20 +134,25 @@ public class ModelUsageController {
     })
     @GetMapping("/remaining-usage")
     public ResponseEntity<?> getRemainingUsage(
-            @Parameter(description = "用户ID", required = true)
-            @RequestParam Long userId,
             @Parameter(description = "模型名称", required = true)
-            @RequestParam String modelName) {
+            @RequestParam String modelName,
+            Authentication authentication) {
         try {
+            // 从认证信息中获取用户ID
+            Long userId = getCurrentUserId(authentication);
+            if (userId == null) {
+                return ResponseEntity.ok(Result.unauthorized("用户未认证"));
+            }
+
             log.info("(用户ID:{})查询模型{}剩余使用次数", userId, modelName);
-            
+
             // 获取用户账户信息
             ChatLimitVO limitInfo = chatLimitService.validateModelChatPermission(userId, modelName);
-            
+
             return ResponseEntity.ok(Result.success(limitInfo, "查询成功"));
-            
+
         } catch (Exception e) {
-            log.error("查询用户{}模型{}剩余次数异常", userId, modelName, e);
+            log.error("查询模型{}剩余次数异常", modelName, e);
             return ResponseEntity.ok(Result.failed("查询失败，请稍后重试"));
         }
     }
@@ -130,18 +166,22 @@ public class ModelUsageController {
         @ApiResponse(responseCode = "400", description = "参数错误")
     })
     @GetMapping("/today-usage")
-    public ResponseEntity<?> getTodayModelUsage(
-            @Parameter(description = "用户ID", required = true)
-            @RequestParam Long userId) {
+    public ResponseEntity<?> getTodayModelUsage(Authentication authentication) {
         try {
+            // 从认证信息中获取用户ID
+            Long userId = getCurrentUserId(authentication);
+            if (userId == null) {
+                return ResponseEntity.ok(Result.unauthorized("用户未认证"));
+            }
+
             log.info("(用户ID:{})查询今日模型使用情况", userId);
-            
+
             List<UserDailyUsage> usageList = userDailyUsageService.getUserModelUsageToday(userId);
-            
+
             return ResponseEntity.ok(Result.success(usageList, "查询成功"));
-            
+
         } catch (Exception e) {
-            log.error("查询用户{}今日模型使用情况异常", userId, e);
+            log.error("查询今日模型使用情况异常", e);
             return ResponseEntity.ok(Result.failed("查询失败，请稍后重试"));
         }
     }

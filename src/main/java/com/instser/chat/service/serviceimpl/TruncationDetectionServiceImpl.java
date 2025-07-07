@@ -45,34 +45,37 @@ public class TruncationDetectionServiceImpl implements TruncationDetectionServic
     @Override
     public boolean isContentComplete(String content) {
         if (content == null || content.trim().isEmpty()) {
-            log.warn("截断检测：内容为空，默认认为完整");
+            log.warn("【截断检测】内容为空，默认认为完整");
             return true;
         }
 
         try {
-            log.info("开始截断检测，内容长度：{} 字符", content.length());
-            
+            log.info("【截断检测】开始检测，内容长度：{} 字符", content.length());
+            log.debug("【截断检测】内容预览：{}", content.length() > 200 ? content.substring(0, 200) + "..." : content);
+
             // 获取检测模型
             AiModel detectionModel = aiModelService.getById(DETECTION_MODEL_ID);
             if (detectionModel == null || detectionModel.getIsAvailable() != 1) {
-                log.error("截断检测模型（ID={}）不可用，默认认为内容完整", DETECTION_MODEL_ID);
+                log.error("【截断检测】检测模型（ID={}）不可用，默认认为完整", DETECTION_MODEL_ID);
                 return true;
             }
 
+            log.debug("【截断检测】使用模型：{}（{}）", detectionModel.getModelName(), detectionModel.getModelCode());
+
             // 构建检测提示词
             String detectionPrompt = buildDetectionPrompt(content);
-            
+
             // 调用AI模型进行检测
             String detectionResult = callDetectionModel(detectionModel, detectionPrompt);
-            
+
             // 解析检测结果
             boolean isComplete = parseDetectionResult(detectionResult);
-            
-            log.info("截断检测完成，结果：{}，AI回复：[{}]", isComplete ? "完整" : "截断", detectionResult);
+
+            log.info("【截断检测】检测完成，结果：{}，AI回复：[{}]", isComplete ? "完整" : "截断", detectionResult);
             return isComplete;
-            
+
         } catch (Exception e) {
-            log.error("截断检测过程中发生异常，默认认为内容完整", e);
+            log.error("【截断检测】检测异常，默认认为完整", e);
             return true; // 异常情况下默认认为完整，避免影响正常流程
         }
     }
@@ -80,17 +83,17 @@ public class TruncationDetectionServiceImpl implements TruncationDetectionServic
     @Override
     public boolean isContentComplete(String content, int tokenCount) {
         if (content == null || content.trim().isEmpty()) {
-            log.warn("截断检测：内容为空，默认认为完整");
+            log.warn("【截断检测】内容为空，默认认为完整");
             return true;
         }
 
         // 检查Token数量是否达到阈值
         if (tokenCount < TOKEN_THRESHOLD) {
-            log.info("截断检测：Token数量({})未达到阈值({})，跳过检测，默认认为完整", tokenCount, TOKEN_THRESHOLD);
+            log.info("【截断检测】Token数量({})未达到阈值({})，跳过检测", tokenCount, TOKEN_THRESHOLD);
             return true;
         }
 
-        log.info("截断检测：Token数量({})达到阈值({})，开始检测", tokenCount, TOKEN_THRESHOLD);
+        log.info("【截断检测】Token数量({})达到阈值({})，开始检测", tokenCount, TOKEN_THRESHOLD);
 
         // 调用原有的检测逻辑
         return isContentComplete(content);
@@ -100,32 +103,33 @@ public class TruncationDetectionServiceImpl implements TruncationDetectionServic
     public String alignContent(String originalContent, String continuationContent) {
         if (originalContent == null || originalContent.isEmpty()) {
             String cleaned = continuationContent != null ? cleanContinuationContent(continuationContent) : "";
-            log.debug("原内容为空，返回清理后的续写内容，长度: {}", cleaned.length());
+            log.debug("【内容对齐】原内容为空，返回清理后的续写内容，长度: {}", cleaned.length());
             return cleaned;
         }
 
         if (continuationContent == null || continuationContent.isEmpty()) {
+            log.debug("【内容对齐】续写内容为空，返回原内容");
             return originalContent;
         }
 
         try {
-            log.info("开始内容对齐，原内容长度：{}，续写内容长度：{}",
+            log.info("【内容对齐】开始对齐，原内容长度：{}，续写内容长度：{}",
                     originalContent.length(), continuationContent.length());
 
             // 清理续写内容中的AI标记
             String cleanedContinuation = cleanContinuationContent(continuationContent);
-            log.debug("清理后续写内容长度: {}", cleanedContinuation.length());
+            log.debug("【内容对齐】清理后续写内容长度: {}", cleanedContinuation.length());
 
             // 多策略内容对齐
             String alignedContent = performAdvancedAlignment(originalContent, cleanedContinuation);
 
-            log.info("内容对齐完成，最终长度：{}，原始：{}，续写：{}",
+            log.info("【内容对齐】对齐完成，最终长度：{}，原始：{}，续写：{}",
                     alignedContent.length(), originalContent.length(), continuationContent.length());
 
             return alignedContent;
 
         } catch (Exception e) {
-            log.error("内容对齐过程中发生异常，使用简单拼接", e);
+            log.error("【内容对齐】对齐异常，使用简单拼接", e);
             return originalContent + continuationContent;
         }
     }
