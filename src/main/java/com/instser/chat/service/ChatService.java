@@ -64,17 +64,7 @@ public interface ChatService {
      */
     String saveUserMessage(List<Map<String, String>> messages, String sessionId, Long userId, Long modelId);
 
-    /**
-     * 保存用户原始消息到数据库（不包含文件内容，但标识是否有附件）
-     *
-     * @param originalMessages 原始消息列表（不包含文件内容）
-     * @param sessionId 会话ID
-     * @param userId 用户ID
-     * @param modelId 模型ID
-     * @param hasAttachments 是否包含附件
-     * @return 保存的消息ID，失败时返回null
-     */
-    String saveUserOriginalMessage(List<Map<String, String>> originalMessages, String sessionId, Long userId, Long modelId, boolean hasAttachments);
+
 
     /**
      * 保存AI响应到数据库

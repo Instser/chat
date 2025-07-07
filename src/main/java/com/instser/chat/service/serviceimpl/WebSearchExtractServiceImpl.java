@@ -5,6 +5,7 @@ import com.instser.chat.entity.TavilyExtractResponse;
 import com.instser.chat.entity.TavilySearchRequest;
 import com.instser.chat.entity.TavilySearchResponse;
 import com.instser.chat.entity.TavilySearchResult;
+import com.instser.chat.entity.WebSearchExtractResult;
 import com.instser.chat.service.WebSearchExtractService;
 import com.instser.chat.service.WebSearchService;
 import lombok.RequiredArgsConstructor;
@@ -28,7 +29,7 @@ public class WebSearchExtractServiceImpl implements WebSearchExtractService {
     private final WebSearchService webSearchService;
 
     @Override
-    public TavilyExtractResponse searchAndExtract(String query, int maxResults, int extractCount) {
+    public WebSearchExtractResult searchAndExtract(String query, int maxResults, int extractCount) {
         if (!StringUtils.hasText(query)) {
             log.warn("【联网搜索】查询内容为空");
             throw new IllegalArgumentException("搜索查询内容不能为空");
@@ -60,7 +61,10 @@ public class WebSearchExtractServiceImpl implements WebSearchExtractService {
 
             if (searchResponse == null || searchResponse.getResults() == null || searchResponse.getResults().isEmpty()) {
                 log.warn("【联网搜索】搜索未返回任何结果，查询: {}", query);
-                return null;
+                return WebSearchExtractResult.builder()
+                        .searchResponse(searchResponse)
+                        .extractResponse(null)
+                        .build();
             }
 
             // 第二步：提取前N个结果的URL
@@ -77,7 +81,10 @@ public class WebSearchExtractServiceImpl implements WebSearchExtractService {
 
             if (urlsToExtract.length == 0) {
                 log.warn("【联网搜索】搜索结果中没有有效的URL可供提取，查询: {}", query);
-                return null;
+                return WebSearchExtractResult.builder()
+                        .searchResponse(searchResponse)
+                        .extractResponse(null)
+                        .build();
             }
 
             log.info("【联网搜索】开始提取{}个URL的详细内容", urlsToExtract.length);
@@ -99,7 +106,10 @@ public class WebSearchExtractServiceImpl implements WebSearchExtractService {
                     extractResponse != null && extractResponse.getResults() != null ? extractResponse.getResults().size() : 0,
                     extractResponse != null ? getFailedResultsCount(extractResponse.getFailedResults()) : 0);
 
-            return extractResponse;
+            return WebSearchExtractResult.builder()
+                    .searchResponse(searchResponse)
+                    .extractResponse(extractResponse)
+                    .build();
 
         } catch (Exception e) {
             log.error("【联网搜索】搜索和提取异常，查询: {}", query, e);
@@ -108,7 +118,7 @@ public class WebSearchExtractServiceImpl implements WebSearchExtractService {
     }
 
     @Override
-    public TavilyExtractResponse searchAndExtract(String query) {
+    public WebSearchExtractResult searchAndExtract(String query) {
         // 使用默认参数：搜索20个结果，提取所有返回链接的详细内容
         return searchAndExtract(query, 20, 20);
     }

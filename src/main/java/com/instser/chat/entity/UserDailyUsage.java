@@ -38,13 +38,6 @@ public class UserDailyUsage implements Serializable {
     private Long userId;
 
     /**
-     * 套餐ID
-     */
-    @TableField("package_id")
-    @JsonSerialize(using = ToStringSerializer.class)
-    private Long packageId;
-
-    /**
      * 模型名称
      */
     @TableField("model_name")
@@ -61,12 +54,6 @@ public class UserDailyUsage implements Serializable {
      */
     @TableField("chat_count_used")
     private Integer chatCountUsed;
-
-    /**
-     * 当日限制次数
-     */
-    @TableField("daily_limit")
-    private Integer dailyLimit;
 
     /**
      * 最后聊天时间

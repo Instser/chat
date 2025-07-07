@@ -94,22 +94,48 @@ public class UserDailyUsageServiceImpl extends ServiceImpl<UserDailyUsageDao, Us
     @Override
     @Transactional
     public UserDailyUsage initTodayUsage(Long userId, Long packageId, Integer dailyLimit) {
+        // 注意：此方法已废弃，因为新表结构不再存储package_id和daily_limit
+        // 建议使用 initTodayModelUsage(userId, modelName) 替代
+        log.warn("initTodayUsage方法已废弃，建议使用initTodayModelUsage替代");
+
         UserDailyUsage usage = new UserDailyUsage();
         usage.setUserId(userId);
-        usage.setPackageId(packageId);
+        usage.setModelName("STANDARD"); // 默认使用STANDARD模型
         usage.setUsageDate(getBusinessDate());
         usage.setChatCountUsed(0);
-        usage.setDailyLimit(dailyLimit);
         usage.setCreatedTime(getBusinessDateTime());
         usage.setUpdateTime(getBusinessDateTime());
 
         if (this.save(usage)) {
-            log.info("用户{}今日使用记录初始化成功，每日限制：{}，业务日期：{}",
-                    userId, dailyLimit, getBusinessDate());
+            log.info("用户{}今日使用记录初始化成功，模型：STANDARD，业务日期：{}",
+                    userId, getBusinessDate());
             return usage;
         }
 
         log.error("用户{}今日使用记录初始化失败", userId);
+        return null;
+    }
+
+    /**
+     * 初始化用户今日模型使用记录
+     */
+    @Transactional
+    public UserDailyUsage initTodayModelUsage(Long userId, String modelName) {
+        UserDailyUsage usage = new UserDailyUsage();
+        usage.setUserId(userId);
+        usage.setModelName(modelName);
+        usage.setUsageDate(getBusinessDate());
+        usage.setChatCountUsed(0);
+        usage.setCreatedTime(getBusinessDateTime());
+        usage.setUpdateTime(getBusinessDateTime());
+
+        if (this.save(usage)) {
+            log.info("用户{}模型{}今日使用记录初始化成功，业务日期：{}",
+                    userId, modelName, getBusinessDate());
+            return usage;
+        }
+
+        log.error("用户{}模型{}今日使用记录初始化失败", userId, modelName);
         return null;
     }
 
@@ -148,7 +174,7 @@ public class UserDailyUsageServiceImpl extends ServiceImpl<UserDailyUsageDao, Us
         }
 
         // 3. 检查今日使用情况
-        UserDailyUsage todayUsage = getTodayModelUsage(userId, packageId, modelName);
+        UserDailyUsage todayUsage = getTodayModelUsage(userId, modelName);
         if (todayUsage == null) {
             return true; // 今日未使用
         }
@@ -176,7 +202,7 @@ public class UserDailyUsageServiceImpl extends ServiceImpl<UserDailyUsageDao, Us
 
         // 2. 检查当前使用情况（非无限制套餐）
         if (permission.getDailyLimit() != -1) {
-            UserDailyUsage todayUsage = getTodayModelUsage(userId, packageId, modelName);
+            UserDailyUsage todayUsage = getTodayModelUsage(userId, modelName);
             if (todayUsage != null && todayUsage.getChatCountUsed() >= permission.getDailyLimit()) {
                 log.warn("用户{}模型{}今日使用次数已达限制：{}/{}",
                         userId, modelName, todayUsage.getChatCountUsed(), permission.getDailyLimit());
@@ -188,16 +214,15 @@ public class UserDailyUsageServiceImpl extends ServiceImpl<UserDailyUsageDao, Us
         LocalDate businessDate = getBusinessDate();
         int dailyLimit = permission.getDailyLimit();
 
-        int updated = baseMapper.insertOrIncrementModelUsage(userId, packageId, modelName,
-                businessDate, dailyLimit);
+        int updated = baseMapper.insertOrIncrementModelUsage(userId, modelName, businessDate);
 
         if (updated > 0) {
             // 重新获取更新后的记录用于日志
-            UserDailyUsage updatedUsage = getTodayModelUsage(userId, packageId, modelName);
+            UserDailyUsage updatedUsage = getTodayModelUsage(userId, modelName);
             if (updatedUsage != null) {
                 log.info("用户{}模型{}使用记录成功，当前使用：{}/{}，业务日期：{}",
                         userId, modelName, updatedUsage.getChatCountUsed(),
-                        updatedUsage.getDailyLimit(), businessDate);
+                        dailyLimit, businessDate);
             }
             return true;
         }
@@ -227,7 +252,7 @@ public class UserDailyUsageServiceImpl extends ServiceImpl<UserDailyUsageDao, Us
         }
 
         // 3. 计算剩余次数
-        UserDailyUsage todayUsage = getTodayModelUsage(userId, packageId, modelName);
+        UserDailyUsage todayUsage = getTodayModelUsage(userId, modelName);
         if (todayUsage == null) {
             return permission.getDailyLimit();
         }
@@ -237,7 +262,15 @@ public class UserDailyUsageServiceImpl extends ServiceImpl<UserDailyUsageDao, Us
 
     @Override
     public UserDailyUsage getTodayModelUsage(Long userId, Long packageId, String modelName) {
-        return baseMapper.selectByUserPackageModelDate(userId, packageId, modelName, getBusinessDate());
+        // 注意：packageId参数已废弃，但为了向后兼容保留此方法
+        return getTodayModelUsage(userId, modelName);
+    }
+
+    /**
+     * 获取用户今日模型使用记录（新方法，不依赖packageId）
+     */
+    public UserDailyUsage getTodayModelUsage(Long userId, String modelName) {
+        return baseMapper.selectByUserModelDate(userId, modelName, getBusinessDate());
     }
 
     @Override
