@@ -185,6 +185,26 @@ public class ChatApiController {
     }
 
     /**
+     * 提取并验证network参数
+     */
+    private Boolean extractNetwork(Map<String, Object> request) {
+        Object networkObj = request.get("network");
+        if (networkObj == null) {
+            return false; // 默认禁用网络搜索
+        }
+
+        if (networkObj instanceof Boolean) {
+            return (Boolean) networkObj;
+        } else if (networkObj instanceof String) {
+            return "true".equalsIgnoreCase((String) networkObj) || "1".equals(networkObj);
+        } else if (networkObj instanceof Number) {
+            return ((Number) networkObj).intValue() == 1;
+        }
+
+        return false; // 默认禁用网络搜索
+    }
+
+    /**
      * 验证基础参数
      */
     private boolean validateBasicParams(String chatId, String messageId, HttpServletResponse response) throws Exception {
@@ -259,6 +279,7 @@ public class ChatApiController {
             String chatId = (String) request.get("chatId");
             String messageId = (String) request.get("messageId");
             Long modelId = extractModelId(request, response);
+            Boolean network = extractNetwork(request);
 
             // 验证基础参数
             if (!validateBasicParams(chatId, messageId, response)) {
@@ -266,7 +287,7 @@ public class ChatApiController {
             }
 
             // 调用ChatService处理重新生成逻辑（chatId实际对应sessionId）
-            chatService.processRetryChat(chatId, messageId, modelId, authentication, response);
+            chatService.processRetryChat(chatId, messageId, modelId, network, authentication, response);
 
         } catch (Exception e) {
             handleCommonException(e, "重新生成", response);
@@ -291,6 +312,7 @@ public class ChatApiController {
             String newContent = (String) request.get("newContent");
             String filesId = (String) request.get("filesId");
             Long modelId = extractModelId(request, response);
+            Boolean network = extractNetwork(request);
 
             // 验证基础参数
             if (!validateBasicParams(chatId, messageId, response)) {
@@ -315,7 +337,7 @@ public class ChatApiController {
             }
 
             // 调用ChatService处理编辑重发逻辑（chatId实际对应sessionId）
-            chatService.processEditResendChat(chatId, messageId, newContent, filesId, modelId, authentication, response);
+            chatService.processEditResendChat(chatId, messageId, newContent, filesId, modelId, network, authentication, response);
 
         } catch (Exception e) {
             handleCommonException(e, "编辑重发", response);

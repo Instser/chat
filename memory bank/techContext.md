@@ -14,6 +14,8 @@
 - **汇率服务**: 完整的实时汇率API系统 (exchangerate-api.com)
 - **缓存系统**: Redis 分布式缓存 (your-db-host.example.com:31122)
 - **分布式锁**: Redisson 3.24.3 (基于Redis实现)
+- **联网搜索**: Tavily Search API集成 (your-tavily-api-key)
+- **内容提取**: Tavily Extract API集成，支持URL详细内容提取
 
 ## 开发环境设置
 - **编码**: UTF-8
@@ -40,6 +42,8 @@
 - **图片解析策略**: AI服务集成，Base64编码传输，JSON格式响应解析
 - **支付安全策略**: Redis分布式缓存实现支付频率限制、防重放攻击、可疑行为记录
 - **分布式锁策略**: Redisson实现订单状态保护、用户支付会话管理
+- **联网搜索策略**: Tavily Search API集成，支持实时网络信息检索，JSON格式请求响应
+- **内容提取策略**: Tavily Extract API集成，支持URL详细内容提取，Markdown格式输出，批量处理
 
 ## 数据库设计规范
 - **命名**: 下划线命名法
@@ -68,3 +72,26 @@
 - **配置文件**: src/main/resources/application.yml
 - **连接池**: Lettuce连接池，最大连接数20，最小空闲连接数5
 - **缓存配置**: 30分钟TTL，支持分布式缓存和分布式锁
+
+## 错误处理与重试机制
+
+### 异常处理策略
+- **分层异常处理**: Controller层、Service层、DAO层分别处理对应异常
+- **统一异常响应**: 使用Result包装类统一异常响应格式
+- **日志记录**: 详细记录异常信息用于问题排查
+- **用户友好**: 向用户返回友好的错误提示信息
+
+### 错误消息重试机制 (2025-07-06实现)
+- **检测范围**: 自动检测"Request blocked. Please reach out to support@example.com"等错误消息
+- **重试策略**: 最多重试3次，递增等待时间（1秒、2秒、3秒）
+- **异常驱动**: 使用`ChatRetryException`异常类实现重试信号传播
+- **全流程覆盖**: 主聊天和续写流程都支持错误消息重试
+- **统一错误响应**: 重试失败后返回"Request failed. Please try again later."
+- **功能分离**: 错误消息重试与AI推广内容过滤完全分离
+- **异常传播路径**:
+  - 主聊天: `processCompleteJson` → `streamChatWithAI` → `executeAiStreamResponse`
+  - 续写: `cleanAllTagsOnce` → `processContinuationJson` → `continueAiResponse`
+
+### 其他重试机制
+- **网络重试**: HTTP请求失败时自动重试
+- **数据库重试**: 数据库连接失败时重试连接

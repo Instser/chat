@@ -40,6 +40,11 @@ public class ChatRequestDTO {
     private Boolean deepThinking;
 
     /**
+     * 是否启用网络搜索
+     */
+    private Boolean network;
+
+    /**
      * 文件ID列表（逗号分隔的字符串）
      */
     private String filesId;
@@ -81,6 +86,18 @@ public class ChatRequestDTO {
                 dto.setDeepThinking("true".equalsIgnoreCase((String) deepThinkingObj) || "1".equals(deepThinkingObj));
             } else if (deepThinkingObj instanceof Number) {
                 dto.setDeepThinking(((Number) deepThinkingObj).intValue() == 1);
+            }
+        }
+
+        // 设置网络搜索参数
+        Object networkObj = requestMap.get("network");
+        if (networkObj != null) {
+            if (networkObj instanceof Boolean) {
+                dto.setNetwork((Boolean) networkObj);
+            } else if (networkObj instanceof String) {
+                dto.setNetwork("true".equalsIgnoreCase((String) networkObj) || "1".equals(networkObj));
+            } else if (networkObj instanceof Number) {
+                dto.setNetwork(((Number) networkObj).intValue() == 1);
             }
         }
 

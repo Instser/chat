@@ -60,6 +60,7 @@ public class ChatServiceImpl implements ChatService {
     private final WebClient.Builder webClientBuilder;
     private final RestTemplate restTemplate;
     private final TruncationDetectionService truncationDetectionService;
+    private final WebSearchExtractService webSearchExtractService;
 
     @Qualifier("continuationExecutor")
     private final Executor continuationExecutor;
@@ -481,6 +482,22 @@ public class ChatServiceImpl implements ChatService {
                 log.debug("正常聊天没有文件附件");
             }
 
+            // 处理联网搜索内容并附加到用户消息中（仅用于AI处理）
+            if (request.getNetwork() != null && request.getNetwork()) {
+                // 提取用户查询内容（从最后一条用户消息中获取）
+                String userQuery = extractUserQuery(messages);
+                if (userQuery != null && !userQuery.trim().isEmpty()) {
+                    log.info("正常聊天检测到联网搜索请求，开始处理联网内容，查询：{}", userQuery);
+                    List<Map<String, String>> processedMessages = processNetworkContent(messages, userQuery);
+                    messages = processedMessages;
+                    log.info("正常聊天联网内容处理完成");
+                } else {
+                    log.warn("联网搜索请求但无法提取用户查询内容");
+                }
+            } else {
+                log.debug("正常聊天没有启用联网搜索");
+            }
+
             return messages;
         } catch (Exception e) {
             log.error("构建AI请求消息异常", e);
@@ -489,7 +506,7 @@ public class ChatServiceImpl implements ChatService {
     }
 
     /**
-     * 执行AI流式响应
+     * 执行AI流式响应（带重试机制）
      *
      * @param request 聊天请求
      * @param model AI模型
@@ -497,63 +514,65 @@ public class ChatServiceImpl implements ChatService {
      * @return AI响应结果
      */
     private ChatResponseDTO executeAiStreamResponse(ChatRequestDTO request, AiModel model, HttpServletResponse response) {
-        try {
-            // 判断是否会生成标题
-            boolean willGenerateTitle = request.getSessionId() != null && isFirstAiResponse(request.getMessages());
+        int maxRetries = 3; // 最大重试次数
+        int retryCount = 0;
 
-            // 调用AI服务进行流式响应
-            return streamChatWithAI(request, model, response, willGenerateTitle, "chat");
-        } catch (Exception e) {
-            log.error("执行AI流式响应异常", e);
+        while (retryCount <= maxRetries) {
             try {
-                String errorContent = "Request failed. Please try again later.";
-                writeErrorResponse(response, errorContent);
-                return ChatResponseDTO.errorWithContent(errorContent);
-            } catch (IOException ioException) {
-                log.error("发送错误响应失败", ioException);
-                return ChatResponseDTO.failure("System error");
-            }
-        }
-    }
+                // 判断是否会生成标题
+                boolean willGenerateTitle = request.getSessionId() != null && isFirstAiResponse(request.getMessages());
 
-    /**
-     * 处理AI响应结果
-     *
-     * @param result AI响应结果
-     * @param request 聊天请求
-     * @param model AI模型
-     */
-    private void handleAiResponseProcessing(ChatResponseDTO result, ChatRequestDTO request, AiModel model) {
-        try {
-            if (result.isRealAiResponse()) {
-                // 正常AI响应，使用统一的handleAiResponseResult处理
-                handleAiResponseResult(result, request.getUserId(), request.getSessionId(), model, "正常聊天");
-            } else if (result.isInterrupted()) {
-                // 中断响应，使用统一的handleAiResponseResult处理
-                handleAiResponseResult(result, request.getUserId(), request.getSessionId(), model, "正常聊天");
-            } else if (result.isHasContentSent()) {
-                // 有内容发送但不是中断响应（可能是错误响应）
-                String responseContent = result.getAiResponseContent();
-                if (responseContent != null && responseContent.contains("Request failed")) {
-                    // 确实是错误响应，保存到数据库
-                    log.warn("用户{}收到错误响应，保存错误信息到数据库", request.getUserId());
-                    if (request.getSessionId() != null) {
-                        AiModel errorModel = aiModelService.getById(request.getModelId());
-                        if (errorModel != null) {
-                            saveErrorResponse(request.getSessionId(), request.getUserId(), errorModel.getId(), responseContent);
-                            log.info("错误响应已保存到数据库，会话ID：{}，用户ID：{}", request.getSessionId(), request.getUserId());
-                        }
+                // 调用AI服务进行流式响应
+                return streamChatWithAI(request, model, response, willGenerateTitle, "chat");
+            } catch (ChatRetryException e) {
+                retryCount++;
+                log.warn("检测到需要重试的错误消息，第{}次重试，最大重试次数: {}", retryCount, maxRetries);
+
+                if (retryCount > maxRetries) {
+                    log.error("重试次数已达上限，停止重试");
+                    try {
+                        String errorContent = "Request failed. Please try again later.";
+                        writeErrorResponse(response, errorContent);
+                        return ChatResponseDTO.errorWithContent(errorContent);
+                    } catch (IOException ioException) {
+                        log.error("发送错误响应失败", ioException);
+                        return ChatResponseDTO.failure("System error");
                     }
-                } else {
-                    // 其他情况（可能是部分内容），记录日志
-                    log.info("用户{}有内容发送但非真实AI响应且非中断，内容长度：{}", request.getUserId(),
-                            responseContent != null ? responseContent.length() : 0);
+                }
+
+                // 等待一段时间后重试
+                try {
+                    Thread.sleep(1000 * retryCount); // 递增等待时间
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    log.error("重试等待被中断");
+                    break;
+                }
+            } catch (Exception e) {
+                log.error("执行AI流式响应异常", e);
+                try {
+                    String errorContent = "Request failed. Please try again later.";
+                    writeErrorResponse(response, errorContent);
+                    return ChatResponseDTO.errorWithContent(errorContent);
+                } catch (IOException ioException) {
+                    log.error("发送错误响应失败", ioException);
+                    return ChatResponseDTO.failure("System error");
                 }
             }
-        } catch (Exception e) {
-            log.error("处理AI响应结果异常", e);
+        }
+
+        // 如果到这里说明重试失败
+        try {
+            String errorContent = "Request failed. Please try again later.";
+            writeErrorResponse(response, errorContent);
+            return ChatResponseDTO.errorWithContent(errorContent);
+        } catch (IOException ioException) {
+            log.error("发送错误响应失败", ioException);
+            return ChatResponseDTO.failure("System error");
         }
     }
+
+
 
     /**
      * 处理流式聊天异常
@@ -870,80 +889,7 @@ public class ChatServiceImpl implements ChatService {
         }
     }
 
-    /**
-     * 处理AI响应结果的通用逻辑
-     */
-    private void handleAiResponseResult(ChatResponseDTO result, Long userId, String sessionId,
-                                      AiModel model, String operationType) {
 
-        // 准备要保存的内容
-        String contentToSave = result.getAiResponseContent();
-        boolean shouldSave = false;
-        boolean shouldRecordUsage = false;
-
-        if (result.isRealAiResponse()) {
-            // 正常AI响应
-            shouldSave = true;
-            shouldRecordUsage = true;
-            log.info("用户{}{}AI响应成功", userId, operationType);
-        } else if (result.isInterrupted()) {
-            // 中断响应（包括有内容和无内容的情况）
-            if (result.isHasContentSent()) {
-                // 中断响应且有内容发送，需要保存拼接后的完整内容并记录使用次数
-                shouldSave = true;
-                shouldRecordUsage = true;
-
-                // 统一在保存时添加中断标记（适用于所有中断情况：正常聊天、编辑重发、重试的主流程中断和续写中断）
-                if (contentToSave != null && !contentToSave.trim().isEmpty()) {
-                    // 检查是否已经包含中断标记，避免重复添加
-                    if (!contentToSave.endsWith("[已中断]")) {
-                        contentToSave = contentToSave + " [已中断]";
-                        log.info("统一添加中断标记 [已中断] 到{}内容末尾", operationType);
-                    } else {
-                        log.debug("{}内容已包含中断标记，跳过重复添加", operationType);
-                    }
-                }
-
-                log.info("用户{}{}聊天被中断，准备保存部分内容，内容长度：{}", userId, operationType,
-                        contentToSave != null ? contentToSave.length() : 0);
-            } else {
-                // 中断响应但无内容发送
-                log.info("用户{}{}聊天被中断，无内容发送", userId, operationType);
-            }
-        } else if (result.isHasContentSent()) {
-            // 有内容发送但不是中断响应（可能是错误响应）
-            if (contentToSave != null && contentToSave.contains("Request failed")) {
-                // 确实是错误响应，保存到数据库
-                log.warn("用户{}{}收到错误响应，保存错误信息到数据库", userId, operationType);
-                saveErrorResponse(sessionId, userId, model.getId(), contentToSave);
-                log.info("{}错误响应已保存到数据库，会话ID：{}，用户ID：{}", operationType, sessionId, userId);
-            } else {
-                // 其他情况（可能是部分内容），记录日志
-                log.info("用户{}{}有内容发送但非真实AI响应且非中断，内容长度：{}", userId, operationType,
-                        contentToSave != null ? contentToSave.length() : 0);
-            }
-        }
-
-        // 统一保存逻辑：只在这里保存一次
-        if (shouldSave && contentToSave != null && !contentToSave.trim().isEmpty()) {
-            log.info("开始统一保存AI响应，sessionId: {}, userId: {}, modelId: {}, 内容长度: {}",
-                    sessionId, userId, model.getId(), contentToSave.length());
-
-            saveAiResponse(sessionId, userId, model.getId(), contentToSave);
-
-            log.info("用户{}{}AI响应统一保存完成，内容长度：{}", userId, operationType, contentToSave.length());
-        }
-
-        // 统一记录使用次数
-        if (shouldRecordUsage) {
-            boolean recordSuccess = chatLimitService.recordChatUsage(userId);
-            if (recordSuccess) {
-                log.info("用户{}{}聊天使用次数记录成功", userId, operationType);
-            } else {
-                log.warn("用户{}{}聊天使用次数记录失败", userId, operationType);
-            }
-        }
-    }
 
     /**
      * 聊天验证结果内部类
@@ -953,30 +899,29 @@ public class ChatServiceImpl implements ChatService {
         private final String errorMessage;
         private final Long userId;
         private final ChatSession chatSession;
-        private final ChatMessage targetMessage;
+
 
         private ChatValidationResult(boolean success, String errorMessage, Long userId,
-                                   ChatSession chatSession, ChatMessage targetMessage) {
+                                   ChatSession chatSession) {
             this.success = success;
             this.errorMessage = errorMessage;
             this.userId = userId;
             this.chatSession = chatSession;
-            this.targetMessage = targetMessage;
         }
 
         public static ChatValidationResult success(Long userId, ChatSession chatSession, ChatMessage targetMessage) {
-            return new ChatValidationResult(true, null, userId, chatSession, targetMessage);
+            return new ChatValidationResult(true, null, userId, chatSession);
         }
 
         public static ChatValidationResult error(String errorMessage) {
-            return new ChatValidationResult(false, errorMessage, null, null, null);
+            return new ChatValidationResult(false, errorMessage, null, null);
         }
 
         public boolean isSuccess() { return success; }
         public String getErrorMessage() { return errorMessage; }
         public Long getUserId() { return userId; }
         public ChatSession getChatSession() { return chatSession; }
-        public ChatMessage getTargetMessage() { return targetMessage; }
+
     }
 
     /**
@@ -1178,13 +1123,25 @@ public class ChatServiceImpl implements ChatService {
                                 // 尝试解析完整的JSON
                                 String bufferedJson = jsonBuffer.toString();
                                 if (isValidJson(bufferedJson)) {
-                                    String contentSent = processCompleteJson(bufferedJson, response);
-                                    if (contentSent != null) {
-                                        hasContentSent[0] = true;
-                                        isRealAiResponse[0] = true;
-                                        aiResponseContent.append(contentSent);
+                                    try {
+                                        String contentSent = processCompleteJson(bufferedJson, response);
+                                        if (contentSent != null) {
+                                            hasContentSent[0] = true;
+                                            isRealAiResponse[0] = true;
+                                            aiResponseContent.append(contentSent);
+                                        } else {
+                                            // 检查是否是被过滤的真实AI响应
+                                            if (isRealAiResponseButFiltered(bufferedJson)) {
+                                                isRealAiResponse[0] = true;
+                                                // 不设置hasContentSent，因为内容被过滤了
+                                                log.debug("检测到被过滤的真实AI响应，设置isRealAiResponse=true但不累积内容");
+                                            }
+                                        }
+                                        jsonBuffer.setLength(0);
+                                    } catch (ChatRetryException e) {
+                                        log.warn("检测到需要重试的错误消息，标记需要重试");
+                                        throw e; // 重新抛出异常，让上层处理重试
                                     }
-                                    jsonBuffer.setLength(0);
                                 }
                             } else if (!line.trim().isEmpty() && jsonBuffer.length() > 0) {
                                 // 处理跨行的JSON片段（不以data:开头但缓冲区有数据）
@@ -1203,13 +1160,18 @@ public class ChatServiceImpl implements ChatService {
                                 String bufferedJson = jsonBuffer.toString();
                                 if (isValidJson(bufferedJson)) {
                                     log.debug("跨行JSON重组成功，长度: {}", bufferedJson.length());
-                                    String contentSent = processCompleteJson(bufferedJson, response);
-                                    if (contentSent != null) {
-                                        hasContentSent[0] = true;
-                                        isRealAiResponse[0] = true;
-                                        aiResponseContent.append(contentSent);
+                                    try {
+                                        String contentSent = processCompleteJson(bufferedJson, response);
+                                        if (contentSent != null) {
+                                            hasContentSent[0] = true;
+                                            isRealAiResponse[0] = true;
+                                            aiResponseContent.append(contentSent);
+                                        }
+                                        jsonBuffer.setLength(0);
+                                    } catch (ChatRetryException e) {
+                                        log.warn("检测到需要重试的错误消息，标记需要重试");
+                                        throw e; // 重新抛出异常，让上层处理重试
                                     }
-                                    jsonBuffer.setLength(0);
                                 } else {
                                     log.debug("跨行JSON仍不完整，继续等待: 当前长度 {}", bufferedJson.length());
                                 }
@@ -1278,11 +1240,16 @@ public class ChatServiceImpl implements ChatService {
 
                                             String bufferedJson = jsonBuffer.toString();
                                             if (isValidJson(bufferedJson)) {
-                                                String contentSent = processCompleteJson(bufferedJson, response);
-                                                if (contentSent != null) {
-                                                    hasContentSent[0] = true;
-                                                    isRealAiResponse[0] = true;
-                                                    aiResponseContent.append(contentSent);
+                                                try {
+                                                    String contentSent = processCompleteJson(bufferedJson, response);
+                                                    if (contentSent != null) {
+                                                        hasContentSent[0] = true;
+                                                        isRealAiResponse[0] = true;
+                                                        aiResponseContent.append(contentSent);
+                                                    }
+                                                } catch (ChatRetryException e) {
+                                                    log.warn("检测到需要重试的错误消息，标记需要重试");
+                                                    throw e; // 重新抛出异常，让上层处理重试
                                                 }
                                             }
                                         }
@@ -1291,11 +1258,16 @@ public class ChatServiceImpl implements ChatService {
                                         jsonBuffer.append(remainingLine);
                                         String bufferedJson = jsonBuffer.toString();
                                         if (isValidJson(bufferedJson)) {
-                                            String contentSent = processCompleteJson(bufferedJson, response);
-                                            if (contentSent != null) {
-                                                hasContentSent[0] = true;
-                                                isRealAiResponse[0] = true;
-                                                aiResponseContent.append(contentSent);
+                                            try {
+                                                String contentSent = processCompleteJson(bufferedJson, response);
+                                                if (contentSent != null) {
+                                                    hasContentSent[0] = true;
+                                                    isRealAiResponse[0] = true;
+                                                    aiResponseContent.append(contentSent);
+                                                }
+                                            } catch (ChatRetryException e) {
+                                                log.warn("检测到需要重试的错误消息，标记需要重试");
+                                                throw e; // 重新抛出异常，让上层处理重试
                                             }
                                         }
                                     }
@@ -1598,7 +1570,7 @@ public class ChatServiceImpl implements ChatService {
     private String processContinuationJson(String jsonData, HttpServletResponse response, String originalContent,
                                          StringBuilder continuationContent, StringBuilder alignedContentForSaving,
                                          boolean[] alignmentDone, StringBuilder cacheBuffer, long[] cacheStartTime,
-                                         int[] cacheBlockCount, boolean[] cleaningDone) {
+                                         int[] cacheBlockCount, boolean[] cleaningDone) throws ChatRetryException {
         // 简化续写JSON处理日志
 
         try {
@@ -1631,25 +1603,47 @@ public class ChatServiceImpl implements ChatService {
                             if (shouldStopCaching(cacheBuffer, cacheStartTime[0], cacheBlockCount[0])) {
                                 // 一次性清理所有标签
                                 String cachedContent = cacheBuffer.toString();
-                                String cleanedCache = cleanAllTagsOnce(cachedContent);
-                                log.debug("续写缓存清理完成，原长度: {}, 清理后长度: {}, 缓存时间: {}ms",
-                                        cachedContent.length(), cleanedCache.length(),
-                                        System.currentTimeMillis() - cacheStartTime[0]);
+                                try {
+                                    String cleanedCache = cleanAllTagsOnce(cachedContent);
+                                    log.debug("续写缓存清理完成，原长度: {}, 清理后长度: {}, 缓存时间: {}ms",
+                                            cachedContent.length(), cleanedCache.length(),
+                                            System.currentTimeMillis() - cacheStartTime[0]);
 
-                                cleaningDone[0] = true;
+                                    cleaningDone[0] = true;
                                 cacheBuffer.setLength(0); // 清空缓存
 
-                                // 处理清理后的内容
-                                if (!cleanedCache.isEmpty()) {
-                                    return processCachedContent(cleanedCache, originalContent, continuationContent,
-                                                              alignedContentForSaving, alignmentDone, response, mapper);
+                                    // 处理清理后的内容
+                                    if (!cleanedCache.isEmpty()) {
+                                        return processCachedContent(cleanedCache, originalContent, continuationContent,
+                                                                  alignedContentForSaving, alignmentDone, response, mapper);
+                                    } else {
+                                        // 如果清理后内容为空（被过滤），不进行任何处理
+                                        log.debug("续写缓存内容被过滤，跳过处理");
+                                        return null;
+                                    }
+                                } catch (ChatRetryException e) {
+                                    log.warn("续写缓存清理时检测到需要重试的错误消息，抛出重试异常");
+                                    throw e; // 重新抛出异常，让上层处理重试
                                 }
                             }
                             return null; // 继续缓存
                         } else {
-                            // 清理已完成，后续内容直接使用，不再检测删除
+                            // 清理已完成，后续内容需要进行过滤检测
 
                             if (!content.isEmpty()) {
+                                // 检查后续内容是否包含需要重试的错误消息
+                                if (shouldRestartChat(content)) {
+                                    log.warn("续写后续内容检测到需要重试的错误消息，抛出重试异常");
+                                    throw new ChatRetryException("续写后续内容检测到需要重试的错误消息");
+                                }
+
+                                // 检查后续内容是否包含需要过滤的内容
+                                if (shouldFilterContent(content)) {
+                                    log.info("续写后续内容检测到需要过滤的AI响应内容，已阻止向前端发送且不保存到数据库");
+                                    // 不累积到内容中，也不发送给前端
+                                    return null; // 返回null，不累积任何内容
+                                }
+
                                 // 对齐完成后，直接添加内容（不再清理）
                                 alignedContentForSaving.append(content);
                                 continuationContent.append(content);
@@ -1763,9 +1757,9 @@ public class ChatServiceImpl implements ChatService {
     }
 
     /**
-     * 一次性清理所有AI标记
+     * 一次性清理所有AI标记（带检测）
      */
-    private String cleanAllTagsOnce(String content) {
+    private String cleanAllTagsOnce(String content) throws ChatRetryException {
         if (content == null || content.trim().isEmpty()) {
             return content;
         }
@@ -1773,16 +1767,28 @@ public class ChatServiceImpl implements ChatService {
         String cleaned = content;
         log.debug("开始一次性清理所有标签，原始长度: {}", content.length());
 
-        // 1. 清理thinking标签块
+        // 0. 首先检查是否包含需要重试的错误消息
+        if (shouldRestartChat(cleaned)) {
+            log.warn("续写内容检测到需要重试的错误消息，抛出重试异常");
+            throw new ChatRetryException("续写检测到需要重试的错误消息");
+        }
+
+        // 1. 检查是否包含需要过滤的内容
+        if (shouldFilterContent(cleaned)) {
+            log.info("续写内容检测到需要过滤的AI响应内容，已阻止向前端发送");
+            return ""; // 返回空字符串，不向前端发送
+        }
+
+        // 2. 清理thinking标签块
         cleaned = removeThinkingBlocks(cleaned);
 
-        // 2. 清理response标签
+        // 3. 清理response标签
         cleaned = removeResponseTags(cleaned);
 
-        // 3. 清理代码块开头标记
+        // 4. 清理代码块开头标记
         cleaned = removeCodeBlockMarkers(cleaned);
 
-        // 4. 清理多余空白
+        // 5. 清理多余空白
         cleaned = cleanExtraWhitespace(cleaned);
 
         log.debug("一次性清理完成，原长度: {}, 清理后长度: {}, 移除字符数: {}",
@@ -1883,14 +1889,21 @@ public class ChatServiceImpl implements ChatService {
                 if (delta != null && delta.has("content")) {
                     String content = delta.get("content").asText();
                     if (content != null && !content.isEmpty()) {
-                        ContentCleanResult cleanResult = cleanContentWithFilterInfo(content);
-                        String cleanContent = cleanResult.getCleanedContent();
+                        ContentDetectionResult detectionResult = detectContentAndGetResult(content);
+                        String cleanContent = detectionResult.getCleanedContent();
 
-                        // 如果内容被过滤，仍然返回原始内容用于累积（但不发送给前端）
-                        if (cleanResult.wasFiltered()) {
-                            log.debug("AI响应内容被过滤，但仍计入响应累积: [{}]",
+                        // 如果需要重试，抛出特殊异常
+                        if (detectionResult.needsRetry()) {
+                            log.warn("检测到需要重试的错误消息，抛出重试异常: [{}]",
                                 content.length() > 50 ? content.substring(0, 50) + "..." : content);
-                            return content; // 返回原始内容用于累积到aiResponseContent
+                            throw new ChatRetryException("检测到需要重试的错误消息");
+                        }
+
+                        // 如果内容被过滤，不返回任何内容（既不发送给前端，也不累积到数据库）
+                        if (detectionResult.wasFiltered()) {
+                            log.debug("AI响应内容被过滤，不发送给前端且不保存到数据库: [{}]",
+                                content.length() > 50 ? content.substring(0, 50) + "..." : content);
+                            return null; // 返回null，不累积到aiResponseContent
                         }
 
                         if (!cleanContent.isEmpty()) {
@@ -1913,46 +1926,20 @@ public class ChatServiceImpl implements ChatService {
         }
     }
 
-    /**
-     * 清理内容，移除无效字符并过滤特定内容
-     * 返回一个包含清理结果和过滤状态的对象
-     */
-    private ContentCleanResult cleanContentWithFilterInfo(String content) {
-        if (content == null) {
-            return new ContentCleanResult("", false);
-        }
 
-        // 检查是否包含需要过滤的内容
-        if (shouldFilterContent(content)) {
-            log.info("检测到需要过滤的AI响应内容，已阻止向前端发送");
-            // 返回空字符串但标记为已过滤，表示这是真实的AI响应
-            return new ContentCleanResult("", true);
-        }
-
-        // 基础清理：移除无效字符
-        String cleaned = content.replaceAll("[\uFFFD\u0000]", "");
-        cleaned = cleaned.replaceAll(" {2,}", " ");
-
-        return new ContentCleanResult(cleaned, false);
-    }
 
     /**
-     * 兼容性方法：保持原有的cleanContent方法
+     * 内容检测结果类
      */
-    private String cleanContent(String content) {
-        return cleanContentWithFilterInfo(content).getCleanedContent();
-    }
-
-    /**
-     * 内容清理结果类
-     */
-    private static class ContentCleanResult {
+    private static class ContentDetectionResult {
         private final String cleanedContent;
         private final boolean wasFiltered;
+        private final boolean needsRetry;
 
-        public ContentCleanResult(String cleanedContent, boolean wasFiltered) {
+        public ContentDetectionResult(String cleanedContent, boolean wasFiltered, boolean needsRetry) {
             this.cleanedContent = cleanedContent;
             this.wasFiltered = wasFiltered;
+            this.needsRetry = needsRetry;
         }
 
         public String getCleanedContent() {
@@ -1962,80 +1949,26 @@ public class ChatServiceImpl implements ChatService {
         public boolean wasFiltered() {
             return wasFiltered;
         }
+
+        public boolean needsRetry() {
+            return needsRetry;
+        }
     }
 
     /**
-     * 清理续写内容中的AI标记（在流式响应开始时执行）
+     * 聊天重试异常类
      */
-    private String cleanContinuationContent(String content) {
-        if (content == null || content.trim().isEmpty()) {
-            return content;
+    private static class ChatRetryException extends RuntimeException {
+        public ChatRetryException(String message) {
+            super(message);
         }
-
-        String cleaned = content;
-        log.debug("开始清理续写内容，原始长度: {}", content.length());
-
-        // 1. 移除完整的 <thinking>...</thinking> 块（最重要的清理）
-        cleaned = removeThinkingBlocks(cleaned);
-
-        // 2. 移除开头的 <response> 标签
-        cleaned = removeResponseTags(cleaned);
-
-        // 3. 移除开头的代码块标记（```javascript, ```html 等）
-        cleaned = removeCodeBlockMarkers(cleaned);
-
-        // 4. 清理多余的空白行
-        cleaned = cleanExtraWhitespace(cleaned);
-
-        log.debug("续写内容清理完成，清理后长度: {}, 移除字符数: {}",
-                cleaned.length(), content.length() - cleaned.length());
-
-        return cleaned;
     }
 
 
 
-    /**
-     * 清理thinking标记和内容（续写保存时使用）
-     */
-    private String cleanThinkingContent(String content) {
-        if (content == null || content.trim().isEmpty()) {
-            return content;
-        }
 
-        String result = content;
-        log.debug("开始清理thinking内容，原始长度: {}", content.length());
 
-        // 检测并删除完整的thinking块
-        while (true) {
-            int thinkingStart = result.indexOf("<thinking>");
-            int thinkingEnd = result.indexOf("</thinking>");
 
-            if (thinkingStart != -1 && thinkingEnd != -1 && thinkingEnd > thinkingStart) {
-                // 找到完整的thinking块，删除从<thinking>到</thinking>的所有内容
-                String beforeThinking = result.substring(0, thinkingStart);
-                String afterThinking = result.substring(thinkingEnd + "</thinking>".length());
-                result = beforeThinking + afterThinking;
-
-                log.info("删除了一个完整thinking块，位置: {} - {}", thinkingStart, thinkingEnd + "</thinking>".length());
-            } else {
-                break; // 没有更多完整的thinking块
-            }
-        }
-
-        // 删除单独的thinking标记
-        result = result.replaceAll("(?m)^\\s*<thinking>\\s*$", "");
-        result = result.replaceAll("(?m)^\\s*</thinking>\\s*$", "");
-
-        // 清理多余的空白行
-        result = result.replaceAll("\n{3,}", "\n\n");
-        result = result.trim();
-
-        log.debug("thinking内容清理完成，清理后长度: {}, 移除字符数: {}",
-                result.length(), content.length() - result.length());
-
-        return result;
-    }
 
     /**
      * 移除 <thinking>...</thinking> 块和单独的thinking标记，以及无标签的thinking内容
@@ -2197,6 +2130,87 @@ public class ChatServiceImpl implements ChatService {
     }
 
     /**
+     * 检查内容是否包含需要重新开始聊天的错误消息
+     * 检测到特定错误消息时应该重新开始聊天
+     */
+    private boolean shouldRestartChat(String content) {
+        if (content == null || content.trim().isEmpty()) {
+            return false;
+        }
+
+        // 定义需要重新开始聊天的错误消息模式
+        String[] restartPatterns = {
+            "Request blocked. Please reach out to support@example.com if you think this was a mistake."
+        };
+
+        // 检查是否包含任何重新开始模式
+        for (String pattern : restartPatterns) {
+            if (content.contains(pattern)) {
+                log.info("检测到需要重新开始聊天的错误消息: [{}]", pattern);
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * 检查JSON响应是否是被过滤的真实AI响应
+     * 用于区分"没有AI响应"和"AI响应被过滤"
+     */
+    private boolean isRealAiResponseButFiltered(String jsonData) {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode jsonNode = mapper.readTree(jsonData);
+
+            // 检查是否有choices数组且包含delta内容
+            JsonNode choices = jsonNode.get("choices");
+            if (choices != null && choices.isArray() && choices.size() > 0) {
+                JsonNode firstChoice = choices.get(0);
+                JsonNode delta = firstChoice.get("delta");
+                if (delta != null && delta.has("content")) {
+                    String content = delta.get("content").asText();
+                    // 如果内容不为空且被过滤，则认为是被过滤的真实AI响应
+                    if (content != null && !content.trim().isEmpty()) {
+                        return shouldFilterContent(content) || shouldRestartChat(content);
+                    }
+                }
+            }
+        } catch (Exception e) {
+            log.debug("解析JSON检查过滤状态时出错: {}", e.getMessage());
+        }
+        return false;
+    }
+
+    /**
+     * 检测内容并返回处理结果
+     * 包括过滤检测和重试检测
+     */
+    private ContentDetectionResult detectContentAndGetResult(String content) {
+        if (content == null) {
+            return new ContentDetectionResult("", false, false);
+        }
+
+        // 检查是否包含需要重试的错误消息
+        if (shouldRestartChat(content)) {
+            log.warn("检测到需要重试的错误消息，触发重试");
+            return new ContentDetectionResult("", false, true);
+        }
+
+        // 检查是否包含需要过滤的内容
+        if (shouldFilterContent(content)) {
+            log.info("检测到需要过滤的AI响应内容，已阻止向前端发送");
+            return new ContentDetectionResult("", true, false);
+        }
+
+        // 基础清理：移除无效字符
+        String cleaned = content.replaceAll("[\uFFFD\u0000]", "");
+        cleaned = cleaned.replaceAll(" {2,}", " ");
+
+        return new ContentDetectionResult(cleaned, false, false);
+    }
+
+    /**
      * 智能分块发送内容
      */
     private void sendContentBySmartChunking(String content, HttpServletResponse response, ObjectMapper mapper) {
@@ -2266,16 +2280,16 @@ public class ChatServiceImpl implements ChatService {
     }
 
     /**
-     * 传统块发送模式
+     * 传统块发送模式（内容已经过滤和清理）
      */
     private void sendContentAsBlock(String content, HttpServletResponse response, ObjectMapper mapper) {
         try {
-            String cleanContent = cleanContent(content);
-            if (!cleanContent.isEmpty()) {
-                String vercelFormat = String.format("0:%s\n", mapper.writeValueAsString(cleanContent));
+            // 注意：传入的content已经经过过滤和清理，不需要再次处理
+            if (!content.isEmpty()) {
+                String vercelFormat = String.format("0:%s\n", mapper.writeValueAsString(content));
                 response.getWriter().write(vercelFormat);
                 response.getWriter().flush();
-                log.info("块发送模式数据发送成功: [{}]", cleanContent);
+                log.info("块发送模式数据发送成功: [{}]", content);
             } else {
                 log.debug("块发送模式：内容为空，跳过发送");
             }
@@ -2323,70 +2337,116 @@ public class ChatServiceImpl implements ChatService {
     }
 
     /**
-     * 执行AI响应续写
+     * 执行AI响应续写（带重试机制）
      * @return 续写内容，如果失败返回null
      */
     private String continueAiResponse(HttpServletResponse response, ChatRequestDTO request, AiModel model, String originalContent) {
-        try {
-            log.debug("开始执行续写操作，会话ID：{}，原内容长度：{}", request.getSessionId(), originalContent.length());
+        int maxRetries = 3; // 最大重试次数
+        int retryCount = 0;
 
-            // 在续写开始前检查是否已被用户中断
-            if (request.getSessionId() != null && chatInterruptService.isInterrupted(request.getSessionId())) {
-                log.info("续写开始前检测到用户已中断聊天，取消续写操作，会话ID：{}", request.getSessionId());
-                return null; // 直接返回，不执行续写
+        while (retryCount <= maxRetries) {
+            try {
+                log.debug("开始执行续写操作，会话ID：{}，原内容长度：{}，第{}次尝试",
+                    request.getSessionId(), originalContent.length(), retryCount + 1);
+
+                // 在续写开始前检查是否已被用户中断
+                if (request.getSessionId() != null && chatInterruptService.isInterrupted(request.getSessionId())) {
+                    log.info("续写开始前检测到用户已中断聊天，取消续写操作，会话ID：{}", request.getSessionId());
+                    return null; // 直接返回，不执行续写
+                }
+
+                // 构建续写请求的消息列表
+                List<Map<String, String>> continuationMessages = buildContinuationMessages(request.getMessages(), originalContent);
+
+                // 创建续写请求
+                ChatRequestDTO continuationRequest = new ChatRequestDTO();
+                continuationRequest.setMessages(continuationMessages);
+                continuationRequest.setUserId(request.getUserId());
+                continuationRequest.setModelId(model.getId());
+                continuationRequest.setSessionId(request.getSessionId());
+                continuationRequest.setDeepThinking(request.getDeepThinking());
+                continuationRequest.setNetwork(request.getNetwork());
+
+                // 用于收集续写内容和对齐状态
+                final StringBuilder continuationContent = new StringBuilder();
+                final StringBuilder alignedContentForSaving = new StringBuilder();
+                final boolean[] hasContentSent = {false};
+                final boolean[] isRealAiResponseArray = {false};
+                final boolean[] alignmentDone = {false};
+                final boolean[] wasInterrupted = {false}; // 记录续写过程中是否被中断
+
+                // 执行续写请求（带对齐的流式处理）
+                boolean success = executeContinuationRequestWithAlignment(continuationRequest, model, response,
+                        originalContent, continuationContent, alignedContentForSaving, hasContentSent, isRealAiResponseArray, alignmentDone, wasInterrupted);
+
+                // 如果续写过程中被中断，返回已生成的部分内容给主流程处理
+                if (wasInterrupted[0] && hasContentSent[0]) {
+                    String partialContinuationContent = continuationContent.toString();
+                    log.info("续写过程中被用户中断，返回部分续写内容给主流程处理，会话ID：{}，部分内容长度：{}",
+                            request.getSessionId(), partialContinuationContent.length());
+
+                    // 返回特殊标记，表示续写被中断，让主流程知道需要设置中断状态
+                    return "CONTINUATION_INTERRUPTED:" + partialContinuationContent;
+                }
+
+                if (success && hasContentSent[0]) {
+                    // 续写成功，返回续写内容给主线程进行统一保存
+                    String continuationContentStr = continuationContent.toString();
+
+                    log.debug("续写操作成功 - 原内容长度: {}, 续写长度: {}",
+                            originalContent.length(), continuationContentStr.length());
+                    log.info("续写操作成功，返回续写内容给主线程统一保存");
+
+                    return continuationContentStr;
+                }
+
+                log.warn("续写操作失败或无内容生成，准备重试");
+                // 继续到重试逻辑
+
+            } catch (ChatRetryException e) {
+                retryCount++;
+                log.warn("续写检测到需要重试的错误消息，第{}次重试，最大重试次数: {}", retryCount, maxRetries);
+
+                if (retryCount > maxRetries) {
+                    log.error("续写重试次数已达上限，停止重试");
+                    return null;
+                }
+
+                // 等待一段时间后重试
+                try {
+                    Thread.sleep(1000 * retryCount); // 递增等待时间
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    log.error("续写重试等待被中断");
+                    return null;
+                }
+                continue; // 继续重试循环
+
+            } catch (Exception e) {
+                log.error("续写操作失败", e);
+                return null;
             }
 
-            // 构建续写请求的消息列表
-            List<Map<String, String>> continuationMessages = buildContinuationMessages(request.getMessages(), originalContent);
-
-            // 创建续写请求
-            ChatRequestDTO continuationRequest = new ChatRequestDTO();
-            continuationRequest.setMessages(continuationMessages);
-            continuationRequest.setUserId(request.getUserId());
-            continuationRequest.setModelId(model.getId());
-            continuationRequest.setSessionId(request.getSessionId());
-            continuationRequest.setDeepThinking(request.getDeepThinking());
-
-            // 用于收集续写内容和对齐状态
-            final StringBuilder continuationContent = new StringBuilder();
-            final StringBuilder alignedContentForSaving = new StringBuilder();
-            final boolean[] hasContentSent = {false};
-            final boolean[] isRealAiResponseArray = {false};
-            final boolean[] alignmentDone = {false};
-            final boolean[] wasInterrupted = {false}; // 记录续写过程中是否被中断
-
-            // 执行续写请求（带对齐的流式处理）
-            boolean success = executeContinuationRequestWithAlignment(continuationRequest, model, response,
-                    originalContent, continuationContent, alignedContentForSaving, hasContentSent, isRealAiResponseArray, alignmentDone, wasInterrupted);
-
-            // 如果续写过程中被中断，返回已生成的部分内容给主流程处理
-            if (wasInterrupted[0] && hasContentSent[0]) {
-                String partialContinuationContent = continuationContent.toString();
-                log.info("续写过程中被用户中断，返回部分续写内容给主流程处理，会话ID：{}，部分内容长度：{}",
-                        request.getSessionId(), partialContinuationContent.length());
-
-                // 返回特殊标记，表示续写被中断，让主流程知道需要设置中断状态
-                return "CONTINUATION_INTERRUPTED:" + partialContinuationContent;
+            // 如果到这里说明需要重试
+            retryCount++;
+            if (retryCount > maxRetries) {
+                log.error("续写重试次数已达上限，停止重试");
+                return null;
             }
 
-            if (success && hasContentSent[0]) {
-                // 续写成功，返回续写内容给主线程进行统一保存
-                String continuationContentStr = continuationContent.toString();
-
-                log.debug("续写操作成功 - 原内容长度: {}, 续写长度: {}",
-                        originalContent.length(), continuationContentStr.length());
-                log.info("续写操作成功，返回续写内容给主线程统一保存");
-
-                return continuationContentStr;
+            // 等待一段时间后重试
+            try {
+                Thread.sleep(1000 * retryCount);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                log.error("续写重试等待被中断");
+                return null;
             }
-
-            log.warn("续写操作失败或无内容生成");
-            return null;
-
-        } catch (Exception e) {
-            log.error("续写操作失败", e);
-            return null;
         }
+
+        // 如果到这里说明重试失败
+        log.error("续写操作在多次重试后仍然失败");
+        return null;
     }
 
     /**
@@ -2421,7 +2481,7 @@ public class ChatServiceImpl implements ChatService {
     private boolean executeContinuationRequestWithAlignment(ChatRequestDTO request, AiModel model, HttpServletResponse response,
                                                           String originalContent, StringBuilder continuationContent,
                                                           StringBuilder alignedContentForSaving, boolean[] hasContentSent,
-                                                          boolean[] isRealAiResponse, boolean[] alignmentDone, boolean[] wasInterrupted) {
+                                                          boolean[] isRealAiResponse, boolean[] alignmentDone, boolean[] wasInterrupted) throws ChatRetryException {
         log.debug("开始执行续写请求，用户ID: {}, 模型: {}, 原内容长度: {}", request.getUserId(), model.getModelCode(), originalContent.length());
 
         // 初始化缓存相关变量
@@ -2560,6 +2620,9 @@ public class ChatServiceImpl implements ChatService {
                                         } else {
                                             log.debug("续写处理返回null，可能是空内容或缓存中");
                                         }
+                                    } catch (ChatRetryException e) {
+                                        log.warn("续写处理检测到需要重试的错误消息，抛出重试异常");
+                                        throw e; // 重新抛出异常，让上层处理重试
                                     } catch (Exception jsonProcessException) {
                                         log.error("处理续写JSON失败，跳过此块: {}, JSON内容: [{}]",
                                                 jsonProcessException.getMessage(),
@@ -2594,6 +2657,9 @@ public class ChatServiceImpl implements ChatService {
                                             hasContentSent[0] = true;
                                             isRealAiResponse[0] = true;
                                         }
+                                    } catch (ChatRetryException e) {
+                                        log.warn("续写跨行JSON处理检测到需要重试的错误消息，抛出重试异常");
+                                        throw e; // 重新抛出异常，让上层处理重试
                                     } catch (Exception jsonProcessException) {
                                         log.error("处理续写跨行JSON失败: {}", jsonProcessException.getMessage());
                                     }
@@ -2639,6 +2705,9 @@ public class ChatServiceImpl implements ChatService {
                                                         hasContentSent[0] = true;
                                                         isRealAiResponse[0] = true;
                                                     }
+                                                } catch (ChatRetryException e) {
+                                                    log.warn("续写剩余JSON处理检测到需要重试的错误消息，抛出重试异常");
+                                                    throw e; // 重新抛出异常，让上层处理重试
                                                 } catch (Exception e) {
                                                     log.error("处理续写剩余JSON失败: {}", e.getMessage());
                                                 }
@@ -2691,88 +2760,7 @@ public class ChatServiceImpl implements ChatService {
         }
     }
 
-    /**
-     * 执行续写请求（原方法保留用于兼容）
-     */
-    private boolean executeContinuationRequest(ChatRequestDTO request, AiModel model, HttpServletResponse response,
-                                             StringBuilder continuationContent, boolean[] hasContentSent, boolean[] isRealAiResponse) {
-        try {
-            // 构建请求体
-            Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("model", model.getModelCode());
-            requestBody.put("messages", request.getMessages());
-            requestBody.put("stream", true);
 
-            // 只有当provider是Gemini时才添加reasoning_effort参数
-            if ("Gemini".equalsIgnoreCase(model.getProvider())) {
-                requestBody.put("reasoning_effort", "none");
-            }
-
-            // 记录请求信息
-            logAiRequestDetails(requestBody, model, request.getUserId());
-
-            // 创建WebClient
-            WebClient webClient = webClientBuilder
-                    .defaultHeader("Authorization", "Bearer " + model.getApiKey())
-                    .defaultHeader("Content-Type", "application/json; charset=UTF-8")
-                    .defaultHeader("Accept-Charset", "UTF-8")
-                    .defaultHeader("User-Agent", "OpenAI/PowerShell")
-                    .build();
-
-            log.info("发送续写请求到AI API: {}", model.getBaseUrl());
-
-            // 处理流式响应
-            StringBuilder jsonBuffer = new StringBuilder();
-
-            webClient.post()
-                    .uri(model.getBaseUrl())
-                    .bodyValue(requestBody)
-                    .retrieve()
-                    .bodyToFlux(DataBuffer.class)
-                    .map(dataBuffer -> {
-                        byte[] bytes = new byte[dataBuffer.readableByteCount()];
-                        dataBuffer.read(bytes);
-                        DataBufferUtils.release(dataBuffer);
-                        return new String(bytes, StandardCharsets.UTF_8);
-                    })
-                    .doOnNext(chunk -> {
-                        try {
-                            String[] lines = chunk.split("\n");
-                            for (String line : lines) {
-                                line = line.trim();
-                                if (line.startsWith("data: ")) {
-                                    if (line.equals("data: [DONE]")) {
-                                        return; // 续写完成
-                                    }
-
-                                    String jsonData = line.substring(6).trim();
-                                    jsonBuffer.append(jsonData);
-
-                                    if (isValidJson(jsonBuffer.toString())) {
-                                        String contentSent = processCompleteJson(jsonBuffer.toString(), response);
-                                        if (contentSent != null) {
-                                            hasContentSent[0] = true;
-                                            isRealAiResponse[0] = true;
-                                            continuationContent.append(contentSent);
-                                        }
-                                        jsonBuffer.setLength(0);
-                                    }
-                                }
-                            }
-                        } catch (Exception e) {
-                            log.error("处理续写响应块失败", e);
-                        }
-                    })
-                    .doOnError(error -> log.error("续写请求失败", error))
-                    .blockLast();
-
-            return hasContentSent[0];
-
-        } catch (Exception e) {
-            log.error("执行续写请求失败", e);
-            return false;
-        }
-    }
 
     /**
      * 构建完成标记数据
@@ -3109,6 +3097,143 @@ public class ChatServiceImpl implements ChatService {
     }
 
     /**
+     * 处理联网搜索内容并附加到用户消息中
+     *
+     * @param messages 消息列表
+     * @param query 搜索查询内容（从用户消息中提取）
+     * @return 处理后的消息列表
+     */
+    private List<Map<String, String>> processNetworkContent(List<Map<String, String>> messages, String query) {
+        if (query == null || query.trim().isEmpty() || messages == null || messages.isEmpty()) {
+            return messages;
+        }
+
+        try {
+            log.info("开始处理联网搜索内容，查询：{}", query);
+
+            // 调用联网搜索服务
+            com.instser.chat.entity.TavilyExtractResponse extractResponse = webSearchExtractService.searchAndExtract(query);
+
+            if (extractResponse == null || extractResponse.getResults() == null || extractResponse.getResults().isEmpty()) {
+                log.warn("联网搜索未返回有效结果，查询：{}", query);
+                return messages;
+            }
+
+            // 构建联网内容
+            StringBuilder networkContentBuilder = new StringBuilder();
+            networkContentBuilder.append("以下是联网搜索结果：[");
+
+            boolean hasValidContent = false;
+            int processedCount = 0;
+            final int MAX_RESULTS = 20; // 限制最多处理5个结果
+            final int MAX_CONTENT_LENGTH = 8000; // 限制每个结果的最大内容长度
+
+            for (com.instser.chat.entity.TavilyExtractResult result : extractResponse.getResults()) {
+                if (processedCount >= MAX_RESULTS) {
+                    log.info("已达到最大结果数量限制：{}，停止处理更多结果", MAX_RESULTS);
+                    break;
+                }
+
+                if (result.getRawContent() != null && !result.getRawContent().trim().isEmpty()) {
+                    if (hasValidContent) {
+                        networkContentBuilder.append(",");
+                    }
+
+                    // 限制内容长度，避免过长的内容
+                    String content = cleanNetworkContent(result.getRawContent());
+                    if (content.length() > MAX_CONTENT_LENGTH) {
+                        content = content.substring(0, MAX_CONTENT_LENGTH) + "...";
+                        log.info("内容过长，已截断，URL：{}，原长度：{}，截断后长度：{}",
+                                result.getUrl(), result.getRawContent().length(), content.length());
+                    }
+
+                    // 构建搜索结果格式：{"url":"content"}
+                    networkContentBuilder.append("{\"").append(escapeJsonString(result.getUrl()))
+                                        .append("\":\"").append(escapeJsonString(content)).append("\"}");
+
+                    hasValidContent = true;
+                    processedCount++;
+                    log.info("成功获取联网内容，URL：{}，内容长度：{}", result.getUrl(), content.length());
+                }
+            }
+
+            networkContentBuilder.append("]");
+
+            // 如果有有效的联网内容，则附加到最后一条用户消息中
+            if (hasValidContent) {
+                String networkContent = networkContentBuilder.toString();
+                final int MAX_TOTAL_CONTENT_LENGTH = 160000; // 限制总内容长度
+
+                // 检查联网内容长度
+                if (networkContent.length() > MAX_TOTAL_CONTENT_LENGTH) {
+                    log.warn("联网内容过长，长度：{}，将进行截断", networkContent.length());
+                    networkContent = networkContent.substring(0, MAX_TOTAL_CONTENT_LENGTH) + "...]";
+                }
+
+                // 找到最后一条用户消息
+                for (int i = messages.size() - 1; i >= 0; i--) {
+                    Map<String, String> message = messages.get(i);
+                    if ("user".equals(message.get("role"))) {
+                        String originalContent = message.get("content");
+                        String newContent = originalContent + "。" + networkContent;
+
+                        // 最终检查总长度
+                        if (newContent.length() > MAX_TOTAL_CONTENT_LENGTH) {
+                            log.warn("用户消息总长度过长，长度：{}，将进行截断", newContent.length());
+                            newContent = newContent.substring(0, MAX_TOTAL_CONTENT_LENGTH) + "...]";
+                        }
+
+                        message.put("content", newContent);
+
+                        log.info("已将联网内容附加到用户消息中，原始内容长度：{}，附加后长度：{}，处理结果数量：{}",
+                                originalContent.length(), newContent.length(), processedCount);
+                        break;
+                    }
+                }
+            }
+
+            return messages;
+
+        } catch (Exception e) {
+            log.error("处理联网搜索内容失败，查询：{}", query, e);
+            return messages; // 出错时返回原消息列表
+        }
+    }
+
+    /**
+     * 从消息列表中提取用户查询内容
+     *
+     * @param messages 消息列表
+     * @return 用户查询内容
+     */
+    private String extractUserQuery(List<Map<String, String>> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return null;
+        }
+
+        // 从最后一条用户消息中提取查询内容
+        for (int i = messages.size() - 1; i >= 0; i--) {
+            Map<String, String> message = messages.get(i);
+            if ("user".equals(message.get("role"))) {
+                String content = message.get("content");
+                if (content != null && !content.trim().isEmpty()) {
+                    // 如果内容包含文件附件信息，需要提取原始用户查询
+                    // 文件附件格式：原始内容。以下是文件内容：[...]
+                    if (content.contains("。以下是文件内容：[")) {
+                        String[] parts = content.split("。以下是文件内容：\\[");
+                        if (parts.length > 0) {
+                            return parts[0].trim();
+                        }
+                    }
+                    return content.trim();
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
      * 转义JSON字符串中的特殊字符
      */
     private String escapeJsonString(String str) {
@@ -3119,7 +3244,36 @@ public class ChatServiceImpl implements ChatService {
                   .replace("\"", "\\\"")
                   .replace("\n", "\\n")
                   .replace("\r", "\\r")
-                  .replace("\t", "\\t");
+                  .replace("\t", "\\t")
+                  .replace("\b", "\\b")
+                  .replace("\f", "\\f")
+                  .replace("/", "\\/")
+                  // 移除或替换可能导致问题的控制字符
+                  .replaceAll("[\\x00-\\x1F\\x7F]", " ");
+    }
+
+    /**
+     * 清理联网搜索内容，移除可能导致问题的字符和格式
+     *
+     * @param content 原始内容
+     * @return 清理后的内容
+     */
+    private String cleanNetworkContent(String content) {
+        if (content == null) {
+            return "";
+        }
+
+        return content.trim()
+                // 移除多余的空白字符
+                .replaceAll("\\s+", " ")
+                // 移除HTML标签
+                .replaceAll("<[^>]+>", "")
+                // 移除特殊的Unicode字符
+                .replaceAll("[\\u0000-\\u001F\\u007F-\\u009F]", " ")
+                // 移除连续的标点符号
+                .replaceAll("[.]{3,}", "...")
+                // 确保内容不为空
+                .trim();
     }
 
     /**
@@ -3248,8 +3402,8 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
-    public void processRetryChat(String sessionId, String messageId, Long modelId, Authentication authentication, HttpServletResponse response) {
-        log.info("开始处理重新生成请求，sessionId：{}，messageId：{}，modelId：{}", sessionId, messageId, modelId);
+    public void processRetryChat(String sessionId, String messageId, Long modelId, Boolean network, Authentication authentication, HttpServletResponse response) {
+        log.info("开始处理重新生成请求，sessionId：{}，messageId：{}，modelId：{}，network：{}", sessionId, messageId, modelId, network);
 
         try {
             // 设置响应头
@@ -3363,6 +3517,22 @@ public class ChatServiceImpl implements ChatService {
                         lastUserMessageEntity != null ? lastUserMessageEntity.getMessageId() : "null");
             }
 
+            // 处理联网搜索内容（如果启用）
+            if (network != null && network) {
+                // 提取用户查询内容（从最后一条用户消息中获取）
+                String userQuery = extractUserQuery(messages);
+                if (userQuery != null && !userQuery.trim().isEmpty()) {
+                    log.info("重试请求检测到联网搜索请求，开始处理联网内容，查询：{}", userQuery);
+                    List<Map<String, String>> processedMessages = processNetworkContent(messages, userQuery);
+                    messages = processedMessages;
+                    log.info("重试请求联网内容处理完成");
+                } else {
+                    log.warn("重试请求联网搜索但无法提取用户查询内容");
+                }
+            } else {
+                log.debug("重试请求没有启用联网搜索");
+            }
+
             // 获取并验证AI模型
             AiModel model = getAndValidateModel(modelId, chatSession);
             if (model == null) {
@@ -3399,6 +3569,7 @@ public class ChatServiceImpl implements ChatService {
             retryRequest.setModelId(model.getId());
             retryRequest.setSessionId(sessionId);
             retryRequest.setDeepThinking(false); // 重新生成时使用默认模式
+            retryRequest.setNetwork(network != null ? network : false); // 使用传入的network参数
 
             // 判断是否需要生成标题（如果删除后只剩一条用户消息，则需要生成标题）
             boolean willGenerateTitle = isFirstAiResponse(messages);
@@ -3406,7 +3577,7 @@ public class ChatServiceImpl implements ChatService {
                 messages.stream().filter(msg -> "user".equals(msg.get("role"))).count());
 
             // 调用AI服务进行流式响应
-            ChatResponseDTO result = streamChatWithAI(retryRequest, model, response, willGenerateTitle, "retry");
+            streamChatWithAI(retryRequest, model, response, willGenerateTitle, "retry");
 
             // 注释掉原有的保存逻辑，现在在handleStreamCompletionWithInterruptStatus中提前保存
             // handleAiResponseResult(result, userId, sessionId, model, "重新生成");
@@ -3432,8 +3603,8 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
-    public void processEditResendChat(String sessionId, String messageId, String newContent, String filesId, Long modelId, Authentication authentication, HttpServletResponse response) {
-        log.info("开始处理编辑重发请求，sessionId：{}，messageId：{}，newContent长度：{}，filesId：{}，modelId：{}", sessionId, messageId, newContent.length(), filesId, modelId);
+    public void processEditResendChat(String sessionId, String messageId, String newContent, String filesId, Long modelId, Boolean network, Authentication authentication, HttpServletResponse response) {
+        log.info("开始处理编辑重发请求，sessionId：{}，messageId：{}，newContent长度：{}，filesId：{}，modelId：{}，network：{}", sessionId, messageId, newContent.length(), filesId, modelId, network);
 
         try {
             // 设置响应头
@@ -3575,6 +3746,22 @@ public class ChatServiceImpl implements ChatService {
                         hasAttachments, messages.size());
             }
 
+            // 处理联网搜索内容（如果启用）
+            if (network != null && network) {
+                // 提取用户查询内容（从最后一条用户消息中获取）
+                String userQuery = extractUserQuery(messages);
+                if (userQuery != null && !userQuery.trim().isEmpty()) {
+                    log.info("编辑重发请求检测到联网搜索请求，开始处理联网内容，查询：{}", userQuery);
+                    List<Map<String, String>> processedMessages = processNetworkContent(messages, userQuery);
+                    messages = processedMessages;
+                    log.info("编辑重发请求联网内容处理完成");
+                } else {
+                    log.warn("编辑重发请求联网搜索但无法提取用户查询内容");
+                }
+            } else {
+                log.debug("编辑重发请求没有启用联网搜索");
+            }
+
             // 获取并验证AI模型
             AiModel model = getAndValidateModel(modelId, chatSession);
             if (model == null) {
@@ -3611,6 +3798,7 @@ public class ChatServiceImpl implements ChatService {
             editResendRequest.setModelId(model.getId());
             editResendRequest.setSessionId(sessionId);
             editResendRequest.setDeepThinking(false); // 编辑重发时使用默认模式
+            editResendRequest.setNetwork(network != null ? network : false); // 使用传入的network参数
 
             // 判断是否需要生成标题（如果编辑的是第一条用户消息，则需要生成标题）
             boolean willGenerateTitle = isFirstAiResponse(messages);
@@ -3618,7 +3806,7 @@ public class ChatServiceImpl implements ChatService {
                 messages.stream().filter(msg -> "user".equals(msg.get("role"))).count());
 
             // 调用AI服务进行流式响应
-            ChatResponseDTO result = streamChatWithAI(editResendRequest, model, response, willGenerateTitle, "edit-resend");
+            streamChatWithAI(editResendRequest, model, response, willGenerateTitle, "edit-resend");
 
             // 注释掉原有的保存逻辑，现在在handleStreamCompletionWithInterruptStatus中提前保存
             // handleAiResponseResult(result, userId, sessionId, model, "编辑重发");
@@ -3696,92 +3884,11 @@ public class ChatServiceImpl implements ChatService {
         }
     }
 
-    /**
-     * 处理文件内容用于日志记录，截取每个文件的content部分
-     */
-    private String processFileContentForLogging(String fileContentPart) {
-        if (fileContentPart == null || fileContentPart.trim().isEmpty()) {
-            return "";
-        }
 
-        try {
-            StringBuilder result = new StringBuilder();
 
-            // 使用正则表达式匹配每个文件的JSON格式：{"fileName":"content"}
-            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\{\"([^\"]+)\":\"([^\"]*(?:\\\\.[^\"]*)*)\"}");
-            java.util.regex.Matcher matcher = pattern.matcher(fileContentPart);
 
-            boolean first = true;
-            while (matcher.find()) {
-                if (!first) {
-                    result.append(",");
-                }
-                first = false;
 
-                String fileName = matcher.group(1);
-                String content = matcher.group(2);
 
-                // 截取content，保留前后各15字符
-                String truncatedContent = truncateFileContent(content);
-
-                result.append("{\"").append(fileName).append("\":\"").append(truncatedContent).append("\"}");
-            }
-
-            return result.toString();
-
-        } catch (Exception e) {
-            log.debug("处理文件内容用于日志记录失败", e);
-            return fileContentPart; // 出错时返回原内容
-        }
-    }
-
-    /**
-     * 截取单个文件的内容，保留前后各15字符
-     */
-    private String truncateFileContent(String content) {
-        if (content == null) {
-            return "";
-        }
-
-        // 处理转义字符
-        String unescaped = content.replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\");
-
-        if (unescaped.length() <= 30) {
-            return content; // 返回原始转义格式
-        }
-
-        // 截取前15和后15字符
-        String prefix = unescaped.substring(0, 15);
-        String suffix = unescaped.substring(unescaped.length() - 15);
-
-        // 重新转义用于JSON格式
-        String truncated = prefix + "..." + suffix;
-        return truncated.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
-    }
-
-    /**
-     * 统计文件内容中的文件数量
-     */
-    private int countFilesInContent(String fileContentPart) {
-        if (fileContentPart == null || fileContentPart.trim().isEmpty()) {
-            return 0;
-        }
-
-        try {
-            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\{\"[^\"]+\":\"[^\"]*(?:\\\\.[^\"]*)*\"}");
-            java.util.regex.Matcher matcher = pattern.matcher(fileContentPart);
-
-            int count = 0;
-            while (matcher.find()) {
-                count++;
-            }
-            return count;
-
-        } catch (Exception e) {
-            log.debug("统计文件数量失败", e);
-            return 0;
-        }
-    }
 
     /**
      * 计算文本的token数量
@@ -3838,33 +3945,7 @@ public class ChatServiceImpl implements ChatService {
         return Math.max(1, totalTokens);
     }
 
-    /**
-     * 提取文件内容中的文件名列表
-     */
-    private List<String> extractFileNames(String fileContentPart) {
-        List<String> fileNames = new ArrayList<>();
 
-        if (fileContentPart == null || fileContentPart.trim().isEmpty()) {
-            return fileNames;
-        }
-
-        try {
-            java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\"([^\"]+)\":");
-            java.util.regex.Matcher matcher = pattern.matcher(fileContentPart);
-
-            while (matcher.find()) {
-                String fileName = matcher.group(1);
-                if (fileName != null && !fileName.trim().isEmpty()) {
-                    fileNames.add(fileName);
-                }
-            }
-
-        } catch (Exception e) {
-            log.debug("提取文件名失败", e);
-        }
-
-        return fileNames;
-    }
 
     /**
      * 验证聊天频率限制

@@ -269,8 +269,7 @@ public class YiPayStrategy implements PaymentStrategy {
             params.put("type", paymentType);
             params.put("out_trade_no", order.getOrderNo());
             params.put("notify_url", yiPayConfig.getNotifyUrl());
-            // 移除跳转URL，前端通过轮询检测支付状态
-            // params.put("return_url", yiPayConfig.getReturnUrl());
+            params.put("return_url", yiPayConfig.getNotifyUrl());
             params.put("name", "套餐购买");
             params.put("money", MoneyUtil.formatAmountForYiPay(order.getAmount()));
 

@@ -111,10 +111,11 @@ public interface ChatService {
      * @param sessionId 会话ID（前端传入的chatId参数）
      * @param messageId 要重新生成的AI消息ID
      * @param modelId 模型ID（可选，为null时使用会话原有模型）
+     * @param network 是否启用网络搜索（可选，为null时默认禁用）
      * @param authentication 认证信息
      * @param response HTTP响应对象
      */
-    void processRetryChat(String sessionId, String messageId, Long modelId, Authentication authentication, HttpServletResponse response);
+    void processRetryChat(String sessionId, String messageId, Long modelId, Boolean network, Authentication authentication, HttpServletResponse response);
 
     /**
      * 处理编辑用户消息并重新生成AI回复请求
@@ -124,10 +125,11 @@ public interface ChatService {
      * @param newContent 新的消息内容
      * @param filesId 文件ID列表（逗号分隔，可选）
      * @param modelId 模型ID（可选，为null时使用会话原有模型）
+     * @param network 是否启用网络搜索（可选，为null时默认禁用）
      * @param authentication 认证信息
      * @param response HTTP响应对象
      */
-    void processEditResendChat(String sessionId, String messageId, String newContent, String filesId, Long modelId, Authentication authentication, HttpServletResponse response);
+    void processEditResendChat(String sessionId, String messageId, String newContent, String filesId, Long modelId, Boolean network, Authentication authentication, HttpServletResponse response);
 
     /**
      * 检查是否为首次AI响应

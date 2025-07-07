@@ -72,6 +72,7 @@ public class PaymentServiceImpl implements PaymentService {
 
     /**
      * 获取可用的支付方式（配置完整）
+     * 注意：前端只显示支付宝和微信支付，不显示易支付选项
      */
     @Override
     public List<PaymentMethodVO> getAvailablePaymentMethods() {
@@ -79,6 +80,11 @@ public class PaymentServiceImpl implements PaymentService {
         List<PaymentMethodVO> paymentMethods = new ArrayList<>();
 
         for (String method : availableMethods) {
+            // 过滤掉易支付选项，前端只显示支付宝和微信支付
+            if ("yipay".equalsIgnoreCase(method)) {
+                continue;
+            }
+
             PaymentMethodVO paymentMethod = new PaymentMethodVO();
             paymentMethod.setId(method);
             paymentMethod.setType(method);
