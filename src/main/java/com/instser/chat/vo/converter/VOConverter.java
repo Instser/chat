@@ -39,6 +39,19 @@ public class VOConverter {
     }
 
     /**
+     * 用户实体转VO（包含套餐信息）
+     */
+    public static UserVO toUserVO(User user, String packageName) {
+        if (user == null) {
+            return null;
+        }
+        UserVO userVO = new UserVO();
+        BeanUtils.copyProperties(user, userVO);
+        userVO.setPackageName(packageName);
+        return userVO;
+    }
+
+    /**
      * AI模型实体转VO
      */
     public static AiModelVO toAiModelVO(AiModel aiModel) {

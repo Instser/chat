@@ -65,4 +65,9 @@ public class UserVO implements Serializable {
      * 更新时间
      */
     private LocalDateTime updateTime;
+
+    /**
+     * 套餐名称（可选字段，仅在userPackage=true时返回）
+     */
+    private String packageName;
 }

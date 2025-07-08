@@ -6,8 +6,12 @@ import com.instser.chat.dto.request.ChangePasswordRequest;
 import com.instser.chat.dto.request.LoginRequest;
 import com.instser.chat.dto.request.RegisterRequest;
 import com.instser.chat.dto.request.UpdateProfileRequest;
+import com.instser.chat.entity.Package;
 import com.instser.chat.entity.User;
+import com.instser.chat.entity.UserAccount;
 import com.instser.chat.security.UserDetailsServiceImpl;
+import com.instser.chat.service.PackageService;
+import com.instser.chat.service.UserAccountService;
 import com.instser.chat.service.UserService;
 import com.instser.chat.util.JwtUtil;
 import com.instser.chat.vo.converter.VOConverter;
@@ -53,6 +57,8 @@ public class AuthController {
     
     private final AuthenticationManager authenticationManager;
     private final UserService userService;
+    private final UserAccountService userAccountService;
+    private final PackageService packageService;
     private final JwtUtil jwtUtil;
     
     /**
@@ -141,26 +147,62 @@ public class AuthController {
     /**
      * 获取当前用户信息
      */
+    @Operation(summary = "获取当前用户信息", description = "获取当前登录用户的详细信息")
     @GetMapping("/me")
-    public ResponseEntity<Result<UserVO>> getCurrentUser(Authentication authentication) {
+    public ResponseEntity<Result<UserVO>> getCurrentUser(
+            Authentication authentication,
+            @Parameter(description = "是否包含套餐信息", required = false)
+            @RequestParam(value = "userPackage", required = false, defaultValue = "false") Boolean userPackage) {
         try {
             if (authentication == null || !authentication.isAuthenticated()) {
                 return ResponseEntity.status(401).body(Result.unauthorized("用户未认证"));
             }
-            
-            UserDetailsServiceImpl.CustomUserDetails userDetails = 
+
+            UserDetailsServiceImpl.CustomUserDetails userDetails =
                 (UserDetailsServiceImpl.CustomUserDetails) authentication.getPrincipal();
             User user = userDetails.getUser();
-            
-            UserVO userVO = VOConverter.toUserVO(user);
+
+            UserVO userVO;
+            if (Boolean.TRUE.equals(userPackage)) {
+                // 获取用户套餐信息
+                String packageName = getUserPackageName(user.getId());
+                userVO = VOConverter.toUserVO(user, packageName);
+            } else {
+                userVO = VOConverter.toUserVO(user);
+            }
+
             return ResponseEntity.ok(Result.success(userVO, "获取用户信息成功"));
-            
+
         } catch (Exception e) {
             log.error("获取用户信息失败", e);
             return ResponseEntity.status(500).body(Result.failed("获取用户信息失败"));
         }
     }
-    
+
+    /**
+     * 获取用户套餐名称
+     */
+    private String getUserPackageName(Long userId) {
+        try {
+            // 获取用户账户信息
+            UserAccount userAccount = userAccountService.getUserAccount(userId);
+            if (userAccount == null || userAccount.getPackageId() == null) {
+                return null;
+            }
+
+            // 获取套餐信息
+            Package packageInfo = packageService.getPackageById(userAccount.getPackageId());
+            if (packageInfo == null) {
+                return null;
+            }
+
+            return packageInfo.getPackageName();
+        } catch (Exception e) {
+            log.error("获取用户套餐名称失败，用户ID：{}", userId, e);
+            return null;
+        }
+    }
+
     /**
      * 用户登出
      */
