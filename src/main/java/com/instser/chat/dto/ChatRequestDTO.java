@@ -1,5 +1,6 @@
 package com.instser.chat.dto;
 
+import com.instser.chat.entity.TavilySearchResult;
 import lombok.Data;
 
 import java.util.List;
@@ -48,6 +49,11 @@ public class ChatRequestDTO {
      * 文件ID列表（逗号分隔的字符串）
      */
     private String filesId;
+
+    /**
+     * 联网搜索结果（内部使用，不从请求中解析）
+     */
+    private List<TavilySearchResult> networkSearchResults;
 
     /**
      * 从Map构建ChatRequestDTO

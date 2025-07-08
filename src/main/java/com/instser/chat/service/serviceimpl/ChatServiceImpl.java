@@ -10,6 +10,7 @@ import com.instser.chat.entity.AiModel;
 import com.instser.chat.entity.ChatMessage;
 import com.instser.chat.entity.ChatSession;
 import com.instser.chat.entity.FileUpload;
+import com.instser.chat.entity.TavilySearchResult;
 import com.instser.chat.service.*;
 import com.instser.chat.vo.ChatLimitVO;
 import jakarta.servlet.http.HttpServletResponse;
@@ -499,8 +500,10 @@ public class ChatServiceImpl implements ChatService {
                 if (userQuery != null && !userQuery.trim().isEmpty()) {
                     log.info("【联网搜索】开始处理联网搜索，用户ID：{}，会话ID：{}，查询：{}",
                             request.getUserId(), request.getSessionId(), userQuery);
-                    List<Map<String, String>> processedMessages = processNetworkContent(messages, userQuery);
-                    messages = processedMessages;
+                    NetworkSearchResult networkResult = processNetworkContent(messages, userQuery);
+                    messages = networkResult.getMessages();
+                    // 将搜索结果存储到request中，供后续使用
+                    request.setNetworkSearchResults(networkResult.getSearchResults());
                     log.info("【联网搜索】联网内容处理完成，用户ID：{}，会话ID：{}",
                             request.getUserId(), request.getSessionId());
                 } else {
@@ -1172,6 +1175,9 @@ public class ChatServiceImpl implements ChatService {
                             String vercelFormat = String.format("0:%s\n", new ObjectMapper().writeValueAsString(errorContent));
                             response.getWriter().write(vercelFormat);
 
+                            // 发送联网搜索结果（如果有）
+                            sendNetworkSearchResults(response, new ArrayList<>());
+
                             String completionData = buildCompletionData(false, false, null);
                             response.getWriter().write(completionData);
                             response.getWriter().flush();
@@ -1321,6 +1327,9 @@ public class ChatServiceImpl implements ChatService {
                 String vercelFormat = String.format("0:%s\n", new ObjectMapper().writeValueAsString(errorContent));
                 response.getWriter().write(vercelFormat);
 
+                // 发送联网搜索结果（如果有）
+                sendNetworkSearchResults(response, new ArrayList<>());
+
                 String completionData = buildCompletionData(false, false, null);
                 response.getWriter().write(completionData);
                 response.getWriter().flush();
@@ -1463,6 +1472,9 @@ public class ChatServiceImpl implements ChatService {
                 }
             }
 
+            // 发送联网搜索结果（如果有）
+            sendNetworkSearchResults(response, request.getNetworkSearchResults());
+
             // 发送完成标记
             String completionData = buildCompletionData(willGenerateTitle, isRealAiResponse, generatedTitle);
             response.getWriter().write(completionData);
@@ -1475,6 +1487,9 @@ public class ChatServiceImpl implements ChatService {
         } catch (Exception e) {
             log.error("处理完成标记时发生异常", e);
             try {
+                // 发送联网搜索结果（如果有）
+                sendNetworkSearchResults(response, request.getNetworkSearchResults());
+
                 String completionData = buildCompletionData(false, false, null);
                 response.getWriter().write(completionData);
                 response.getWriter().flush();
@@ -2828,6 +2843,43 @@ public class ChatServiceImpl implements ChatService {
         }
     }
 
+    /**
+     * 发送联网搜索结果给前端
+     */
+    private void sendNetworkSearchResults(HttpServletResponse response, List<TavilySearchResult> searchResults) {
+        if (searchResults == null || searchResults.isEmpty()) {
+            return;
+        }
+
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            log.info("开始发送{}个联网搜索结果给前端", searchResults.size());
+
+            for (TavilySearchResult result : searchResults) {
+                Map<String, String> resultData = new HashMap<>();
+                resultData.put("url", result.getUrl() != null ? result.getUrl() : "");
+                resultData.put("title", result.getTitle() != null ? result.getTitle() : "");
+
+                // 限制content字段为前100个字符
+                String content = result.getContent() != null ? result.getContent() : "";
+                if (content.length() > 100) {
+                    content = content.substring(0, 100) + "...";
+                }
+                resultData.put("content", content);
+
+                resultData.put("favicon", result.getFavicon() != null ? result.getFavicon() : "");
+
+                String resultJson = String.format("u:%s\n", mapper.writeValueAsString(resultData));
+                response.getWriter().write(resultJson);
+                response.getWriter().flush();
+            }
+
+            log.info("成功发送{}个联网搜索结果给前端", searchResults.size());
+        } catch (Exception e) {
+            log.error("发送联网搜索结果失败", e);
+        }
+    }
+
     @Override
     public String generateSessionTitle(String sessionId, List<Map<String, String>> messages) {
         log.info("=== 开始后台同步标题生成流程 ===");
@@ -3134,15 +3186,31 @@ public class ChatServiceImpl implements ChatService {
     }
 
     /**
+     * 联网搜索结果包装类
+     */
+    private static class NetworkSearchResult {
+        private final List<Map<String, String>> messages;
+        private final List<TavilySearchResult> searchResults;
+
+        public NetworkSearchResult(List<Map<String, String>> messages, List<TavilySearchResult> searchResults) {
+            this.messages = messages;
+            this.searchResults = searchResults;
+        }
+
+        public List<Map<String, String>> getMessages() { return messages; }
+        public List<TavilySearchResult> getSearchResults() { return searchResults; }
+    }
+
+    /**
      * 处理联网搜索内容并附加到用户消息中
      *
      * @param messages 消息列表
      * @param query 搜索查询内容（从用户消息中提取）
-     * @return 处理后的消息列表
+     * @return 包含处理后的消息列表和搜索结果的对象
      */
-    private List<Map<String, String>> processNetworkContent(List<Map<String, String>> messages, String query) {
+    private NetworkSearchResult processNetworkContent(List<Map<String, String>> messages, String query) {
         if (query == null || query.trim().isEmpty() || messages == null || messages.isEmpty()) {
-            return messages;
+            return new NetworkSearchResult(messages, new ArrayList<>());
         }
 
         try {
@@ -3151,10 +3219,18 @@ public class ChatServiceImpl implements ChatService {
             // 调用联网搜索服务
             com.instser.chat.entity.WebSearchExtractResult searchExtractResult = webSearchExtractService.searchAndExtract(query);
             com.instser.chat.entity.TavilyExtractResponse extractResponse = searchExtractResult != null ? searchExtractResult.getExtractResponse() : null;
+            com.instser.chat.entity.TavilySearchResponse searchResponse = searchExtractResult != null ? searchExtractResult.getSearchResponse() : null;
 
             if (extractResponse == null || extractResponse.getResults() == null || extractResponse.getResults().isEmpty()) {
                 log.warn("联网搜索未返回有效结果，查询：{}", query);
-                return messages;
+                return new NetworkSearchResult(messages, new ArrayList<>());
+            }
+
+            // 获取搜索结果，用于后续发送给前端
+            List<TavilySearchResult> searchResults = new ArrayList<>();
+            if (searchResponse != null && searchResponse.getResults() != null && !searchResponse.getResults().isEmpty()) {
+                searchResults.addAll(searchResponse.getResults());
+                log.info("已获取{}个搜索结果", searchResults.size());
             }
 
             // 构建联网内容
@@ -3230,11 +3306,11 @@ public class ChatServiceImpl implements ChatService {
                 }
             }
 
-            return messages;
+            return new NetworkSearchResult(messages, searchResults);
 
         } catch (Exception e) {
             log.error("处理联网搜索内容失败，查询：{}", query, e);
-            return messages; // 出错时返回原消息列表
+            return new NetworkSearchResult(messages, new ArrayList<>()); // 出错时返回原消息列表和空搜索结果
         }
     }
 
@@ -3558,13 +3634,15 @@ public class ChatServiceImpl implements ChatService {
             }
 
             // 处理联网搜索内容（如果启用）
+            List<TavilySearchResult> retrySearchResults = new ArrayList<>();
             if (network != null && network) {
                 // 提取用户查询内容（从最后一条用户消息中获取）
                 String userQuery = extractUserQuery(messages);
                 if (userQuery != null && !userQuery.trim().isEmpty()) {
                     log.info("重试请求检测到联网搜索请求，开始处理联网内容，查询：{}", userQuery);
-                    List<Map<String, String>> processedMessages = processNetworkContent(messages, userQuery);
-                    messages = processedMessages;
+                    NetworkSearchResult networkResult = processNetworkContent(messages, userQuery);
+                    messages = networkResult.getMessages();
+                    retrySearchResults = networkResult.getSearchResults();
                     log.info("重试请求联网内容处理完成");
                 } else {
                     log.warn("重试请求联网搜索但无法提取用户查询内容");
@@ -3599,6 +3677,7 @@ public class ChatServiceImpl implements ChatService {
             retryRequest.setSessionId(sessionId);
             retryRequest.setDeepThinking(false); // 重新生成时使用默认模式
             retryRequest.setNetwork(network != null ? network : false); // 使用传入的network参数
+            retryRequest.setNetworkSearchResults(retrySearchResults); // 设置联网搜索结果
 
             // 判断是否需要生成标题（如果删除后只剩一条用户消息，则需要生成标题）
             boolean willGenerateTitle = isFirstAiResponse(messages);
@@ -3774,13 +3853,15 @@ public class ChatServiceImpl implements ChatService {
             }
 
             // 处理联网搜索内容（如果启用）
+            List<TavilySearchResult> editResendSearchResults = new ArrayList<>();
             if (network != null && network) {
                 // 提取用户查询内容（从最后一条用户消息中获取）
                 String userQuery = extractUserQuery(messages);
                 if (userQuery != null && !userQuery.trim().isEmpty()) {
                     log.info("编辑重发请求检测到联网搜索请求，开始处理联网内容，查询：{}", userQuery);
-                    List<Map<String, String>> processedMessages = processNetworkContent(messages, userQuery);
-                    messages = processedMessages;
+                    NetworkSearchResult networkResult = processNetworkContent(messages, userQuery);
+                    messages = networkResult.getMessages();
+                    editResendSearchResults = networkResult.getSearchResults();
                     log.info("编辑重发请求联网内容处理完成");
                 } else {
                     log.warn("编辑重发请求联网搜索但无法提取用户查询内容");
@@ -3815,6 +3896,7 @@ public class ChatServiceImpl implements ChatService {
             editResendRequest.setSessionId(sessionId);
             editResendRequest.setDeepThinking(false); // 编辑重发时使用默认模式
             editResendRequest.setNetwork(network != null ? network : false); // 使用传入的network参数
+            editResendRequest.setNetworkSearchResults(editResendSearchResults); // 设置联网搜索结果
 
             // 判断是否需要生成标题（如果编辑的是第一条用户消息，则需要生成标题）
             boolean willGenerateTitle = isFirstAiResponse(messages);
