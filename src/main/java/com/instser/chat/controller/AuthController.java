@@ -149,10 +149,7 @@ public class AuthController {
      */
     @Operation(summary = "获取当前用户信息", description = "获取当前登录用户的详细信息")
     @GetMapping("/me")
-    public ResponseEntity<Result<UserVO>> getCurrentUser(
-            Authentication authentication,
-            @Parameter(description = "是否包含套餐信息", required = false)
-            @RequestParam(value = "userPackage", required = false, defaultValue = "false") Boolean userPackage) {
+    public ResponseEntity<Result<UserVO>> getCurrentUser(Authentication authentication) {
         try {
             if (authentication == null || !authentication.isAuthenticated()) {
                 return ResponseEntity.status(401).body(Result.unauthorized("用户未认证"));
@@ -162,14 +159,12 @@ public class AuthController {
                 (UserDetailsServiceImpl.CustomUserDetails) authentication.getPrincipal();
             User user = userDetails.getUser();
 
-            UserVO userVO;
-            if (Boolean.TRUE.equals(userPackage)) {
-                // 获取用户套餐信息
-                String packageName = getUserPackageName(user.getId());
-                userVO = VOConverter.toUserVO(user, packageName);
-            } else {
-                userVO = VOConverter.toUserVO(user);
-            }
+            // 获取用户套餐信息
+            String packageName = getUserPackageName(user.getId());
+
+            // 转换为VO并设置套餐名称
+            UserVO userVO = VOConverter.toUserVO(user);
+            userVO.setPackageName(packageName);
 
             return ResponseEntity.ok(Result.success(userVO, "获取用户信息成功"));
 
