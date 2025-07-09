@@ -170,13 +170,8 @@ public class PackageActivationServiceImpl implements PackageActivationService {
      * 判断是否为免费套餐
      */
     private boolean isFreePackage(Package packageInfo) {
-        // 检查人民币价格和美元价格是否都为0
-        BigDecimal priceCny = packageInfo.getPriceCny();
-        BigDecimal priceUsd = packageInfo.getPriceUsd();
-        
-        boolean isCnyFree = (priceCny == null || priceCny.compareTo(BigDecimal.ZERO) == 0);
-        boolean isUsdFree = (priceUsd == null || priceUsd.compareTo(BigDecimal.ZERO) == 0);
-        
-        return isCnyFree && isUsdFree;
+        // 检查价格是否为0
+        BigDecimal price = packageInfo.getPrice();
+        return (price == null || price.compareTo(BigDecimal.ZERO) == 0);
     }
 }

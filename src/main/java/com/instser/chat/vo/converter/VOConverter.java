@@ -9,8 +9,9 @@ import com.instser.chat.entity.FileUpload;
 import com.instser.chat.entity.Package;
 import com.instser.chat.entity.User;
 import com.instser.chat.entity.UserOrder;
-import com.instser.chat.service.FileUploadService;
 import com.instser.chat.service.ExchangeRateService;
+import com.instser.chat.service.FileUploadService;
+
 import com.instser.chat.vo.*;
 import org.springframework.beans.BeanUtils;
 
@@ -323,7 +324,7 @@ public class VOConverter {
         frontendPackageVO.setDescription(packageEntity.getDescription());
         frontendPackageVO.setCurrency(currency);
 
-        // 智能价格转换逻辑
+        // 根据请求货币进行价格转换
         frontendPackageVO.setPrice(calculatePrice(packageEntity, currency, exchangeRateService));
 
         // 直接映射有效期天数
@@ -345,6 +346,41 @@ public class VOConverter {
         }
 
         return frontendPackageVO;
+    }
+
+    /**
+     * 价格转换方法
+     * 数据库存储CNY价格，根据请求货币类型进行汇率转换
+     */
+    private static java.math.BigDecimal calculatePrice(Package packageEntity, String currency, ExchangeRateService exchangeRateService) {
+        if (packageEntity == null || currency == null) {
+            return java.math.BigDecimal.ZERO;
+        }
+
+        // 获取数据库中的CNY价格
+        java.math.BigDecimal cnyPrice = packageEntity.getPrice();
+        if (cnyPrice == null || cnyPrice.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+            return java.math.BigDecimal.ZERO;
+        }
+
+        // 如果请求CNY，直接返回数据库价格
+        if ("CNY".equalsIgnoreCase(currency)) {
+            return cnyPrice;
+        }
+
+        // 如果请求USD，进行汇率转换
+        if ("USD".equalsIgnoreCase(currency) && exchangeRateService != null) {
+            try {
+                return exchangeRateService.convertPrice(cnyPrice, "CNY", "USD");
+            } catch (Exception e) {
+                // 汇率转换失败时返回CNY价格
+                System.err.println("汇率转换失败: " + e.getMessage());
+                return cnyPrice;
+            }
+        }
+
+        // 其他货币或汇率服务不可用时，返回CNY价格
+        return cnyPrice;
     }
 
     /**
@@ -371,54 +407,7 @@ public class VOConverter {
 
 
 
-    /**
-     * 智能价格计算方法
-     * 根据请求的货币类型和汇率服务进行价格转换
-     */
-    private static java.math.BigDecimal calculatePrice(Package packageEntity, String currency, ExchangeRateService exchangeRateService) {
-        if (packageEntity == null || currency == null) {
-            return java.math.BigDecimal.ZERO;
-        }
 
-        // 如果请求CNY，直接返回CNY价格
-        if ("CNY".equalsIgnoreCase(currency)) {
-            return packageEntity.getPriceCny() != null ? packageEntity.getPriceCny() : java.math.BigDecimal.ZERO;
-        }
-
-        // 如果请求USD，直接返回USD价格
-        if ("USD".equalsIgnoreCase(currency)) {
-            return packageEntity.getPriceUsd() != null ? packageEntity.getPriceUsd() : java.math.BigDecimal.ZERO;
-        }
-
-        // 对于其他货币，需要使用汇率服务进行转换
-        if (exchangeRateService != null) {
-            try {
-                // 优先使用USD价格进行转换（因为USD是国际通用货币）
-                java.math.BigDecimal basePrice = packageEntity.getPriceUsd();
-                if (basePrice != null && basePrice.compareTo(java.math.BigDecimal.ZERO) > 0) {
-                    java.math.BigDecimal exchangeRate = exchangeRateService.getExchangeRate("USD", currency);
-                    if (exchangeRate != null && exchangeRate.compareTo(java.math.BigDecimal.ZERO) > 0) {
-                        return basePrice.multiply(exchangeRate).setScale(2, java.math.RoundingMode.HALF_UP);
-                    }
-                }
-
-                // 如果USD转换失败，尝试使用CNY价格进行转换
-                java.math.BigDecimal cnyPrice = packageEntity.getPriceCny();
-                if (cnyPrice != null && cnyPrice.compareTo(java.math.BigDecimal.ZERO) > 0) {
-                    java.math.BigDecimal exchangeRate = exchangeRateService.getExchangeRate("CNY", currency);
-                    if (exchangeRate != null && exchangeRate.compareTo(java.math.BigDecimal.ZERO) > 0) {
-                        return cnyPrice.multiply(exchangeRate).setScale(2, java.math.RoundingMode.HALF_UP);
-                    }
-                }
-            } catch (Exception e) {
-                // 汇率转换失败时的日志记录（这里不能使用log，因为是静态方法）
-                System.err.println("汇率转换失败: " + e.getMessage());
-            }
-        }
-
-        // 如果汇率服务不可用或转换失败，返回CNY价格作为默认值
-        return packageEntity.getPriceCny() != null ? packageEntity.getPriceCny() : java.math.BigDecimal.ZERO;
-    }
 
     /**
      * 获取默认功能特性

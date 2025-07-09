@@ -87,8 +87,7 @@ public class AuthControllerUserPackageTest {
         testPackage.setPackageName("基础套餐");
         testPackage.setDescription("适合个人用户的基础AI对话套餐");
         testPackage.setPackageType("basic");
-        testPackage.setPriceUsd(new BigDecimal("9.99"));
-        testPackage.setPriceCny(new BigDecimal("69.99"));
+        testPackage.setPrice(new BigDecimal("69.99"));
         testPackage.setValidityDays(30);
         testPackage.setIsEnabled(1);
     }

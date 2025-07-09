@@ -5,12 +5,13 @@ import com.instser.chat.common.util.ErrorResponseUtil;
 import com.instser.chat.entity.Package;
 import com.instser.chat.entity.UserOrder;
 import com.instser.chat.service.OrderService;
+import com.instser.chat.service.ExchangeRateService;
 import com.instser.chat.service.PackageService;
 import com.instser.chat.service.PackageActivationService;
 import com.instser.chat.service.PaymentService;
 import com.instser.chat.service.PaymentSecurityEnhancer;
 import com.instser.chat.service.PaymentSyncService;
-import com.instser.chat.service.ExchangeRateService;
+
 import com.instser.chat.vo.*;
 import com.instser.chat.vo.converter.VOConverter;
 import jakarta.servlet.http.HttpServletRequest;
@@ -87,7 +88,7 @@ public class PaymentController {
     public Result<List<FrontendPackageVO>> getPackages(@RequestParam(defaultValue = "CNY") String currency) {
         try {
             List<Package> packages = packageService.getEnabledPackages();
-            // 使用汇率服务进行实时价格转换
+            // 转换为前端格式（使用汇率服务进行价格转换）
             List<FrontendPackageVO> packageVOs = VOConverter.toFrontendPackageVOList(packages, currency, exchangeRateService);
 
             log.info("获取套餐列表成功，货币: {}, 套餐数量: {}", currency, packageVOs.size());
@@ -114,7 +115,7 @@ public class PaymentController {
                 return Result.failed("套餐已下架");
             }
 
-            // 转换为前端格式（使用汇率服务进行实时价格转换）
+            // 转换为前端格式（使用汇率服务进行价格转换）
             FrontendPackageVO packageVO = VOConverter.toFrontendPackageVO(packageEntity, request.getCurrency(), exchangeRateService);
 
             // 获取可用支付方式

@@ -8,8 +8,7 @@
         <result column="package_name" property="packageName" />
         <result column="description" property="description" />
         <result column="package_type" property="packageType" />
-        <result column="price_usd" property="priceUsd" />
-        <result column="price_cny" property="priceCny" />
+        <result column="price" property="price" />
         <result column="validity_days" property="validityDays" />
         <result column="chat_count" property="chatCount" />
         <result column="model_permissions" property="modelPermissions" />
@@ -22,7 +21,7 @@
 
     <!-- 通用查询结果列 -->
     <sql id="Base_Column_List">
-        id, package_name, description, package_type, price_usd, price_cny, validity_days, 
+        id, package_name, description, package_type, price, validity_days,
         chat_count, model_permissions, is_enabled, sort_order, create_time, update_time, deleted
     </sql>
 

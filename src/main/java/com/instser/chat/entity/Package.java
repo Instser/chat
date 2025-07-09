@@ -59,16 +59,10 @@ public class Package implements Serializable {
     private String packageType;
 
     /**
-     * 价格（美元）
+     * 套餐价格
      */
-    @TableField("price_usd")
-    private BigDecimal priceUsd;
-
-    /**
-     * 价格（人民币）
-     */
-    @TableField("price_cny")
-    private BigDecimal priceCny;
+    @TableField("price")
+    private BigDecimal price;
 
     /**
      * 有效期（天数）

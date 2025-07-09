@@ -13,7 +13,8 @@ import com.instser.chat.service.OrderService;
 import com.instser.chat.service.PackageService;
 import com.instser.chat.service.PaymentAuditService;
 import com.instser.chat.service.PaymentService;
-import com.instser.chat.service.ExchangeRateService;
+
+
 import com.instser.chat.service.PackageActivationService;
 import com.instser.chat.service.PaymentSecurityEnhancer;
 import com.instser.chat.service.RedisPaymentSecurityService;
@@ -30,6 +31,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
+
 import java.security.MessageDigest;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -55,7 +57,6 @@ public class PaymentServiceImpl implements PaymentService {
     private final AlipayConfig alipayConfig;
     private final YiPayConfig yiPayConfig;
     private final PaymentSecurityUtil paymentSecurityUtil;
-    private final ExchangeRateService exchangeRateService;
     private final PackageActivationService packageActivationService;
     private final PaymentSecurityEnhancer paymentSecurityEnhancer;
     private final RedisPaymentSecurityService redisPaymentSecurityService;
@@ -248,13 +249,11 @@ public class PaymentServiceImpl implements PaymentService {
         Package packageInfo = packageService.getPackageById(paymentRequest.getPackageId());
         String packageName = packageInfo != null ? packageInfo.getPackageName() : "";
 
-        // 计算金额（需要根据货币类型获取实际金额）
+        // 直接使用CNY价格
         BigDecimal amount = BigDecimal.ZERO;
         try {
-            if ("USD".equalsIgnoreCase(paymentRequest.getCurrency()) && packageInfo != null) {
-                amount = packageInfo.getPriceUsd();
-            } else if ("CNY".equalsIgnoreCase(paymentRequest.getCurrency()) && packageInfo != null) {
-                amount = packageInfo.getPriceCny();
+            if (packageInfo != null) {
+                amount = packageInfo.getPrice();
             }
         } catch (Exception e) {
             log.warn("获取套餐价格异常，使用默认值", e);
@@ -310,33 +309,19 @@ public class PaymentServiceImpl implements PaymentService {
             throw ResourceNotFoundException.packageNotFound(paymentRequest.getPackageId());
         }
 
-        // 获取套餐价格
-        BigDecimal packagePrice;
-        String currency = paymentRequest.getCurrency();
-        if ("CNY".equalsIgnoreCase(currency)) {
-            packagePrice = packageInfo.getPriceCny();
-        } else if ("USD".equalsIgnoreCase(currency)) {
-            packagePrice = packageInfo.getPriceUsd();
-        } else {
-            throw new PaymentException("不支持的货币类型: " + currency);
-        }
+        // 直接使用CNY价格
+        BigDecimal packagePrice = packageInfo.getPrice();
 
-        // 验证最小金额（0.01）
+        // 验证最小金额（0.01 CNY）
         BigDecimal minAmount = new BigDecimal("0.01");
         if (packagePrice.compareTo(minAmount) < 0) {
-            throw new PaymentException("支付金额不能小于 " + minAmount + " " + currency);
+            throw new PaymentException("支付金额不能小于 " + minAmount + " CNY");
         }
 
-        // 验证最大金额（根据货币类型设置不同限制）
-        BigDecimal maxAmount;
-        if ("CNY".equalsIgnoreCase(currency)) {
-            maxAmount = new BigDecimal("50000.00"); // 人民币最大5万
-        } else {
-            maxAmount = new BigDecimal("10000.00"); // 美元最大1万
-        }
-
+        // 验证最大金额（人民币最大5万）
+        BigDecimal maxAmount = new BigDecimal("50000.00");
         if (packagePrice.compareTo(maxAmount) > 0) {
-            throw new PaymentException("支付金额不能超过 " + maxAmount + " " + currency);
+            throw new PaymentException("支付金额不能超过 " + maxAmount + " CNY");
         }
 
         // 验证免费套餐价格
@@ -346,8 +331,8 @@ public class PaymentServiceImpl implements PaymentService {
             throw new PaymentException("免费套餐无需支付，请使用 /api/payment/activate-free 接口直接激活");
         }
 
-        log.debug("支付金额验证通过，套餐ID: {}, 金额: {} {}",
-                 paymentRequest.getPackageId(), packagePrice, currency);
+        log.debug("支付金额验证通过，套餐ID: {}, 金额: {} CNY",
+                 paymentRequest.getPackageId(), packagePrice);
     }
 
     /**
@@ -376,21 +361,9 @@ public class PaymentServiceImpl implements PaymentService {
         BigDecimal dailyAmountLimit = new BigDecimal("10000.00");
         String dailyAmountKey = "payment:daily_amount:user:" + userId;
 
-        // 获取套餐价格
+        // 获取套餐价格（直接使用CNY价格）
         Package packageInfo = packageService.getPackageById(paymentRequest.getPackageId());
-        BigDecimal packagePrice;
-        String currency = paymentRequest.getCurrency();
-        if ("CNY".equalsIgnoreCase(currency)) {
-            packagePrice = packageInfo.getPriceCny();
-        } else if ("USD".equalsIgnoreCase(currency)) {
-            packagePrice = packageInfo.getPriceUsd();
-            // 使用汇率服务进行实时汇率转换
-            BigDecimal exchangeRate = exchangeRateService.getExchangeRate("USD", "CNY");
-            packagePrice = packagePrice.multiply(exchangeRate);
-            log.debug("USD转CNY汇率: {}, 转换后价格: {}", exchangeRate, packagePrice);
-        } else {
-            packagePrice = packageInfo.getPriceCny(); // 默认使用人民币价格
-        }
+        BigDecimal packagePrice = packageInfo.getPrice();
 
         if (!paymentSecurityUtil.checkDailyAmountLimit(dailyAmountKey, packagePrice, dailyAmountLimit)) {
             log.warn("用户今日支付金额超限，用户ID: {}, 当前金额: {}", userId, packagePrice);

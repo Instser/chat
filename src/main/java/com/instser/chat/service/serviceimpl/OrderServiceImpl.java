@@ -6,6 +6,7 @@ import com.instser.chat.dao.UserOrderDao;
 import com.instser.chat.entity.Package;
 import com.instser.chat.entity.UserOrder;
 import com.instser.chat.service.OrderService;
+
 import com.instser.chat.service.PackageService;
 import com.instser.chat.service.RedisDistributedLockService;
 import com.instser.chat.util.MoneyUtil;
@@ -14,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -45,15 +47,8 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
             throw new BusinessException("套餐已下架");
         }
 
-        // 根据货币类型获取价格
-        BigDecimal amount;
-        if ("USD".equalsIgnoreCase(currency)) {
-            amount = packageInfo.getPriceUsd();
-        } else if ("CNY".equalsIgnoreCase(currency)) {
-            amount = packageInfo.getPriceCny();
-        } else {
-            throw new BusinessException("不支持的货币类型: " + currency);
-        }
+        // 直接使用CNY价格
+        BigDecimal amount = packageInfo.getPrice();
 
         if (!MoneyUtil.isZeroOrPositive(amount)) {
             throw new BusinessException("套餐价格配置错误");

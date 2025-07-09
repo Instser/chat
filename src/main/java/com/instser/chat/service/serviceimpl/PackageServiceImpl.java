@@ -61,8 +61,7 @@ public class PackageServiceImpl extends ServiceImpl<PackageDao, Package> impleme
         basicPackage.setPackageName("基础套餐");
         basicPackage.setDescription("适合个人用户的基础AI对话套餐");
         basicPackage.setPackageType("basic");
-        basicPackage.setPriceUsd(new BigDecimal("9.99"));
-        basicPackage.setPriceCny(new BigDecimal("69.99"));
+        basicPackage.setPrice(new BigDecimal("69.99"));
         basicPackage.setValidityDays(30);
         basicPackage.setLimitType("total"); // 总次数限制模式
         // 使用新的模型权限配置格式
@@ -76,8 +75,7 @@ public class PackageServiceImpl extends ServiceImpl<PackageDao, Package> impleme
         premiumPackage.setPackageName("高级套餐");
         premiumPackage.setDescription("适合专业用户的高级AI对话套餐");
         premiumPackage.setPackageType("premium");
-        premiumPackage.setPriceUsd(new BigDecimal("19.99"));
-        premiumPackage.setPriceCny(new BigDecimal("139.99"));
+        premiumPackage.setPrice(new BigDecimal("139.99"));
         premiumPackage.setValidityDays(30);
         premiumPackage.setLimitType("total"); // 总次数限制模式
         // 使用新的模型权限配置格式
@@ -91,8 +89,7 @@ public class PackageServiceImpl extends ServiceImpl<PackageDao, Package> impleme
         enterprisePackage.setPackageName("企业套餐");
         enterprisePackage.setDescription("适合企业用户的无限制AI对话套餐");
         enterprisePackage.setPackageType("enterprise");
-        enterprisePackage.setPriceUsd(new BigDecimal("99.99"));
-        enterprisePackage.setPriceCny(new BigDecimal("699.99"));
+        enterprisePackage.setPrice(new BigDecimal("699.99"));
         enterprisePackage.setValidityDays(30);
         enterprisePackage.setLimitType("unlimited"); // 无限制模式
         // 使用新的模型权限配置格式，-1表示无限制
