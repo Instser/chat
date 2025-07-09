@@ -65,6 +65,12 @@ public class Package implements Serializable {
     private BigDecimal price;
 
     /**
+     * 优惠价格
+     */
+    @TableField("discount_price")
+    private BigDecimal discountPrice;
+
+    /**
      * 有效期（天数）
      */
     @TableField("validity_days")

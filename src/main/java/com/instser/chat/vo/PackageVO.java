@@ -49,6 +49,11 @@ public class PackageVO {
     private BigDecimal priceCny;
 
     /**
+     * 优惠价格（人民币）
+     */
+    private BigDecimal discountPrice;
+
+    /**
      * 有效期（天数）
      */
     private Integer validityDays;

@@ -231,6 +231,9 @@ public class VOConverter {
         packageVO.setChatCount(packageEntity.getChatCount());
         packageVO.setDailyChatLimit(packageEntity.getDailyChatLimit());
 
+        // 设置优惠价格
+        packageVO.setDiscountPrice(packageEntity.getDiscountPrice());
+
         // 解析模型权限JSON
         if (packageEntity.getModelPermissions() != null) {
             try {
@@ -326,6 +329,9 @@ public class VOConverter {
 
         // 根据请求货币进行价格转换
         frontendPackageVO.setPrice(calculatePrice(packageEntity, currency, exchangeRateService));
+
+        // 设置优惠价格
+        frontendPackageVO.setDiscountPrice(packageEntity.getDiscountPrice());
 
         // 直接映射有效期天数
         frontendPackageVO.setPeriod(packageEntity.getValidityDays());

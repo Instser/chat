@@ -34,6 +34,11 @@ public class FrontendPackageVO {
     private BigDecimal price;
 
     /**
+     * 优惠价格
+     */
+    private BigDecimal discountPrice;
+
+    /**
      * 货币类型
      */
     private String currency;

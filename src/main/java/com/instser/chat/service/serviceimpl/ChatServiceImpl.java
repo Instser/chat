@@ -480,6 +480,14 @@ public class ChatServiceImpl implements ChatService {
                 messages.add(msgMap);
             }
 
+            // 保存原始消息列表（用于标题生成，在文件和联网搜索处理之前）
+            List<Map<String, String>> originalMessages = new ArrayList<>();
+            for (Map<String, String> message : messages) {
+                originalMessages.add(new HashMap<>(message));
+            }
+            request.setOriginalMessages(originalMessages);
+            log.debug("【标题生成】保存原始消息列表，消息数量：{}，只包含用户原始内容和AI响应", originalMessages.size());
+
             // 处理文件内容并附加到用户消息中（仅用于AI处理）
             // 正常聊天使用request中的filesId参数，而不是从数据库查找
             if (request.getFilesId() != null && !request.getFilesId().trim().isEmpty()) {
@@ -1449,7 +1457,10 @@ public class ChatServiceImpl implements ChatService {
                 try {
                     CompletableFuture<String> titleFuture = CompletableFuture.supplyAsync(() -> {
                         try {
-                            return generateSessionTitle(request.getSessionId(), request.getMessages());
+                            // 使用原始消息进行标题生成（不包含联网搜索结果）
+                            List<Map<String, String>> messagesForTitle = request.getOriginalMessages() != null ?
+                                request.getOriginalMessages() : request.getMessages();
+                            return generateSessionTitle(request.getSessionId(), messagesForTitle);
                         } catch (Exception e) {
                             log.error("后台标题生成失败", e);
                             return null;
@@ -2886,15 +2897,15 @@ public class ChatServiceImpl implements ChatService {
         log.info("会话ID: {}, 消息数量: {}", sessionId, messages.size());
 
         try {
-            // 获取固定的标题生成模型（ID为1L）
+            // 获取固定的标题生成模型（ID为4L）
             AiModel titleModel = aiModelService.getById(4L);
             if (titleModel == null || titleModel.getIsAvailable() != 1) {
-                log.error("标题生成模型（ID=1L）不可用，跳过标题生成");
+                log.error("标题生成模型（ID=4L）不可用，跳过标题生成");
                 return null;
             }
             log.info("标题生成模型: {}", titleModel.getModelName());
 
-            // 构建对话内容
+            // 构建对话内容（使用原始消息，不包含联网搜索结果）
             String conversationContent = buildConversationContent(messages);
             if (conversationContent == null || conversationContent.trim().isEmpty()) {
                 log.warn("无法构建对话内容，跳过标题生成");

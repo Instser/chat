@@ -56,6 +56,11 @@ public class ChatRequestDTO {
     private List<TavilySearchResult> networkSearchResults;
 
     /**
+     * 原始消息列表（用于标题生成，不包含联网搜索内容，内部使用）
+     */
+    private List<Map<String, String>> originalMessages;
+
+    /**
      * 从Map构建ChatRequestDTO
      *
      * @param requestMap 请求Map
