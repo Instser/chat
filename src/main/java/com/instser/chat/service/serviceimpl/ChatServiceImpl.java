@@ -12,6 +12,7 @@ import com.instser.chat.entity.ChatSession;
 import com.instser.chat.entity.FileUpload;
 import com.instser.chat.entity.TavilySearchResult;
 import com.instser.chat.service.*;
+import com.instser.chat.util.ChatSessionManager;
 import com.instser.chat.vo.ChatLimitVO;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
@@ -948,22 +949,24 @@ public class ChatServiceImpl implements ChatService {
      * 调用AI服务进行流式响应
      */
     private ChatResponseDTO streamChatWithAI(ChatRequestDTO request, AiModel model, HttpServletResponse response, boolean willGenerateTitle, String interfaceType) {
-        // 注册活跃会话以支持中断功能
-        if (request.getSessionId() != null && request.getUserId() != null) {
-            chatInterruptService.registerActiveSession(request.getSessionId(), request.getUserId());
-        }
+        // ✅ 使用ChatSessionManager确保会话状态正确清理
+        try (ChatSessionManager sessionManager = new ChatSessionManager(
+                chatInterruptService, request.getSessionId(), request.getUserId())) {
 
-        // 用于跟踪是否有AI内容被成功发送和是否为真实AI响应
-        final boolean[] hasContentSent = {false};
-        final boolean[] isRealAiResponse = {false};
-        final boolean[] isInterrupted = {false};
-        final boolean[] interruptSaved = {false}; // 防止多次保存中断内容
+            // 注册活跃会话以支持中断功能
+            sessionManager.register();
 
-        final boolean[] completionHandled = {false}; // 标识是否已处理完成逻辑（避免重复处理）
-        // 用于收集完整的AI响应内容
-        final StringBuilder aiResponseContent = new StringBuilder();
+            // 用于跟踪是否有AI内容被成功发送和是否为真实AI响应
+            final boolean[] hasContentSent = {false};
+            final boolean[] isRealAiResponse = {false};
+            final boolean[] isInterrupted = {false};
+            final boolean[] interruptSaved = {false}; // 防止多次保存中断内容
 
-        try {
+            final boolean[] completionHandled = {false}; // 标识是否已处理完成逻辑（避免重复处理）
+            // 用于收集完整的AI响应内容
+            final StringBuilder aiResponseContent = new StringBuilder();
+
+            try {
             // 添加系统提示词到消息列表开头
             List<Map<String, String>> messagesWithPrompt = new ArrayList<>();
 
@@ -1353,10 +1356,11 @@ public class ChatServiceImpl implements ChatService {
                 log.error("发送异常消息失败", ioException);
                 return ChatResponseDTO.failure("System error");
             }
-        } finally {
-            // 会话状态清理已移到handleStreamCompletionWithInterruptStatus方法中
-            // 这里不再重复清理，避免时序问题
-        }
+            } finally {
+                // 会话状态清理已移到handleStreamCompletionWithInterruptStatus方法中
+                // 这里不再重复清理，避免时序问题
+            }
+        } // try-with-resources自动关闭ChatSessionManager
     }
 
     /**
@@ -1510,11 +1514,9 @@ public class ChatServiceImpl implements ChatService {
             // 异常情况，返回最终中断状态
             return finalInterruptedStatus;
         } finally {
-            // 在续写完成后清理会话状态，确保续写过程中可以正确检测中断
-            if (request.getSessionId() != null) {
-                chatInterruptService.markSessionCompleted(request.getSessionId());
-                log.debug("续写完成后清理会话状态，会话ID：{}", request.getSessionId());
-            }
+            // 会话状态清理现在由ChatSessionManager自动处理
+            // 这里不再手动清理，避免重复清理
+            log.debug("续写完成，会话状态将由ChatSessionManager自动清理，会话ID：{}", request.getSessionId());
         }
     }
 

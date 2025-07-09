@@ -21,6 +21,7 @@ import com.instser.chat.service.RedisPaymentSecurityService;
 import com.instser.chat.strategy.PaymentStrategy;
 import com.instser.chat.strategy.PaymentStrategyFactory;
 import com.instser.chat.util.PaymentSecurityUtil;
+import com.instser.chat.util.PaymentSessionManager;
 import com.instser.chat.vo.PaymentRequestVO;
 import com.instser.chat.vo.PaymentResponseVO;
 import com.instser.chat.vo.PaymentMethodVO;
@@ -115,24 +116,29 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public PaymentResponseVO createPayment(PaymentRequestVO paymentRequest) {
-        PaymentResponseVO response = null;
-        try {
+        // ✅ 使用PaymentSessionManager确保会话锁正确释放
+        try (PaymentSessionManager sessionManager = new PaymentSessionManager(
+                redisPaymentSecurityService, paymentRequest.getUserId())) {
+
             // 1. 验证支付请求参数
             validatePaymentRequest(paymentRequest);
 
-            // 2. 支付安全性验证
-            validatePaymentSecurity(paymentRequest);
+            // 2. 支付安全性验证（不包含会话锁管理）
+            validatePaymentSecurityWithoutSession(paymentRequest);
 
-            // 3. 根据paymentMethod字段选择支付方式
+            // 3. 获取支付会话锁
+            sessionManager.acquire();
+
+            // 4. 根据paymentMethod字段选择支付方式
             String paymentMethod = paymentRequest.getPaymentMethod();
 
-            // 4. 使用策略模式获取对应的支付策略
+            // 5. 使用策略模式获取对应的支付策略
             PaymentStrategy strategy = paymentStrategyFactory.getStrategy(paymentMethod);
 
-            // 5. 执行支付创建
-            response = strategy.createPayment(paymentRequest);
+            // 6. 执行支付创建
+            PaymentResponseVO response = strategy.createPayment(paymentRequest);
 
-            // 6. 记录支付创建审计日志
+            // 7. 记录支付创建审计日志
             recordCreatePaymentAudit(paymentRequest, response);
 
             return response;
@@ -174,9 +180,10 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     /**
-     * 支付安全性验证
+     * 支付安全性验证（不包含会话锁管理）
+     * 会话锁管理由PaymentSessionManager负责
      */
-    private void validatePaymentSecurity(PaymentRequestVO paymentRequest) {
+    private void validatePaymentSecurityWithoutSession(PaymentRequestVO paymentRequest) {
         Long userId = paymentRequest.getUserId();
 
         // 启用安全验证
@@ -208,30 +215,18 @@ public class PaymentServiceImpl implements PaymentService {
                 redisPaymentSecurityService.releasePaymentSession(userId);
             }
 
-            // 6. 获取支付会话锁
-            if (!redisPaymentSecurityService.acquirePaymentSession(userId)) {
-                throw new PaymentException("支付会话获取失败，请稍后再试");
+            // 6. 检查支付频率限制（Redis分布式验证）
+            if (!paymentSecurityEnhancer.checkPaymentFrequency(userId)) {
+                throw new PaymentException("支付频率过高，请稍后再试");
             }
 
-            try {
-                // 7. 检查支付频率限制（Redis分布式验证）
-                if (!paymentSecurityEnhancer.checkPaymentFrequency(userId)) {
-                    throw new PaymentException("支付频率过高，请稍后再试");
-                }
-
-                // 8. 检测异常支付行为
-                if (!paymentSecurityEnhancer.detectAbnormalPayment(paymentRequest)) {
-                    paymentSecurityEnhancer.recordSuspiciousBehavior(userId, "异常支付检测失败");
-                    throw new PaymentException("检测到异常支付行为，请联系客服");
-                }
-
-                log.info("用户{}支付安全验证通过，请求ID: {}", userId, requestId);
-
-            } catch (PaymentException e) {
-                // 如果安全验证失败，释放支付会话锁
-                redisPaymentSecurityService.releasePaymentSession(userId);
-                throw e;
+            // 7. 检测异常支付行为
+            if (!paymentSecurityEnhancer.detectAbnormalPayment(paymentRequest)) {
+                paymentSecurityEnhancer.recordSuspiciousBehavior(userId, "异常支付检测失败");
+                throw new PaymentException("检测到异常支付行为，请联系客服");
             }
+
+            log.info("用户{}支付安全验证通过，请求ID: {}", userId, requestId);
         } else {
             log.warn("支付安全验证已关闭，跳过所有安全检查");
         }

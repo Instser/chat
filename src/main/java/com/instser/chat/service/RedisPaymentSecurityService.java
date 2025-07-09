@@ -258,10 +258,11 @@ public class RedisPaymentSecurityService {
 
         try {
             String key = "payment:session:" + userId;
-            Boolean acquired = redisTemplate.opsForValue().setIfAbsent(key, "locked", Duration.ofMinutes(30));
+            // ✅ 缩短过期时间到5分钟，减少死锁影响
+            Boolean acquired = redisTemplate.opsForValue().setIfAbsent(key, "locked", Duration.ofMinutes(5));
 
             if (acquired != null && acquired) {
-                log.debug("用户{}成功获取支付会话锁", userId);
+                log.debug("用户{}成功获取支付会话锁，5分钟后自动过期", userId);
                 return true;
             } else {
                 log.warn("用户{}支付会话锁获取失败，可能存在并发支付", userId);
@@ -270,7 +271,8 @@ public class RedisPaymentSecurityService {
 
         } catch (Exception e) {
             log.error("获取支付会话锁异常，用户ID: {}", userId, e);
-            return true; // 异常情况下允许支付
+            // ✅ 异常情况下不允许支付，避免并发问题
+            return false;
         }
     }
 
