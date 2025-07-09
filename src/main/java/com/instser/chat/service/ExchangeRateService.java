@@ -23,9 +23,9 @@ public class ExchangeRateService {
 
     private final RestTemplate restTemplate;
 
-    // 默认汇率：1 CNY = 0.14 USD (1 USD = 7.14 CNY)
-    private static final BigDecimal DEFAULT_CNY_TO_USD = new BigDecimal("0.14");
+    // 默认汇率：1 USD = 7.14 CNY，确保数学一致性
     private static final BigDecimal DEFAULT_USD_TO_CNY = new BigDecimal("7.14");
+    private static final BigDecimal DEFAULT_CNY_TO_USD = BigDecimal.ONE.divide(DEFAULT_USD_TO_CNY, 6, RoundingMode.HALF_UP);
 
     /**
      * 获取汇率
@@ -143,7 +143,7 @@ public class ExchangeRateService {
     }
 
     /**
-     * 转换价格
+     * 转换价格（优化精度处理）
      */
     public BigDecimal convertPrice(BigDecimal amount, String fromCurrency, String toCurrency) {
         if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
@@ -151,6 +151,7 @@ public class ExchangeRateService {
         }
 
         BigDecimal rate = getExchangeRate(fromCurrency, toCurrency);
+        // 使用更高精度进行计算，最后再舍入到2位小数
         return amount.multiply(rate).setScale(2, RoundingMode.HALF_UP);
     }
 }
