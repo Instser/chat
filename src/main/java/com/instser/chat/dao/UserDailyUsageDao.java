@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -32,30 +33,34 @@ public interface UserDailyUsageDao extends BaseMapper<UserDailyUsage> {
     /**
      * 增加用户当日使用次数
      *
-     * @param userId     用户ID
-     * @param packageId  套餐ID
-     * @param usageDate  使用日期
+     * @param userId       用户ID
+     * @param packageId    套餐ID
+     * @param usageDate    使用日期
+     * @param lastChatTime 最后聊天时间
      * @return 影响行数
      */
     int incrementUsageCount(@Param("userId") Long userId,
                            @Param("packageId") Long packageId,
-                           @Param("usageDate") LocalDate usageDate);
+                           @Param("usageDate") LocalDate usageDate,
+                           @Param("lastChatTime") LocalDateTime lastChatTime);
 
     /**
      * 原子性插入或更新用户当日使用记录
      * 如果记录不存在则创建，如果存在则增加使用次数
      *
-     * @param userId     用户ID
-     * @param packageId  套餐ID（已废弃，保留向后兼容）
-     * @param usageDate  使用日期
-     * @param dailyLimit 每日限制次数（已废弃，保留向后兼容）
+     * @param userId       用户ID
+     * @param packageId    套餐ID（已废弃，保留向后兼容）
+     * @param usageDate    使用日期
+     * @param dailyLimit   每日限制次数（已废弃，保留向后兼容）
+     * @param lastChatTime 最后聊天时间
      * @return 影响行数
      */
     @Deprecated
     int insertOrIncrementUsage(@Param("userId") Long userId,
                               @Param("packageId") Long packageId,
                               @Param("usageDate") LocalDate usageDate,
-                              @Param("dailyLimit") Integer dailyLimit);
+                              @Param("dailyLimit") Integer dailyLimit,
+                              @Param("lastChatTime") LocalDateTime lastChatTime);
 
     /**
      * 获取用户最近的使用记录
@@ -105,14 +110,16 @@ public interface UserDailyUsageDao extends BaseMapper<UserDailyUsage> {
     /**
      * 原子性插入或更新模型使用记录
      *
-     * @param userId     用户ID
-     * @param modelName  模型名称
-     * @param usageDate  使用日期
+     * @param userId       用户ID
+     * @param modelName    模型名称
+     * @param usageDate    使用日期
+     * @param lastChatTime 最后聊天时间
      * @return 影响行数
      */
     int insertOrIncrementModelUsage(@Param("userId") Long userId,
                                    @Param("modelName") String modelName,
-                                   @Param("usageDate") LocalDate usageDate);
+                                   @Param("usageDate") LocalDate usageDate,
+                                   @Param("lastChatTime") LocalDateTime lastChatTime);
 
     /**
      * 获取用户指定模型的最近使用记录

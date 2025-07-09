@@ -212,9 +212,10 @@ public class UserDailyUsageServiceImpl extends ServiceImpl<UserDailyUsageDao, Us
 
         // 3. 使用原子性操作记录使用
         LocalDate businessDate = getBusinessDate();
+        LocalDateTime businessDateTime = getBusinessDateTime();
         int dailyLimit = permission.getDailyLimit();
 
-        int updated = baseMapper.insertOrIncrementModelUsage(userId, modelName, businessDate);
+        int updated = baseMapper.insertOrIncrementModelUsage(userId, modelName, businessDate, businessDateTime);
 
         if (updated > 0) {
             // 重新获取更新后的记录用于日志

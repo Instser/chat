@@ -33,8 +33,7 @@
     <update id="incrementUsageCount">
         UPDATE t_user_daily_usage
         SET chat_count_used = chat_count_used + 1,
-            last_chat_time = NOW(),
-            update_time = NOW()
+            last_chat_time = #{lastChatTime}
         WHERE user_id = #{userId}
           AND model_name = 'STANDARD'
           AND usage_date = #{usageDate}
@@ -43,12 +42,11 @@
     <!-- 原子性插入或更新用户当日使用记录（已废弃，使用insertOrIncrementModelUsage替代） -->
     <insert id="insertOrIncrementUsage">
         INSERT INTO t_user_daily_usage
-        (user_id, model_name, usage_date, chat_count_used, last_chat_time, create_time, update_time)
-        VALUES (#{userId}, 'STANDARD', #{usageDate}, 1, NOW(), NOW(), NOW())
+        (user_id, model_name, usage_date, chat_count_used, last_chat_time)
+        VALUES (#{userId}, 'STANDARD', #{usageDate}, 1, #{lastChatTime})
         ON DUPLICATE KEY UPDATE
             chat_count_used = chat_count_used + 1,
-            last_chat_time = NOW(),
-            update_time = NOW()
+            last_chat_time = #{lastChatTime}
     </insert>
 
     <!-- 获取用户最近的使用记录 -->
@@ -89,12 +87,11 @@
     <!-- 原子性插入或更新模型使用记录 -->
     <insert id="insertOrIncrementModelUsage">
         INSERT INTO t_user_daily_usage
-        (user_id, model_name, usage_date, chat_count_used, last_chat_time, create_time, update_time)
-        VALUES (#{userId}, #{modelName}, #{usageDate}, 1, NOW(), NOW(), NOW())
+        (user_id, model_name, usage_date, chat_count_used, last_chat_time)
+        VALUES (#{userId}, #{modelName}, #{usageDate}, 1, #{lastChatTime})
         ON DUPLICATE KEY UPDATE
             chat_count_used = chat_count_used + 1,
-            last_chat_time = NOW(),
-            update_time = NOW()
+            last_chat_time = #{lastChatTime}
     </insert>
 
     <!-- 获取用户指定模型的最近使用记录 -->
