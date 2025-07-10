@@ -481,10 +481,22 @@ public class ChatServiceImpl implements ChatService {
                 messages.add(msgMap);
             }
 
+
+
             // 保存原始消息列表（用于标题生成，在文件和联网搜索处理之前）
             List<Map<String, String>> originalMessages = new ArrayList<>();
             for (Map<String, String> message : messages) {
-                originalMessages.add(new HashMap<>(message));
+                Map<String, String> originalMsg = new HashMap<>();
+                originalMsg.put("role", message.get("role"));
+                if ("user".equals(message.get("role"))) {
+                    // 对用户消息提取原始内容
+                    String originalContent = extractOriginalUserContent(message.get("content"));
+                    originalMsg.put("content", originalContent);
+                } else {
+                    // AI消息保持原样
+                    originalMsg.put("content", message.get("content"));
+                }
+                originalMessages.add(originalMsg);
             }
             request.setOriginalMessages(originalMessages);
             log.debug("【标题生成】保存原始消息列表，消息数量：{}，只包含用户原始内容和AI响应", originalMessages.size());
@@ -1427,73 +1439,101 @@ public class ChatServiceImpl implements ChatService {
 
             // 🔥 新增：在标题生成前保存AI响应内容
             String contentToSave = aiResponseContentRef.toString();
+            final String finalContentToSave;
             if (isRealAiResponse || finalInterruptedStatus) {
                 if (contentToSave != null && !contentToSave.trim().isEmpty()) {
                     // 如果是中断状态，添加中断标记
                     if (finalInterruptedStatus && !contentToSave.endsWith("[已中断]")) {
-                        contentToSave = contentToSave + " [已中断]";
+                        finalContentToSave = contentToSave + " [已中断]";
                         log.info("添加中断标记到内容末尾，会话ID: {}", request.getSessionId());
+                    } else {
+                        finalContentToSave = contentToSave;
                     }
 
                     log.info("在标题生成前保存AI响应，会话ID: {}, 内容长度: {}, 是否中断: {}",
-                            request.getSessionId(), contentToSave.length(), finalInterruptedStatus);
-                    saveAiResponse(request.getSessionId(), request.getUserId(), model.getId(), contentToSave);
-
-                    // 记录模型使用次数（使用实际模型名称）
-                    String modelName = model.getModelName();
-                    boolean modelRecordSuccess = chatLimitService.recordModelChatUsage(request.getUserId(), modelName);
-                    if (modelRecordSuccess) {
-                        log.info("用户{}模型{}使用记录成功", request.getUserId(), modelName);
-                    } else {
-                        log.warn("用户{}模型{}使用记录失败", request.getUserId(), modelName);
-                    }
+                            request.getSessionId(), finalContentToSave.length(), finalInterruptedStatus);
+                    saveAiResponse(request.getSessionId(), request.getUserId(), model.getId(), finalContentToSave);
+                } else {
+                    finalContentToSave = contentToSave;
                 }
-            } else if (contentToSave != null && contentToSave.contains("Request failed")) {
+
+                // 记录模型使用次数（使用实际模型名称）
+                String modelName = model.getModelName();
+                boolean modelRecordSuccess = chatLimitService.recordModelChatUsage(request.getUserId(), modelName);
+                if (modelRecordSuccess) {
+                    log.info("用户{}模型{}使用记录成功", request.getUserId(), modelName);
+                } else {
+                    log.warn("用户{}模型{}使用记录失败", request.getUserId(), modelName);
+                }
+            } else {
+                finalContentToSave = null;
+            }
+
+            if (finalContentToSave != null && finalContentToSave.contains("Request failed")) {
                 // 处理错误响应
                 log.warn("用户{}收到错误响应，保存错误信息到数据库", request.getUserId());
-                saveErrorResponse(request.getSessionId(), request.getUserId(), model.getId(), contentToSave);
+                saveErrorResponse(request.getSessionId(), request.getUserId(), model.getId(), finalContentToSave);
                 log.info("错误响应已保存到数据库，会话ID：{}，用户ID：{}", request.getSessionId(), request.getUserId());
             }
 
             // 如果需要生成标题且是真实AI响应，等待标题生成完成
             if (willGenerateTitle && isRealAiResponse) {
-                log.info("开始生成标题，会话ID: {}", request.getSessionId());
+                log.info("=== 开始标题生成流程 ===");
+                log.info("会话ID: {}, willGenerateTitle: {}, isRealAiResponse: {}",
+                         request.getSessionId(), willGenerateTitle, isRealAiResponse);
+
+                long titleStartTime = System.currentTimeMillis();
                 try {
                     CompletableFuture<String> titleFuture = CompletableFuture.supplyAsync(() -> {
                         try {
-                            // 使用原始消息进行标题生成（不包含联网搜索结果）
-                            List<Map<String, String>> messagesForTitle = request.getOriginalMessages() != null ?
-                                request.getOriginalMessages() : request.getMessages();
+                            // 构建标题生成消息：用户原始内容 + 当前AI响应
+                            List<Map<String, String>> messagesForTitle = buildTitleMessages(request, finalContentToSave);
                             return generateSessionTitle(request.getSessionId(), messagesForTitle);
                         } catch (Exception e) {
                             log.error("后台标题生成失败", e);
                             return null;
                         }
                     });
+
+                    log.info("等待标题生成完成，最多等待5秒...");
                     generatedTitle = titleFuture.get(5, TimeUnit.SECONDS);
+                    long titleDuration = System.currentTimeMillis() - titleStartTime;
 
                     if (generatedTitle != null && !generatedTitle.equals("New Chat")) {
-                        log.info("标题生成成功: {}", generatedTitle);
+                        log.info("标题生成成功: [{}], 耗时: {}ms", generatedTitle, titleDuration);
                     } else {
-                        log.info("标题生成失败或返回默认标题: {}", generatedTitle);
+                        log.warn("标题生成失败或返回默认标题: [{}], 耗时: {}ms", generatedTitle, titleDuration);
                         generatedTitle = null;
                     }
                 } catch (TimeoutException e) {
-                    log.warn("标题生成超时，继续发送响应");
+                    long titleDuration = System.currentTimeMillis() - titleStartTime;
+                    log.warn("标题生成超时，耗时: {}ms，继续发送响应", titleDuration);
                     generatedTitle = null;
                 } catch (Exception e) {
-                    log.error("标题生成异常", e);
+                    long titleDuration = System.currentTimeMillis() - titleStartTime;
+                    log.error("标题生成异常，耗时: {}ms", titleDuration, e);
                     generatedTitle = null;
                 }
+                log.info("=== 标题生成流程结束，最终标题: [{}] ===", generatedTitle);
+            } else {
+                log.info("跳过标题生成 - willGenerateTitle: {}, isRealAiResponse: {}",
+                         willGenerateTitle, isRealAiResponse);
             }
 
             // 发送联网搜索结果（如果有）
             sendNetworkSearchResults(response, request.getNetworkSearchResults());
 
             // 发送完成标记
+            log.info("=== 准备发送完成标记给前端 ===");
+            log.info("发送前状态 - willGenerateTitle: {}, isRealAiResponse: {}, generatedTitle: [{}]",
+                     willGenerateTitle, isRealAiResponse, generatedTitle);
+
             String completionData = buildCompletionData(willGenerateTitle, isRealAiResponse, generatedTitle);
             response.getWriter().write(completionData);
             response.getWriter().flush();
+
+            log.info("完成标记已发送给前端");
+            log.info("=== 完成标记发送结束 ===");
 
             // 返回最终中断状态：包括用户手动中断和续写中断
             log.debug("handleStreamCompletionWithInterruptStatus 返回 finalInterruptedStatus: {}", finalInterruptedStatus);
@@ -2832,6 +2872,11 @@ public class ChatServiceImpl implements ChatService {
      */
     private String buildCompletionData(boolean willGenerateTitle, boolean isRealAiResponse, String generatedTitle) {
         try {
+            // 添加详细的标题生成状态日志
+            log.info("=== 构建完成标记数据 ===");
+            log.info("willGenerateTitle: {}, isRealAiResponse: {}, generatedTitle: [{}]",
+                     willGenerateTitle, isRealAiResponse, generatedTitle);
+
             Map<String, Object> completionMap = new HashMap<>();
             completionMap.put("finishReason", "stop");
             completionMap.put("usage", Map.of(
@@ -2842,14 +2887,21 @@ public class ChatServiceImpl implements ChatService {
             if (isRealAiResponse && willGenerateTitle) {
                 if (generatedTitle != null && !generatedTitle.trim().isEmpty()) {
                     completionMap.put("title", generatedTitle.trim());
+                    log.info("标题将返回给前端: [{}]", generatedTitle.trim());
                 } else {
                     completionMap.put("title", false);
+                    log.warn("标题生成失败或为空，返回false给前端");
                 }
             } else {
                 completionMap.put("title", false);
+                log.info("不需要生成标题，返回false给前端 - willGenerateTitle: {}, isRealAiResponse: {}",
+                         willGenerateTitle, isRealAiResponse);
             }
 
-            return String.format("d:%s\n", new ObjectMapper().writeValueAsString(completionMap));
+            String result = String.format("d:%s\n", new ObjectMapper().writeValueAsString(completionMap));
+            log.info("完成标记数据构建完成: {}", result.trim());
+            log.info("=== 构建完成标记数据结束 ===");
+            return result;
         } catch (Exception e) {
             log.error("构建完成标记数据失败", e);
             return "d:{\"finishReason\":\"stop\",\"usage\":{\"promptTokens\":10,\"completionTokens\":20},\"title\":false}\n";
@@ -2891,6 +2943,62 @@ public class ChatServiceImpl implements ChatService {
         } catch (Exception e) {
             log.error("发送联网搜索结果失败", e);
         }
+    }
+
+    /**
+     * 构建标题生成消息：用户原始内容 + 当前AI响应
+     */
+    private List<Map<String, String>> buildTitleMessages(ChatRequestDTO request, String aiResponse) {
+        List<Map<String, String>> messagesForTitle = new ArrayList<>();
+
+        // 添加用户原始消息（从originalMessages获取）
+        if (request.getOriginalMessages() != null) {
+            for (Map<String, String> originalMsg : request.getOriginalMessages()) {
+                if ("user".equals(originalMsg.get("role"))) {
+                    messagesForTitle.add(new HashMap<>(originalMsg));
+                }
+            }
+        }
+
+        // 添加当前AI响应
+        if (aiResponse != null && !aiResponse.trim().isEmpty()) {
+            Map<String, String> aiMsg = new HashMap<>();
+            aiMsg.put("role", "assistant");
+            aiMsg.put("content", aiResponse);
+            messagesForTitle.add(aiMsg);
+        }
+
+        log.info("构建标题生成消息完成，消息数量: {}（用户消息: {}，AI响应: {}）",
+                messagesForTitle.size(),
+                messagesForTitle.stream().filter(m -> "user".equals(m.get("role"))).count(),
+                messagesForTitle.stream().filter(m -> "assistant".equals(m.get("role"))).count());
+
+        return messagesForTitle;
+    }
+
+    /**
+     * 提取用户原始内容，移除文件和联网搜索内容
+     */
+    private String extractOriginalUserContent(String content) {
+        if (content == null || content.trim().isEmpty()) {
+            return content;
+        }
+
+        String originalContent = content.trim();
+
+        // 移除文件内容：格式为 "原始内容。以下是文件内容：[...]"
+        if (originalContent.contains("。以下是文件内容：[")) {
+            int fileIndex = originalContent.indexOf("。以下是文件内容：[");
+            originalContent = originalContent.substring(0, fileIndex).trim();
+        }
+
+        // 移除联网搜索结果：格式为 "原始内容以下是联网搜索结果：[...]"
+        if (originalContent.contains("以下是联网搜索结果：[")) {
+            int searchIndex = originalContent.indexOf("以下是联网搜索结果：[");
+            originalContent = originalContent.substring(0, searchIndex).trim();
+        }
+
+        return originalContent.isEmpty() ? content : originalContent;
     }
 
     @Override
