@@ -105,6 +105,12 @@ public class ChatMessage implements Serializable {
     private LocalDateTime updateTime;
 
     /**
+     * 是否使用联网查询（0-未使用，1-已使用）
+     */
+    @TableField("has_web_search")
+    private Integer hasWebSearch;
+
+    /**
      * 逻辑删除标志（0-未删除，1-已删除）
      */
     @TableLogic

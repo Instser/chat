@@ -80,8 +80,8 @@ public class ContinuationThreadPoolMonitor {
         int queueCapacity = 50; // 从配置中获取
         double queueUsageRatio = (double) queueSize / queueCapacity;
         if (queueUsageRatio > QUEUE_USAGE_WARNING_RATIO) {
-            log.warn("🚨 续写线程池队列使用率过高！当前使用率：{:.1f}%，队列大小：{}/{}",
-                    queueUsageRatio * 100, queueSize, queueCapacity);
+            log.warn("🚨 续写线程池队列使用率过高！当前使用率：{}%，队列大小：{}/{}",
+                    String.format("%.1f", queueUsageRatio * 100), queueSize, queueCapacity);
         }
         
         // 线程池饱和告警
@@ -119,7 +119,7 @@ public class ContinuationThreadPoolMonitor {
             log.info("📊 续写线程池性能报告：");
             log.info("   ├─ 线程配置：核心线程={}, 最大线程={}, 当前线程={}", corePoolSize, maximumPoolSize, poolSize);
             log.info("   ├─ 任务统计：总任务={}, 已完成={}, 待处理={}", totalTaskCount, completedTaskCount, pendingTasks);
-            log.info("   ├─ 完成率：{:.2f}%", completionRate);
+            log.info("   ├─ 完成率：{}%", String.format("%.2f", completionRate));
             log.info("   ├─ 当前状态：活跃线程={}, 队列大小={}", activeCount, queueSize);
             log.info("   └─ 健康状态：{}", getHealthStatus(activeCount, queueSize, maximumPoolSize));
             

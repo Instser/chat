@@ -81,11 +81,12 @@ public class PerformanceMonitor {
         }
 
         if (cpuUsage >= 0) {
-            log.info("💻 CPU使用率: 进程={:.1f}%, 系统={:.1f}%", cpuUsage, systemCpuUsage);
+            log.info("💻 CPU使用率: 进程={}%, 系统={}%",
+                    String.format("%.1f", cpuUsage), String.format("%.1f", systemCpuUsage));
 
             // CPU使用率告警
             if (cpuUsage > 80) {
-                log.warn("🚨 CPU使用率过高: {:.1f}%", cpuUsage);
+                log.warn("🚨 CPU使用率过高: {}%", String.format("%.1f", cpuUsage));
             }
         } else {
             log.info("💻 CPU使用率: 当前JVM不支持CPU使用率监控");
@@ -104,12 +105,12 @@ public class PerformanceMonitor {
         
         double heapUsagePercent = (double) heapUsed / heapMax * 100;
         
-        log.info("🧠 内存使用: 堆内存={}/{}MB ({:.1f}%), 非堆内存={}MB", 
-                heapUsed, heapMax, heapUsagePercent, nonHeapUsed);
+        log.info("🧠 内存使用: 堆内存={}/{}MB ({}%), 非堆内存={}MB",
+                heapUsed, heapMax, String.format("%.1f", heapUsagePercent), nonHeapUsed);
         
         // 内存使用率告警
         if (heapUsagePercent > 85) {
-            log.warn("🚨 堆内存使用率过高: {:.1f}%", heapUsagePercent);
+            log.warn("🚨 堆内存使用率过高: {}%", String.format("%.1f", heapUsagePercent));
         }
     }
 
@@ -145,12 +146,12 @@ public class PerformanceMonitor {
             
             double activePercent = (double) activeCount / maxActive * 100;
             
-            log.info("🗄️ 数据库连接池: 活跃={}/{} ({:.1f}%), 空闲={}", 
-                    activeCount, maxActive, activePercent, poolingCount);
+            log.info("🗄️ 数据库连接池: 活跃={}/{} ({}%), 空闲={}",
+                    activeCount, maxActive, String.format("%.1f", activePercent), poolingCount);
             
             // 连接池使用率告警
             if (activePercent > 90) {
-                log.warn("🚨 数据库连接池使用率过高: {:.1f}%", activePercent);
+                log.warn("🚨 数据库连接池使用率过高: {}%", String.format("%.1f", activePercent));
             }
         }
     }

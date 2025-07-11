@@ -8,6 +8,7 @@ import com.instser.chat.entity.ChatSession;
 import com.instser.chat.service.ChatMessageService;
 import com.instser.chat.service.ChatSessionService;
 import com.instser.chat.service.FileUploadService;
+import com.instser.chat.service.WebSearchContentService;
 import com.instser.chat.dto.MessageSaveResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -30,6 +31,7 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
 
     private final ChatSessionService chatSessionService;
     private final FileUploadService fileUploadService;
+    private final WebSearchContentService webSearchContentService;
 
     @Override
     public Long sendMessage(String sessionId, String content, Long userId) {
@@ -61,6 +63,7 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
         message.setContent(content);
         message.setMessageType("text");
         message.setHasAttachments(hasAttachments != null ? hasAttachments : 0); // 设置附件标识
+        message.setHasWebSearch(0); // 初始设置为0，如果有联网搜索会在后续更新
         message.setUserId(userId);
         message.setModelId(modelId != null ? modelId : 1L); // 使用传入的modelId，如果为null则使用默认值
         message.setTokenCount(calculateTokenCount(content)); // 使用优化的token计算方法
@@ -171,11 +174,24 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
                 log.error("【消息删除】删除关联文件失败，继续删除消息", e);
             }
 
+            // 删除关联的联网内容
+            int deletedWebSearchCount = 0;
+            try {
+                for (String msgId : messageIdsToDelete) {
+                    if (webSearchContentService.deleteByMessageId(msgId)) {
+                        deletedWebSearchCount++;
+                    }
+                }
+                log.debug("【消息删除】删除关联联网内容完成，联网内容数量：{}", deletedWebSearchCount);
+            } catch (Exception e) {
+                log.error("【消息删除】删除关联联网内容失败，继续删除消息", e);
+            }
+
             // 执行删除消息
             boolean deleted = this.removeByIds(messagesToDelete);
             if (deleted) {
-                log.info("【消息删除】删除成功，用户ID：{}，会话ID：{}，消息数：{}，文件数：{}",
-                        targetMessage.getUserId(), sessionId, messagesToDelete.size(), deletedFilesCount);
+                log.info("【消息删除】删除成功，用户ID：{}，会话ID：{}，消息数：{}，文件数：{}，联网内容数：{}",
+                        targetMessage.getUserId(), sessionId, messagesToDelete.size(), deletedFilesCount, deletedWebSearchCount);
                 return messagesToDelete.size();
             } else {
                 log.error("【消息删除】删除失败，消息ID：{}，会话ID：{}", messageId, sessionId);
@@ -236,11 +252,24 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
                 log.error("删除消息关联文件失败，继续删除消息", e);
             }
 
+            // 删除关联的联网内容（edit-resend场景不保留联网内容）
+            int deletedWebSearchCount = 0;
+            try {
+                for (String msgId : messageIdsToDelete) {
+                    if (webSearchContentService.deleteByMessageId(msgId)) {
+                        deletedWebSearchCount++;
+                    }
+                }
+                log.info("删除消息关联联网内容完成（edit-resend场景），联网内容数量：{}", deletedWebSearchCount);
+            } catch (Exception e) {
+                log.error("删除消息关联联网内容失败，继续删除消息", e);
+            }
+
             // 执行删除消息
             boolean deleted = this.removeByIds(messagesToDelete);
             if (deleted) {
-                log.info("成功删除{}条消息和{}个关联文件（edit-resend场景），起始messageId：{}，sessionId：{}",
-                        messagesToDelete.size(), deletedFilesCount, messageId, sessionId);
+                log.info("成功删除{}条消息、{}个关联文件和{}个联网内容（edit-resend场景），起始messageId：{}，sessionId：{}",
+                        messagesToDelete.size(), deletedFilesCount, deletedWebSearchCount, messageId, sessionId);
                 return messagesToDelete.size();
             } else {
                 log.error("删除消息失败，messageId：{}，sessionId：{}", messageId, sessionId);
@@ -348,6 +377,7 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
             message.setContent(content);
             message.setMessageType("text");
             message.setHasAttachments(0);
+            message.setHasWebSearch(0); // 初始设置为0，如果有联网搜索会在后续更新
             message.setUserId(userId);
             message.setModelId(modelId != null ? modelId : 1L);
             message.setTokenCount(tokenCount);
@@ -376,6 +406,29 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
             log.error("保存消息异常，会话ID：{}，角色：{}", sessionId, role, e);
             log.error("=== ChatMessageService.sendMessageWithTokenInfo 异常完成 ===");
             return MessageSaveResult.failure();
+        }
+    }
+
+    @Override
+    public boolean updateWebSearchFlag(String messageId, boolean hasWebSearch) {
+        try {
+            ChatMessage message = baseMapper.selectByMessageId(messageId);
+            if (message != null) {
+                message.setHasWebSearch(hasWebSearch ? 1 : 0);
+                boolean updated = updateById(message);
+                if (updated) {
+                    log.debug("【联网标记】消息联网标记更新成功，消息ID：{}，标记：{}", messageId, hasWebSearch);
+                } else {
+                    log.warn("【联网标记】消息联网标记更新失败，消息ID：{}", messageId);
+                }
+                return updated;
+            } else {
+                log.warn("【联网标记】未找到消息，消息ID：{}", messageId);
+                return false;
+            }
+        } catch (Exception e) {
+            log.error("【联网标记】更新消息联网标记异常，消息ID：{}", messageId, e);
+            return false;
         }
     }
 }

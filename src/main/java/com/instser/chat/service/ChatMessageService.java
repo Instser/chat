@@ -132,4 +132,13 @@ public interface ChatMessageService extends IService<ChatMessage> {
      * @return 删除的消息数量
      */
     int deleteMessagesFromPointWithFilePreservation(String messageId, String sessionId, List<String> preserveFileIds);
+
+    /**
+     * 更新消息的联网查询标记
+     *
+     * @param messageId     消息ID
+     * @param hasWebSearch  是否使用联网查询
+     * @return 是否更新成功
+     */
+    boolean updateWebSearchFlag(String messageId, boolean hasWebSearch);
 }
