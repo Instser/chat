@@ -10,6 +10,7 @@ import com.instser.chat.service.AiModelService;
 import com.instser.chat.service.ChatMessageService;
 import com.instser.chat.service.ChatSessionService;
 import com.instser.chat.service.FileUploadService;
+import com.instser.chat.service.WebSearchContentService;
 import com.instser.chat.vo.AiModelVO;
 import com.instser.chat.vo.ChatMessageVO;
 import com.instser.chat.vo.ChatSessionVO;
@@ -48,6 +49,7 @@ public class ApiController {
     private final ChatMessageService chatMessageService;
     private final AiModelService aiModelService;
     private final FileUploadService fileUploadService;
+    private final WebSearchContentService webSearchContentService;
 
     // ==================== 认证相关接口已迁移到AuthController ====================
 
@@ -63,7 +65,7 @@ public class ApiController {
     // ==================== 聊天会话相关接口 ====================
 
     /**
-     * 获取用户的聊天列表 - 支持分页参数
+     * 获取用户的聊天列表 - 默认分页20条记录
      */
     @GetMapping("/chats")
     public Result<Map<String, Object>> getChats(
@@ -75,16 +77,7 @@ public class ApiController {
         List<ChatSession> allChatSessions = chatSessionService.getUserSessions(userId);
         List<ChatSessionVO> allChatSessionVOs = VOConverter.toChatSessionVOList(allChatSessions);
 
-        // 如果没有分页参数，返回所有聊天（保持向后兼容）
-        if (limit == null && offset == null) {
-            Map<String, Object> response = new HashMap<>();
-            response.put("chats", allChatSessionVOs);
-            response.put("total", allChatSessionVOs.size());
-            response.put("hasMore", false);
-            return Result.success(response, "获取聊天列表成功");
-        }
-
-        // 有分页参数时，返回分页结果
+        // 设置默认分页参数，默认每页20条记录
         int actualLimit = limit != null ? limit : 20;
         int actualOffset = offset != null ? offset : 0;
 
@@ -235,7 +228,7 @@ public class ApiController {
         }
 
         List<ChatMessage> allMessages = chatMessageService.getSessionMessages(chatId);
-        List<ChatMessageVO> allMessageVOs = VOConverter.toChatMessageVOList(allMessages, fileUploadService);
+        List<ChatMessageVO> allMessageVOs = VOConverter.toChatMessageVOList(allMessages, fileUploadService, webSearchContentService);
 
         // 如果没有分页参数，返回所有消息（保持向后兼容）
         if (limit == null && offset == null) {

@@ -11,7 +11,7 @@ import com.instser.chat.entity.ChatMessage;
 import com.instser.chat.entity.ChatSession;
 import com.instser.chat.entity.FileUpload;
 import com.instser.chat.entity.TavilySearchResult;
-import com.instser.chat.entity.WebSearchContent;
+
 import com.instser.chat.service.*;
 import com.instser.chat.util.ChatSessionManager;
 import com.instser.chat.vo.ChatLimitVO;
@@ -489,18 +489,12 @@ public class ChatServiceImpl implements ChatService {
 
 
             // 保存原始消息列表（用于标题生成，在文件和联网搜索处理之前）
+            // 注意：此时messages来自数据库，本身就是原始内容，无需额外提取
             List<Map<String, String>> originalMessages = new ArrayList<>();
             for (Map<String, String> message : messages) {
                 Map<String, String> originalMsg = new HashMap<>();
                 originalMsg.put("role", message.get("role"));
-                if ("user".equals(message.get("role"))) {
-                    // 对用户消息提取原始内容
-                    String originalContent = extractOriginalUserContent(message.get("content"));
-                    originalMsg.put("content", originalContent);
-                } else {
-                    // AI消息保持原样
-                    originalMsg.put("content", message.get("content"));
-                }
+                originalMsg.put("content", message.get("content")); // 直接使用原始内容
                 originalMessages.add(originalMsg);
             }
             request.setOriginalMessages(originalMessages);
@@ -557,15 +551,9 @@ public class ChatServiceImpl implements ChatService {
                     log.info("【联网搜索】联网内容处理完成，用户ID：{}，会话ID：{}",
                             request.getUserId(), request.getSessionId());
 
-                    // 立即保存联网查询结果到数据库（修复时序问题）
-                    // 获取最新的用户消息ID来关联联网内容
-                    String userMessageId = getLatestUserMessageId(request.getSessionId(), request.getUserId());
-                    if (userMessageId != null) {
-                        saveWebSearchResultsIfNeeded(request, userMessageId);
-                    } else {
-                        log.error("【联网存储】无法获取用户消息ID，跳过联网内容保存，会话ID：{}，用户ID：{}",
-                                request.getSessionId(), request.getUserId());
-                    }
+                    // 联网查询结果将在AI响应保存后进行关联
+                    log.info("【联网搜索】联网内容处理完成，将在AI响应保存后关联联网信息，用户ID：{}，会话ID：{}",
+                            request.getUserId(), request.getSessionId());
                 } else {
                     log.warn("【联网搜索】无法提取用户查询内容，用户ID：{}，会话ID：{}",
                             request.getUserId(), request.getSessionId());
@@ -785,6 +773,21 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public void saveAiResponse(String sessionId, Long userId, Long modelId, String content) {
+        // 调用新方法保存AI响应，但不需要返回messageId
+        // 这个方法主要用于错误响应保存，不涉及联网信息
+        saveAiResponseAndGetMessageId(sessionId, userId, modelId, content);
+    }
+
+    /**
+     * 保存AI响应并返回消息ID
+     *
+     * @param sessionId 会话ID
+     * @param userId 用户ID
+     * @param modelId 模型ID
+     * @param content 内容
+     * @return AI响应消息ID，失败时返回null
+     */
+    public String saveAiResponseAndGetMessageId(String sessionId, Long userId, Long modelId, String content) {
         log.info("【AI响应保存】开始保存，用户ID：{}，会话ID：{}，模型ID：{}，内容长度：{}",
                 userId, sessionId, modelId, content != null ? content.length() : 0);
 
@@ -811,12 +814,15 @@ public class ChatServiceImpl implements ChatService {
                         log.warn("【AI响应保存】Token使用记录失败，用户ID：{}，会话ID：{}，Token数：{}",
                                 userId, sessionId, result.getTokenCount());
                     }
+                    return result.getMessageUuid(); // 返回AI响应消息UUID
                 } else if (result.isSuccess()) {
                     log.info("【AI响应保存】保存成功（无Token计费），用户ID：{}，会话ID：{}，内容长度：{}",
                             userId, sessionId, content.length());
+                    return result.getMessageUuid(); // 返回AI响应消息UUID
                 } else {
                     log.error("【AI响应保存】数据库保存失败，用户ID：{}，会话ID：{}，模型ID：{}",
                              userId, sessionId, modelId);
+                    return null;
                 }
             } else {
                 log.warn("【AI响应保存】参数验证失败，用户ID：{}，会话ID：{}，模型ID：{}，内容长度：{}",
@@ -824,9 +830,11 @@ public class ChatServiceImpl implements ChatService {
                 log.debug("【AI响应保存】参数详细检查 - sessionId null: {}, userId null: {}, modelId null: {}, content null: {}, content empty: {}",
                          sessionId == null, userId == null, modelId == null, content == null,
                          content != null ? content.trim().isEmpty() : "N/A");
+                return null;
             }
         } catch (Exception e) {
             log.error("【AI响应保存】保存异常，用户ID：{}，会话ID：{}，模型ID：{}", userId, sessionId, modelId, e);
+            return null;
         }
     }
 
@@ -1018,23 +1026,29 @@ public class ChatServiceImpl implements ChatService {
             final StringBuilder aiResponseContent = new StringBuilder();
 
             try {
-            // 添加系统提示词到消息列表开头
+            // 构建带有伪造对话提示词的消息列表
             List<Map<String, String>> messagesWithPrompt = new ArrayList<>();
 
             // 根据deepthink参数选择提示词
             boolean isDeepThink = request.getDeepThinking() != null && request.getDeepThinking();
-            String systemPrompt = isDeepThink ? PromptConstants.DEEP_THINKING_PROMPT : PromptConstants.DEFAULT_SYSTEM_PROMPT;
+            String promptContent = isDeepThink ? PromptConstants.DEEP_THINKING_PROMPT : PromptConstants.DEFAULT_SYSTEM_PROMPT;
 
-            // 添加系统提示词
-            Map<String, String> systemMessage = new HashMap<>();
-            systemMessage.put("role", "system");
-            systemMessage.put("content", systemPrompt);
-            messagesWithPrompt.add(systemMessage);
+            // 添加伪造的用户问题："who are you？"
+            Map<String, String> fakeUserMessage = new HashMap<>();
+            fakeUserMessage.put("role", "user");
+            fakeUserMessage.put("content", "who are you？");
+            messagesWithPrompt.add(fakeUserMessage);
 
-            // 添加用户的消息
+            // 添加伪造的AI回答（使用选择的提示词内容）
+            Map<String, String> fakeAssistantMessage = new HashMap<>();
+            fakeAssistantMessage.put("role", "assistant");
+            fakeAssistantMessage.put("content", promptContent);
+            messagesWithPrompt.add(fakeAssistantMessage);
+
+            // 添加用户的实际消息
             messagesWithPrompt.addAll(request.getMessages());
 
-            log.info("使用{}提示词，消息总数: {}", isDeepThink ? "深度思考" : "默认", messagesWithPrompt.size());
+            log.info("使用{}提示词（伪造对话形式），消息总数: {}", isDeepThink ? "深度思考" : "默认", messagesWithPrompt.size());
 
             // 添加JSON数据缓冲区，用于处理分片数据
             StringBuilder jsonBuffer = new StringBuilder();
@@ -1526,7 +1540,12 @@ public class ChatServiceImpl implements ChatService {
 
                     log.info("在标题生成前保存AI响应，会话ID: {}, 内容长度: {}, 是否中断: {}",
                             request.getSessionId(), finalContentToSave.length(), finalInterruptedStatus);
-                    saveAiResponse(request.getSessionId(), request.getUserId(), model.getId(), finalContentToSave);
+                    String aiResponseMessageId = saveAiResponseAndGetMessageId(request.getSessionId(), request.getUserId(), model.getId(), finalContentToSave);
+
+                    // 保存联网查询结果到AI响应消息（如果有）
+                    if (aiResponseMessageId != null) {
+                        saveWebSearchResultsToAiResponse(request, aiResponseMessageId);
+                    }
                 } else {
                     finalContentToSave = contentToSave;
                 }
@@ -3066,9 +3085,9 @@ public class ChatServiceImpl implements ChatService {
             originalContent = originalContent.substring(0, fileIndex).trim();
         }
 
-        // 移除联网搜索结果：格式为 "原始内容以下是联网搜索结果：[...]"
-        if (originalContent.contains("以下是联网搜索结果：[")) {
-            int searchIndex = originalContent.indexOf("以下是联网搜索结果：[");
+        // 移除联网搜索结果：格式为 "原始内容以下是你自己联网搜索得到的结果：[...]"
+        if (originalContent.contains("以下是你自己联网搜索得到的结果：[")) {
+            int searchIndex = originalContent.indexOf("以下是你自己联网搜索得到的结果：[");
             originalContent = originalContent.substring(0, searchIndex).trim();
         }
 
@@ -3440,7 +3459,7 @@ public class ChatServiceImpl implements ChatService {
 
             // 构建联网内容
             StringBuilder networkContentBuilder = new StringBuilder();
-            networkContentBuilder.append("以下是联网搜索结果：[");
+            networkContentBuilder.append("以下是你自己联网搜索得到的结果：[");
 
             boolean hasValidContent = false;
             int processedCount = 0;
@@ -3536,15 +3555,8 @@ public class ChatServiceImpl implements ChatService {
             if ("user".equals(message.get("role"))) {
                 String content = message.get("content");
                 if (content != null && !content.trim().isEmpty()) {
-                    // 如果内容包含文件附件信息，需要提取原始用户查询
-                    // 文件附件格式：原始内容。以下是文件内容：[...]
-                    if (content.contains("。以下是文件内容：[")) {
-                        String[] parts = content.split("。以下是文件内容：\\[");
-                        if (parts.length > 0) {
-                            return parts[0].trim();
-                        }
-                    }
-                    return content.trim();
+                    // 使用统一的方法提取原始用户内容（移除文件和联网搜索内容）
+                    return extractOriginalUserContent(content);
                 }
             }
         }
@@ -3853,31 +3865,7 @@ public class ChatServiceImpl implements ChatService {
                     log.warn("重试请求联网搜索但无法提取用户查询内容");
                 }
             } else {
-                log.debug("重试请求没有启用联网搜索");
-
-                // 如果没有启用联网搜索，检查用户消息是否有联网关联记录，如果有则删除
-                if (lastUserMessage != null) {
-                    WebSearchContent existingWebSearch = webSearchContentService.getByMessageId(lastUserMessage.getMessageId());
-                    if (existingWebSearch != null) {
-                        log.info("重试请求未启用联网搜索，但用户消息存在联网关联记录，开始删除，消息ID：{}", lastUserMessage.getMessageId());
-                        boolean deleted = webSearchContentService.deleteByMessageId(lastUserMessage.getMessageId());
-                        if (deleted) {
-                            log.info("【联网存储】重试操作删除联网关联记录成功，用户ID：{}，消息ID：{}", userId, lastUserMessage.getMessageId());
-
-                            // 更新消息的联网标记为false
-                            try {
-                                chatMessageService.updateWebSearchFlag(lastUserMessage.getMessageId(), false);
-                                log.debug("【联网存储】更新消息联网标记为false成功，消息ID：{}", lastUserMessage.getMessageId());
-                            } catch (Exception e) {
-                                log.error("【联网存储】更新消息联网标记失败，消息ID：{}", lastUserMessage.getMessageId(), e);
-                            }
-                        } else {
-                            log.warn("【联网存储】重试操作删除联网关联记录失败，用户ID：{}，消息ID：{}", userId, lastUserMessage.getMessageId());
-                        }
-                    } else {
-                        log.debug("重试请求未启用联网搜索，用户消息也没有联网关联记录，无需处理");
-                    }
-                }
+                log.debug("重试请求没有启用联网搜索，联网信息将在AI响应删除时自动清理");
             }
 
             // 获取并验证AI模型
@@ -3898,16 +3886,8 @@ public class ChatServiceImpl implements ChatService {
                 return;
             }
 
-            // 更新联网查询结果（如果有新的搜索结果）
-            if (lastUserMessage != null && retrySearchResults != null && !retrySearchResults.isEmpty()) {
-                updateWebSearchResultsIfNeeded(
-                    lastUserMessage.getMessageId(),
-                    lastUserMessage.getMessageId(), // retry操作不改变消息ID
-                    retrySearchResults,
-                    userId,
-                    "retry"
-                );
-            }
+            // 联网查询结果将在AI响应保存后进行关联
+            log.debug("【联网存储】retry操作联网内容将在AI响应保存后关联，用户ID：{}，会话ID：{}", userId, sessionId);
 
             // 构建ChatRequestDTO
             ChatRequestDTO retryRequest = new ChatRequestDTO();
@@ -4132,40 +4112,8 @@ public class ChatServiceImpl implements ChatService {
                 return;
             }
 
-            // 保存联网查询结果（如果有）
-            if (newUserMessage != null && editResendSearchResults != null && !editResendSearchResults.isEmpty()) {
-                // 构建TavilySearchResponse对象
-                com.instser.chat.entity.TavilySearchResponse searchResponse = new com.instser.chat.entity.TavilySearchResponse();
-                searchResponse.setResults(editResendSearchResults);
-
-                // 保存联网查询结果
-                boolean webSearchSaved = webSearchContentService.saveWebSearchContent(
-                    newUserMessage.getMessageId(),
-                    searchResponse,
-                    userId,
-                    sessionId
-                );
-
-                if (webSearchSaved) {
-                        log.info("【联网存储】edit-resend操作联网查询结果保存成功，用户ID：{}，消息ID：{}，结果数量：{}",
-                                userId, newUserMessage.getMessageId(), editResendSearchResults.size());
-
-                        // 更新消息的联网标记
-                        try {
-                            boolean flagUpdated = chatMessageService.updateWebSearchFlag(newUserMessage.getMessageId(), true);
-                            if (flagUpdated) {
-                                log.debug("【联网存储】edit-resend操作消息联网标记更新成功，消息ID：{}", newUserMessage.getMessageId());
-                            } else {
-                                log.warn("【联网存储】edit-resend操作消息联网标记更新失败，消息ID：{}", newUserMessage.getMessageId());
-                            }
-                        } catch (Exception e) {
-                            log.error("【联网存储】edit-resend操作更新消息联网标记异常，消息ID：{}", newUserMessage.getMessageId(), e);
-                        }
-                } else {
-                    log.warn("【联网存储】edit-resend操作联网查询结果保存失败，用户ID：{}，消息ID：{}",
-                            userId, newUserMessage.getMessageId());
-                }
-            }
+            // 联网查询结果将在AI响应保存后进行关联
+            log.debug("【联网存储】edit-resend操作联网内容将在AI响应保存后关联，用户ID：{}，会话ID：{}", userId, sessionId);
 
             // 构建ChatRequestDTO
             ChatRequestDTO editResendRequest = new ChatRequestDTO();
@@ -4366,22 +4314,20 @@ public class ChatServiceImpl implements ChatService {
     }
 
     /**
-     * 保存联网查询结果（如果需要）
+     * 保存联网查询结果到AI响应消息
      *
-     * @deprecated 此方法存在时序问题，已被 saveWebSearchResultsAfterNetworkProcessing 替代
      * @param request 聊天请求
-     * @param userMessageId 用户消息ID
+     * @param aiResponseMessageId AI响应消息ID
      */
-    @Deprecated
-    private void saveWebSearchResultsIfNeeded(ChatRequestDTO request, String userMessageId) {
+    private void saveWebSearchResultsToAiResponse(ChatRequestDTO request, String aiResponseMessageId) {
         try {
             // 参数验证
             if (request == null) {
                 log.error("【联网存储】参数验证失败：请求对象为空");
                 return;
             }
-            if (userMessageId == null || userMessageId.trim().isEmpty()) {
-                log.error("【联网存储】参数验证失败：用户消息ID为空，用户ID：{}", request.getUserId());
+            if (aiResponseMessageId == null || aiResponseMessageId.trim().isEmpty()) {
+                log.error("【联网存储】参数验证失败：AI响应消息ID为空，用户ID：{}", request.getUserId());
                 return;
             }
 
@@ -4409,118 +4355,50 @@ public class ChatServiceImpl implements ChatService {
                 com.instser.chat.entity.TavilySearchResponse searchResponse = new com.instser.chat.entity.TavilySearchResponse();
                 searchResponse.setResults(request.getNetworkSearchResults());
 
-                // 保存联网查询结果
+                // 保存联网查询结果到AI响应消息
                 boolean saved = webSearchContentService.saveWebSearchContent(
-                    userMessageId,
+                    aiResponseMessageId,
                     searchResponse,
                     request.getUserId(),
                     request.getSessionId()
                 );
 
                 if (saved) {
-                    log.info("【联网存储】联网查询结果保存成功，用户ID：{}，消息ID：{}，结果数量：{}",
-                            request.getUserId(), userMessageId, request.getNetworkSearchResults().size());
+                    log.info("【联网存储】联网查询结果保存成功，用户ID：{}，AI响应消息ID：{}，结果数量：{}",
+                            request.getUserId(), aiResponseMessageId, request.getNetworkSearchResults().size());
 
-                    // 更新消息的联网标记
+                    // 更新AI响应消息的联网标记
                     try {
-                        boolean flagUpdated = chatMessageService.updateWebSearchFlag(userMessageId, true);
+                        boolean flagUpdated = chatMessageService.updateWebSearchFlag(aiResponseMessageId, true);
                         if (flagUpdated) {
-                            log.debug("【联网存储】消息联网标记更新成功，消息ID：{}", userMessageId);
+                            log.debug("【联网存储】AI响应消息联网标记更新成功，消息ID：{}", aiResponseMessageId);
                         } else {
-                            log.warn("【联网存储】消息联网标记更新失败，消息ID：{}", userMessageId);
+                            log.warn("【联网存储】AI响应消息联网标记更新失败，消息ID：{}", aiResponseMessageId);
                         }
                     } catch (Exception e) {
-                        log.error("【联网存储】更新消息联网标记异常，消息ID：{}", userMessageId, e);
+                        log.error("【联网存储】更新AI响应消息联网标记异常，消息ID：{}", aiResponseMessageId, e);
                     }
                 } else {
-                    log.warn("【联网存储】联网查询结果保存失败，用户ID：{}，消息ID：{}",
-                            request.getUserId(), userMessageId);
+                    log.warn("【联网存储】联网查询结果保存失败，用户ID：{}，AI响应消息ID：{}",
+                            request.getUserId(), aiResponseMessageId);
                 }
             } else {
-                log.debug("【联网存储】无需保存联网查询结果，用户ID：{}，消息ID：{}，启用联网：{}，结果数量：{}",
-                        request.getUserId(), userMessageId,
+                log.debug("【联网存储】无需保存联网查询结果，用户ID：{}，AI响应消息ID：{}，启用联网：{}，结果数量：{}",
+                        request.getUserId(), aiResponseMessageId,
                         request.getNetwork(),
                         request.getNetworkSearchResults() != null ? request.getNetworkSearchResults().size() : 0);
             }
         } catch (Exception e) {
-            log.error("【联网存储】保存联网查询结果异常，用户ID：{}，消息ID：{}",
-                    request.getUserId(), userMessageId, e);
+            log.error("【联网存储】保存联网查询结果异常，用户ID：{}，AI响应消息ID：{}",
+                    request.getUserId(), aiResponseMessageId, e);
         }
     }
 
 
-    /**
-     * 获取会话中最新的用户消息ID
-     *
-     * @param sessionId 会话ID
-     * @param userId 用户ID
-     * @return 最新用户消息ID，未找到时返回null
-     */
-    private String getLatestUserMessageId(String sessionId, Long userId) {
-        try {
-            List<ChatMessage> messages = chatMessageService.getSessionMessages(sessionId);
-            if (messages == null || messages.isEmpty()) {
-                return null;
-            }
 
-            // 从最新的消息开始查找用户消息
-            for (int i = messages.size() - 1; i >= 0; i--) {
-                ChatMessage message = messages.get(i);
-                if ("user".equals(message.getRole()) && userId.equals(message.getUserId())) {
-                    return message.getMessageId();
-                }
-            }
 
-            return null;
-        } catch (Exception e) {
-            log.error("获取最新用户消息ID异常，会话ID：{}，用户ID：{}", sessionId, userId, e);
-            return null;
-        }
-    }
 
-    /**
-     * 更新联网查询结果（用于retry和edit-resend操作）
-     *
-     * @param oldMessageId 旧消息ID
-     * @param newMessageId 新消息ID（如果有）
-     * @param searchResults 联网搜索结果
-     * @param userId 用户ID
-     * @param operationType 操作类型（retry/edit-resend）
-     */
-    private void updateWebSearchResultsIfNeeded(String oldMessageId, String newMessageId,
-                                               List<TavilySearchResult> searchResults,
-                                               Long userId, String operationType) {
-        try {
-            // 检查是否有联网搜索结果需要更新
-            if (searchResults != null && !searchResults.isEmpty()) {
 
-                // 构建TavilySearchResponse对象
-                com.instser.chat.entity.TavilySearchResponse searchResponse = new com.instser.chat.entity.TavilySearchResponse();
-                searchResponse.setResults(searchResults);
 
-                // 更新联网查询结果
-                boolean updated = webSearchContentService.updateWebSearchContent(
-                    oldMessageId,
-                    newMessageId != null ? newMessageId : oldMessageId,
-                    searchResponse
-                );
-
-                if (updated) {
-                    log.info("【联网存储】{}操作联网查询结果更新成功，用户ID：{}，旧消息ID：{}，新消息ID：{}，结果数量：{}",
-                            operationType, userId, oldMessageId, newMessageId, searchResults.size());
-                } else {
-                    log.warn("【联网存储】{}操作联网查询结果更新失败，用户ID：{}，旧消息ID：{}，新消息ID：{}",
-                            operationType, userId, oldMessageId, newMessageId);
-                }
-            } else {
-                log.debug("【联网存储】{}操作无需更新联网查询结果，用户ID：{}，消息ID：{}，结果数量：{}",
-                        operationType, userId, oldMessageId,
-                        searchResults != null ? searchResults.size() : 0);
-            }
-        } catch (Exception e) {
-            log.error("【联网存储】{}操作更新联网查询结果异常，用户ID：{}，旧消息ID：{}，新消息ID：{}",
-                    operationType, userId, oldMessageId, newMessageId, e);
-        }
-    }
 
 }

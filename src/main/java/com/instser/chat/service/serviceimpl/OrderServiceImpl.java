@@ -47,7 +47,7 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
             throw new BusinessException("套餐已下架");
         }
 
-        // 直接使用CNY价格
+        // 直接使用数据库中的价格（USD）
         BigDecimal amount = packageInfo.getPrice();
 
         if (!MoneyUtil.isZeroOrPositive(amount)) {

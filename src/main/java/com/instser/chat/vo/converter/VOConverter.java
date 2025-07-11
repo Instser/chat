@@ -154,6 +154,31 @@ public class VOConverter {
     }
 
     /**
+     * 聊天消息实体转VO（包含文件名信息和网络搜索结果）
+     */
+    public static ChatMessageVO toChatMessageVO(ChatMessage chatMessage, FileUploadService fileUploadService,
+                                              com.instser.chat.service.WebSearchContentService webSearchContentService) {
+        ChatMessageVO chatMessageVO = toChatMessageVO(chatMessage, fileUploadService);
+        if (chatMessageVO != null && webSearchContentService != null) {
+            // 检查是否有网络搜索结果
+            if (chatMessage.getHasWebSearch() != null && chatMessage.getHasWebSearch() == 1) {
+                System.out.println("【调试】消息ID: " + chatMessage.getMessageId() + " 有网络搜索标记，开始查询网络内容");
+                com.instser.chat.entity.WebSearchContent webSearchContent =
+                    webSearchContentService.getByMessageId(chatMessage.getMessageId());
+                if (webSearchContent != null && webSearchContent.getContent() != null) {
+                    System.out.println("【调试】找到网络搜索内容，长度: " + webSearchContent.getContent().length());
+                    chatMessageVO.setNetworkResult(webSearchContent.getContent());
+                } else {
+                    System.out.println("【调试】未找到网络搜索内容或内容为空，webSearchContent: " + webSearchContent);
+                }
+            } else {
+                System.out.println("【调试】消息ID: " + chatMessage.getMessageId() + " hasWebSearch值: " + chatMessage.getHasWebSearch());
+            }
+        }
+        return chatMessageVO;
+    }
+
+    /**
      * 批量转换用户列表
      */
     public static List<UserVO> toUserVOList(List<User> users) {
@@ -214,6 +239,19 @@ public class VOConverter {
     }
 
     /**
+     * 批量转换聊天消息列表（包含文件名信息和网络搜索结果）
+     */
+    public static List<ChatMessageVO> toChatMessageVOList(List<ChatMessage> chatMessages, FileUploadService fileUploadService,
+                                                        com.instser.chat.service.WebSearchContentService webSearchContentService) {
+        if (chatMessages == null) {
+            return null;
+        }
+        return chatMessages.stream()
+                .map(chatMessage -> toChatMessageVO(chatMessage, fileUploadService, webSearchContentService))
+                .collect(Collectors.toList());
+    }
+
+    /**
      * 套餐实体转VO
      */
     public static PackageVO toPackageVO(Package packageEntity) {
@@ -230,6 +268,11 @@ public class VOConverter {
         // 使用兼容方法设置已删除的字段值
         packageVO.setChatCount(packageEntity.getChatCount());
         packageVO.setDailyChatLimit(packageEntity.getDailyChatLimit());
+
+        // 设置价格字段（数据库存储USD价格）
+        packageVO.setPriceUsd(packageEntity.getPrice());
+        // 暂时将CNY价格设置为null，如需要可通过汇率转换获得
+        packageVO.setPriceCny(null);
 
         // 设置优惠价格
         packageVO.setDiscountPrice(packageEntity.getDiscountPrice());
@@ -356,37 +399,37 @@ public class VOConverter {
 
     /**
      * 价格转换方法
-     * 数据库存储CNY价格，根据请求货币类型进行汇率转换
+     * 数据库存储USD价格，根据请求货币类型进行汇率转换
      */
     private static java.math.BigDecimal calculatePrice(Package packageEntity, String currency, ExchangeRateService exchangeRateService) {
         if (packageEntity == null || currency == null) {
             return java.math.BigDecimal.ZERO;
         }
 
-        // 获取数据库中的CNY价格
-        java.math.BigDecimal cnyPrice = packageEntity.getPrice();
-        if (cnyPrice == null || cnyPrice.compareTo(java.math.BigDecimal.ZERO) <= 0) {
+        // 获取数据库中的USD价格
+        java.math.BigDecimal usdPrice = packageEntity.getPrice();
+        if (usdPrice == null || usdPrice.compareTo(java.math.BigDecimal.ZERO) <= 0) {
             return java.math.BigDecimal.ZERO;
         }
 
-        // 如果请求CNY，直接返回数据库价格
-        if ("CNY".equalsIgnoreCase(currency)) {
-            return cnyPrice;
+        // 如果请求USD或未指定货币，直接返回数据库价格（美元）
+        if ("USD".equalsIgnoreCase(currency) || currency == null) {
+            return usdPrice;
         }
 
-        // 如果请求USD，进行汇率转换
-        if ("USD".equalsIgnoreCase(currency) && exchangeRateService != null) {
+        // 如果请求CNY，进行汇率转换
+        if ("CNY".equalsIgnoreCase(currency) && exchangeRateService != null) {
             try {
-                return exchangeRateService.convertPrice(cnyPrice, "CNY", "USD");
+                return exchangeRateService.convertPrice(usdPrice, "USD", "CNY");
             } catch (Exception e) {
-                // 汇率转换失败时返回CNY价格
+                // 汇率转换失败时返回USD价格
                 System.err.println("汇率转换失败: " + e.getMessage());
-                return cnyPrice;
+                return usdPrice;
             }
         }
 
-        // 其他货币或汇率服务不可用时，返回CNY价格
-        return cnyPrice;
+        // 其他货币或汇率服务不可用时，返回USD价格
+        return usdPrice;
     }
 
     /**

@@ -44,10 +44,15 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionDao, ChatSess
         session.setCreatedTime(LocalDateTime.now());
         session.setUpdateTime(LocalDateTime.now());
 
-        this.save(session);
-        log.info("新会话创建成功，会话ID：{}", sessionId);
-
-        return sessionId;
+        // 使用重试机制保存会话
+        boolean saved = saveSessionWithRetry(session, 3);
+        if (saved) {
+            log.info("新会话创建成功，会话ID：{}", sessionId);
+            return sessionId;
+        } else {
+            log.error("新会话创建失败，会话ID：{}", sessionId);
+            return null;
+        }
     }
 
     @Override
@@ -145,5 +150,49 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionDao, ChatSess
             log.warn("会话模型更新失败，会话ID：{}，模型ID：{}", sessionId, modelId);
         }
         return result;
+    }
+
+    /**
+     * 带重试机制的会话保存方法
+     * @param session 要保存的会话对象
+     * @param maxRetries 最大重试次数
+     * @return 保存是否成功
+     */
+    private boolean saveSessionWithRetry(ChatSession session, int maxRetries) {
+        int retryCount = 0;
+        long retryDelay = 500; // 初始重试延迟500ms
+
+        while (retryCount <= maxRetries) {
+            try {
+                boolean saved = save(session);
+                if (saved) {
+                    if (retryCount > 0) {
+                        log.info("【数据库重试】会话保存成功，会话ID：{}，重试次数：{}", session.getSessionId(), retryCount);
+                    }
+                    return true;
+                } else {
+                    log.warn("【数据库重试】会话保存失败，会话ID：{}，尝试 {}/{}", session.getSessionId(), retryCount + 1, maxRetries + 1);
+                }
+            } catch (Exception e) {
+                log.error("【数据库重试】会话保存异常，会话ID：{}，尝试 {}/{}", session.getSessionId(), retryCount + 1, maxRetries + 1, e);
+            }
+
+            // 如果不是最后一次尝试，等待后重试
+            if (retryCount < maxRetries) {
+                try {
+                    Thread.sleep(retryDelay);
+                    retryDelay *= 2; // 指数退避，下次等待时间翻倍
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    log.warn("【数据库重试】会话保存重试被中断，会话ID：{}", session.getSessionId());
+                    break;
+                }
+            }
+
+            retryCount++;
+        }
+
+        log.error("【数据库重试】会话保存失败，已达到最大重试次数，会话ID：{}", session.getSessionId());
+        return false;
     }
 }

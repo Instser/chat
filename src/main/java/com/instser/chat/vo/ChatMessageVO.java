@@ -90,4 +90,10 @@ public class ChatMessageVO implements Serializable {
      * 关联的文件名列表（逗号分隔）
      */
     private String filesName;
+
+    /**
+     * 网络搜索结果（JSON字符串）
+     * 当has_web_search为1时，包含关联的网络信息记录中的content字段
+     */
+    private String networkResult;
 }

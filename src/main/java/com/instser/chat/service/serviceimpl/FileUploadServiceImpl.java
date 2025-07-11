@@ -98,8 +98,11 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
             fileUpload.setContent(fileContent); // 保存解析后的文本内容
             fileUpload.setStatus(FileUpload.Status.AVAILABLE);
 
-            // 保存到数据库
-            save(fileUpload);
+            // 使用重试机制保存到数据库
+            boolean saved = saveFileWithRetry(fileUpload, 3);
+            if (!saved) {
+                throw new FileUploadException("FILE_SAVE_FAILED", "Failed to save file to database after retries");
+            }
 
             log.info("文件上传并解析成功: {} (ID: {}, 类型: {}, 大小: {} bytes, 内容长度: {} 字符)",
                 originalFilename, fileId, detectedType, file.getSize(), fileContent.length());
@@ -782,5 +785,49 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
         }
         
         return String.format("%.2f %s", size, units[unitIndex]);
+    }
+
+    /**
+     * 带重试机制的文件保存方法
+     * @param fileUpload 要保存的文件对象
+     * @param maxRetries 最大重试次数
+     * @return 保存是否成功
+     */
+    private boolean saveFileWithRetry(FileUpload fileUpload, int maxRetries) {
+        int retryCount = 0;
+        long retryDelay = 500; // 初始重试延迟500ms
+
+        while (retryCount <= maxRetries) {
+            try {
+                boolean saved = save(fileUpload);
+                if (saved) {
+                    if (retryCount > 0) {
+                        log.info("【数据库重试】文件保存成功，文件ID：{}，重试次数：{}", fileUpload.getFileId(), retryCount);
+                    }
+                    return true;
+                } else {
+                    log.warn("【数据库重试】文件保存失败，文件ID：{}，尝试 {}/{}", fileUpload.getFileId(), retryCount + 1, maxRetries + 1);
+                }
+            } catch (Exception e) {
+                log.error("【数据库重试】文件保存异常，文件ID：{}，尝试 {}/{}", fileUpload.getFileId(), retryCount + 1, maxRetries + 1, e);
+            }
+
+            // 如果不是最后一次尝试，等待后重试
+            if (retryCount < maxRetries) {
+                try {
+                    Thread.sleep(retryDelay);
+                    retryDelay *= 2; // 指数退避，下次等待时间翻倍
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    log.warn("【数据库重试】文件保存重试被中断，文件ID：{}", fileUpload.getFileId());
+                    break;
+                }
+            }
+
+            retryCount++;
+        }
+
+        log.error("【数据库重试】文件保存失败，已达到最大重试次数，文件ID：{}", fileUpload.getFileId());
+        return false;
     }
 }

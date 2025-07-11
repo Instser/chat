@@ -71,15 +71,21 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
         message.setCreatedTime(LocalDateTime.now());
         message.setUpdateTime(LocalDateTime.now());
 
-        this.save(message);
-        log.info("【消息入库】{}消息保存成功，用户ID：{}，会话ID：{}，消息ID：{}，内容长度：{}",
-                "assistant".equals(role) ? "AI" : "用户", userId, sessionId, message.getMessageId(),
-                content != null ? content.length() : 0);
-        log.debug("【消息入库】详细信息 - 数据库ID：{}，模型ID：{}，附件：{}，Token数：{}",
-                message.getId(), modelId, hasAttachments != null && hasAttachments > 0 ? "有" : "无",
-                message.getTokenCount());
-
-        return message.getId();
+        // 使用重试机制保存消息
+        boolean saved = saveMessageWithRetry(message, 3);
+        if (saved) {
+            log.info("【消息入库】{}消息保存成功，用户ID：{}，会话ID：{}，消息ID：{}，内容长度：{}",
+                    "assistant".equals(role) ? "AI" : "用户", userId, sessionId, message.getMessageId(),
+                    content != null ? content.length() : 0);
+            log.debug("【消息入库】详细信息 - 数据库ID：{}，模型ID：{}，附件：{}，Token数：{}",
+                    message.getId(), modelId, hasAttachments != null && hasAttachments > 0 ? "有" : "无",
+                    message.getTokenCount());
+            return message.getId();
+        } else {
+            log.error("【消息入库】{}消息保存失败，用户ID：{}，会话ID：{}，消息ID：{}",
+                    "assistant".equals(role) ? "AI" : "用户", userId, sessionId, message.getMessageId());
+            return null;
+        }
     }
 
     @Override
@@ -385,18 +391,18 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
             message.setCreatedTime(LocalDateTime.now());
             message.setUpdateTime(LocalDateTime.now());
 
-            log.info("消息对象创建完成，messageId: {}, 准备调用this.save()", messageId);
+            log.info("消息对象创建完成，messageId: {}, 准备调用保存方法", messageId);
 
-            // 保存消息
-            boolean saved = this.save(message);
+            // 使用重试机制保存消息
+            boolean saved = saveMessageWithRetry(message, 3);
 
-            log.info("this.save() 调用完成，结果: {}, 消息数据库ID: {}", saved, message.getId());
+            log.info("消息保存操作完成，结果: {}, 消息数据库ID: {}", saved, message.getId());
 
             if (saved) {
                 log.info("{}消息保存成功，数据库ID：{}，messageId：{}，角色：{}，模型ID：{}，Token数：{}",
                         "assistant".equals(role) ? "AI" : "用户", message.getId(), messageId, role, modelId, tokenCount);
                 log.info("=== ChatMessageService.sendMessageWithTokenInfo 成功完成 ===");
-                return MessageSaveResult.success(message.getId(), tokenCount);
+                return MessageSaveResult.success(message.getId(), messageId, tokenCount);
             } else {
                 log.error("消息保存失败，会话ID：{}，角色：{}，messageId：{}", sessionId, role, messageId);
                 log.error("=== ChatMessageService.sendMessageWithTokenInfo 失败完成 ===");
@@ -409,26 +415,106 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
         }
     }
 
+    /**
+     * 带重试机制的消息保存方法
+     * @param message 要保存的消息对象
+     * @param maxRetries 最大重试次数
+     * @return 保存是否成功
+     */
+    private boolean saveMessageWithRetry(ChatMessage message, int maxRetries) {
+        int retryCount = 0;
+        long retryDelay = 500; // 初始重试延迟500ms
+
+        while (retryCount <= maxRetries) {
+            try {
+                boolean saved = this.save(message);
+                if (saved) {
+                    if (retryCount > 0) {
+                        log.info("【数据库重试】消息保存成功，消息ID：{}，重试次数：{}", message.getMessageId(), retryCount);
+                    }
+                    return true;
+                } else {
+                    log.warn("【数据库重试】消息保存失败，消息ID：{}，尝试 {}/{}", message.getMessageId(), retryCount + 1, maxRetries + 1);
+                }
+            } catch (Exception e) {
+                log.error("【数据库重试】消息保存异常，消息ID：{}，尝试 {}/{}", message.getMessageId(), retryCount + 1, maxRetries + 1, e);
+            }
+
+            // 如果不是最后一次尝试，等待后重试
+            if (retryCount < maxRetries) {
+                try {
+                    Thread.sleep(retryDelay);
+                    retryDelay *= 2; // 指数退避，下次等待时间翻倍
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    log.warn("【数据库重试】消息保存重试被中断，消息ID：{}", message.getMessageId());
+                    break;
+                }
+            }
+
+            retryCount++;
+        }
+
+        log.error("【数据库重试】消息保存失败，已达到最大重试次数，消息ID：{}", message.getMessageId());
+        return false;
+    }
+
     @Override
     public boolean updateWebSearchFlag(String messageId, boolean hasWebSearch) {
-        try {
-            ChatMessage message = baseMapper.selectByMessageId(messageId);
-            if (message != null) {
-                message.setHasWebSearch(hasWebSearch ? 1 : 0);
-                boolean updated = updateById(message);
-                if (updated) {
-                    log.debug("【联网标记】消息联网标记更新成功，消息ID：{}，标记：{}", messageId, hasWebSearch);
+        return updateWebSearchFlagWithRetry(messageId, hasWebSearch, 3);
+    }
+
+    /**
+     * 带重试机制的联网标记更新方法
+     * @param messageId 消息ID
+     * @param hasWebSearch 是否有联网搜索
+     * @param maxRetries 最大重试次数
+     * @return 更新是否成功
+     */
+    private boolean updateWebSearchFlagWithRetry(String messageId, boolean hasWebSearch, int maxRetries) {
+        int retryCount = 0;
+        long retryDelay = 300; // 初始重试延迟300ms
+
+        while (retryCount <= maxRetries) {
+            try {
+                ChatMessage message = baseMapper.selectByMessageId(messageId);
+                if (message != null) {
+                    message.setHasWebSearch(hasWebSearch ? 1 : 0);
+                    boolean updated = updateById(message);
+                    if (updated) {
+                        if (retryCount > 0) {
+                            log.info("【数据库重试】联网标记更新成功，消息ID：{}，标记：{}，重试次数：{}", messageId, hasWebSearch, retryCount);
+                        } else {
+                            log.debug("【联网标记】消息联网标记更新成功，消息ID：{}，标记：{}", messageId, hasWebSearch);
+                        }
+                        return true;
+                    } else {
+                        log.warn("【数据库重试】联网标记更新失败，消息ID：{}，尝试 {}/{}", messageId, retryCount + 1, maxRetries + 1);
+                    }
                 } else {
-                    log.warn("【联网标记】消息联网标记更新失败，消息ID：{}", messageId);
+                    log.warn("【联网标记】未找到消息，消息ID：{}", messageId);
+                    return false;
                 }
-                return updated;
-            } else {
-                log.warn("【联网标记】未找到消息，消息ID：{}", messageId);
-                return false;
+            } catch (Exception e) {
+                log.error("【数据库重试】联网标记更新异常，消息ID：{}，尝试 {}/{}", messageId, retryCount + 1, maxRetries + 1, e);
             }
-        } catch (Exception e) {
-            log.error("【联网标记】更新消息联网标记异常，消息ID：{}", messageId, e);
-            return false;
+
+            // 如果不是最后一次尝试，等待后重试
+            if (retryCount < maxRetries) {
+                try {
+                    Thread.sleep(retryDelay);
+                    retryDelay *= 2; // 指数退避
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    log.warn("【数据库重试】联网标记更新重试被中断，消息ID：{}", messageId);
+                    break;
+                }
+            }
+
+            retryCount++;
         }
+
+        log.error("【数据库重试】联网标记更新失败，已达到最大重试次数，消息ID：{}", messageId);
+        return false;
     }
 }

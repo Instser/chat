@@ -85,7 +85,7 @@ public class PaymentController {
      * 获取套餐列表 - 返回前端兼容格式（支持实时汇率转换）
      */
     @GetMapping("/packages")
-    public Result<List<FrontendPackageVO>> getPackages(@RequestParam(defaultValue = "CNY") String currency) {
+    public Result<List<FrontendPackageVO>> getPackages(@RequestParam(defaultValue = "USD") String currency) {
         try {
             List<Package> packages = packageService.getEnabledPackages();
             // 转换为前端格式（使用汇率服务进行价格转换）

@@ -17,9 +17,14 @@ import lombok.NoArgsConstructor;
 public class MessageSaveResult {
 
     /**
-     * 消息ID
+     * 消息数据库ID
      */
     private Long messageId;
+
+    /**
+     * 消息UUID
+     */
+    private String messageUuid;
 
     /**
      * 计算的Token数量
@@ -29,12 +34,24 @@ public class MessageSaveResult {
     /**
      * 创建成功结果
      *
-     * @param messageId  消息ID
+     * @param messageId  消息数据库ID
      * @param tokenCount Token数量
      * @return 保存结果
      */
     public static MessageSaveResult success(Long messageId, Integer tokenCount) {
-        return new MessageSaveResult(messageId, tokenCount);
+        return new MessageSaveResult(messageId, null, tokenCount);
+    }
+
+    /**
+     * 创建成功结果（包含UUID）
+     *
+     * @param messageId  消息数据库ID
+     * @param messageUuid 消息UUID
+     * @param tokenCount Token数量
+     * @return 保存结果
+     */
+    public static MessageSaveResult success(Long messageId, String messageUuid, Integer tokenCount) {
+        return new MessageSaveResult(messageId, messageUuid, tokenCount);
     }
 
     /**
@@ -43,7 +60,7 @@ public class MessageSaveResult {
      * @return 保存结果
      */
     public static MessageSaveResult failure() {
-        return new MessageSaveResult(null, 0);
+        return new MessageSaveResult(null, null, 0);
     }
 
     /**
