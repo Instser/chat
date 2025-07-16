@@ -232,6 +232,19 @@ logging:
   config: classpath:logback-spring.xml
   level:
     com.instser.chat: DEBUG
+  # 日志文件配置
+  file:
+    path: logs
+  # 日志管理配置
+  management:
+    # 日志文件总大小限制（MB）
+    max-total-size: 2048
+    # 日志文件保留天数
+    max-days: 15
+    # 磁盘使用率告警阈值（%）
+    disk-warning-threshold: 80
+    # 磁盘使用率严重告警阈值（%）
+    disk-critical-threshold: 90
 
 # 汇率服务配置
 exchange:

@@ -1,6 +1,7 @@
 package com.instser.chat.controller;
 
 import com.instser.chat.common.result.Result;
+import com.instser.chat.config.LogManagementConfig;
 import com.instser.chat.util.LogLevelManager;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -26,6 +27,7 @@ import java.util.Map;
 public class LogManagementController {
 
     private final LogLevelManager logLevelManager;
+    private final LogManagementConfig logManagementConfig;
 
     @GetMapping("/levels")
     @Operation(summary = "获取所有主要Logger的当前级别")
@@ -109,5 +111,21 @@ public class LogManagementController {
         log.info("【日志管理】关闭SQL日志");
         logLevelManager.disableSqlLogging();
         return Result.success("SQL日志已关闭");
+    }
+
+    @GetMapping("/files/status")
+    @Operation(summary = "获取日志文件状态")
+    public Result<String> getLogFileStatus() {
+        log.info("【日志管理】获取日志文件状态");
+        String status = logManagementConfig.getLogManagementStatus();
+        return Result.success(status);
+    }
+
+    @PostMapping("/files/cleanup")
+    @Operation(summary = "手动清理过期日志文件")
+    public Result<String> cleanupLogFiles() {
+        log.info("【日志管理】手动清理过期日志文件");
+        logManagementConfig.cleanupOldLogFiles();
+        return Result.success("日志文件清理完成");
     }
 }
