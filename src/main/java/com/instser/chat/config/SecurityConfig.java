@@ -180,6 +180,9 @@ public class SecurityConfig {
                 // 支付回调接口 - 允许第三方支付平台回调（无需JWT认证）
                 .requestMatchers("/payment/alipay/notify", "/payment/yipay/notify").permitAll()
 
+                // Gemini API密钥管理接口 - 仅允许localhost访问（在Controller中验证）
+                .requestMatchers("/admin/gemini/**").permitAll()
+
                 // 聊天接口 - 允许已认证用户访问，但排除SSE流式响应
                 .requestMatchers(HttpMethod.POST, "/chat").permitAll()  // 临时允许SSE流式响应绕过Spring Security
                 .requestMatchers("/chat/**").authenticated()

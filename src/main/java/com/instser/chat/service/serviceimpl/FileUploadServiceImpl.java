@@ -2,6 +2,7 @@ package com.instser.chat.service.serviceimpl;
 
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.instser.chat.common.exception.FileUploadException;
+import com.instser.chat.common.util.LogUtils;
 import com.instser.chat.dao.FileUploadDao;
 import com.instser.chat.entity.FileUpload;
 import com.instser.chat.service.DocumentParserService;
@@ -50,22 +51,38 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
     public FileUpload uploadFile(MultipartFile file, Long userId, String sessionId, String messageId) {
         Path tempFilePath = null;
         String originalFilename = file.getOriginalFilename(); // 移到try外面，确保在catch中可以访问
+
+        log.info("【文件上传】用户ID：{}，文件名：{}，大小：{} KB，类型：{}",
+            userId, originalFilename, file.getSize() / 1024, file.getContentType());
+
         try {
+            log.debug("【文件验证】开始验证文件，文件名：{}", originalFilename);
+
             // 验证文件
             validateFile(file);
 
+            log.debug("【类型检测】开始检测文件类型，文件名：{}", originalFilename);
+
             // 检测文件类型
             String detectedType = detectFileType(file);
+
+            log.debug("【类型检测】文件名：{}，检测类型：{}，魔数验证结果：通过", originalFilename, detectedType);
+
             if (!isFileTypeAllowed(detectedType)) {
+                log.warn("【类型不支持】用户ID：{}，文件类型：{}", userId, detectedType);
                 throw new FileUploadException("FILE_TYPE_NOT_SUPPORTED", "File type not supported: " + detectedType);
             }
 
             // 生成文件ID
             String fileId = UUID.randomUUID().toString();
 
+            log.debug("【文件处理】生成文件ID：{}，开始创建临时文件", fileId);
+
             // 创建临时文件用于解析
             tempFilePath = createTempFile(file, fileId);
-            log.debug("创建临时文件: {}", tempFilePath.toString());
+            log.debug("【文件处理】创建临时文件：{}", tempFilePath.toString());
+
+            log.debug("【内容提取】开始读取文件内容，文件ID：{}", fileId);
 
             // 读取文件内容进行解析
             byte[] fileBytes = Files.readAllBytes(tempFilePath);
@@ -73,18 +90,26 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
 
             // 根据文件类型处理内容
             if (documentParserService.isDocumentFile(detectedType)) {
+                log.debug("【内容提取】文件ID：{}，提取方式：{}，原始大小：{} bytes",
+                    fileId, "文档解析器", fileBytes.length);
+
                 // 使用统一的文档解析器处理所有支持的文件类型（包括文本文件）
                 try {
                     fileContent = documentParserService.parseDocument(fileBytes, originalFilename, detectedType);
-                    log.info("文档解析成功: {} (类型: {}, 内容长度: {} 字符)", originalFilename, detectedType, fileContent.length());
+                    log.info("【文件解析】文件ID：{}，解析器：{}，内容长度：{}",
+                        fileId, "DocumentParser", fileContent.length());
                 } catch (Exception e) {
-                    log.error("文档解析失败: {} - {}", originalFilename, e.getMessage());
+                    log.error("【解析失败】文件ID：{}，解析器：{}，错误：{}",
+                        fileId, "DocumentParser", e.getMessage(), e);
                     throw new RuntimeException("文档解析失败：" + e.getMessage());
                 }
             } else {
                 // 其他文件类型不支持
+                log.warn("【类型不支持】文件ID：{}，文件类型：{}", fileId, detectedType);
                 throw new FileUploadException("FILE_TYPE_NOT_SUPPORTED", "File type not supported: " + detectedType);
             }
+
+            log.debug("【文件保存】开始创建文件记录，文件ID：{}", fileId);
 
             // 创建文件记录
             FileUpload fileUpload = new FileUpload();
@@ -98,23 +123,27 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
             fileUpload.setContent(fileContent); // 保存解析后的文本内容
             fileUpload.setStatus(FileUpload.Status.AVAILABLE);
 
+            log.debug("【文件保存】开始保存到数据库，文件ID：{}", fileId);
+
             // 使用重试机制保存到数据库
             boolean saved = saveFileWithRetry(fileUpload, 3);
             if (!saved) {
+                log.error("【文件保存】保存失败，文件ID：{}，重试次数已用完", fileId);
                 throw new FileUploadException("FILE_SAVE_FAILED", "Failed to save file to database after retries");
             }
 
-            log.info("文件上传并解析成功: {} (ID: {}, 类型: {}, 大小: {} bytes, 内容长度: {} 字符)",
-                originalFilename, fileId, detectedType, file.getSize(), fileContent.length());
+            log.info("【文件上传】文件上传成功，用户ID：{}，文件ID：{}，文件名：{}，大小：{} KB，内容长度：{}",
+                userId, fileId, originalFilename, file.getSize() / 1024, fileContent.length());
 
             return fileUpload;
 
         } catch (FileUploadException e) {
+            log.warn("【文件上传】业务异常，用户ID：{}，文件名：{}，错误：{}", userId, originalFilename, e.getMessage());
             // FileUploadException直接重新抛出，不要转换
             throw e;
         } catch (IllegalArgumentException e) {
             // 参数验证错误，记录具体原因并抛出特定异常
-            log.warn("文件上传参数验证失败：{} - {}", originalFilename, e.getMessage());
+            log.warn("【文件上传】参数验证失败，用户ID：{}，文件名：{}，错误：{}", userId, originalFilename, e.getMessage());
             // 根据具体错误类型抛出不同的异常
             if (e.getMessage().contains("文件不能为空")) {
                 throw new FileUploadException("FILE_EMPTY", "File cannot be empty");
@@ -127,11 +156,11 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
             }
         } catch (IOException e) {
             // IO错误，记录具体原因但返回统一错误消息
-            log.error("文件上传IO错误：{} - {}", originalFilename, e.getMessage());
+            log.error("【文件上传】IO错误，用户ID：{}，文件名：{}，错误：{}", userId, originalFilename, e.getMessage(), e);
             throw new FileUploadException("FILE_UPLOAD_FAILED", "File upload failed");
         } catch (Exception e) {
             // 其他错误，记录具体原因但返回统一错误消息
-            log.error("文件上传失败：{} - {}", originalFilename, e.getMessage());
+            log.error("【文件上传】上传失败，用户ID：{}，文件名：{}，错误：{}", userId, originalFilename, e.getMessage(), e);
             if (e.getMessage().contains("文档解析失败")) {
                 throw new FileUploadException("FILE_PARSE_FAILED", "File parsing failed");
             } else {

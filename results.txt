@@ -1,0 +1,393 @@
+[
+  {
+    "candidate_index": 0,
+    "response_text": "2024年欧洲杯足球锦标赛的冠军是**西班牙队**。他们在决赛中以2-1的比分战胜了英格兰队，第四次夺得欧洲杯冠军，也成为欧洲杯历史上夺冠次数最多的球队，并且是欧锦赛历史上首支以全胜战绩夺冠的球队。\n\n决赛于北京时间2024年7月15日凌晨在德国柏林奥林匹克球场举行。\n\n比赛细节：\n*   第47分钟，西班牙队的尼科·威廉姆斯率先攻入一球，帮助球队取得领先。\n*   第73分钟，英格兰队的科尔·帕尔默替补出场，扳平了比分。\n*   第86分钟，西班牙队的米克尔·奥亚萨瓦尔攻入制胜一球，将比分锁定为2-1。\n\n西班牙队在这届赛事中表现出色，罗德里荣膺本届欧洲杯最佳球员，拉明·亚马尔获得最佳新秀和助攻王，奥尔莫获得金靴奖.",
+    "search_queries": [
+      "2024年欧洲杯足球锦标赛冠军",
+      "UEFA Euro 2024 winner",
+      "2024欧洲杯决赛结果"
+    ],
+    "total_sources": 12,
+    "sources": [
+      {
+        "chunk_index": 0,
+        "title": "wikipedia.org",
+        "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEeVRN9RKSbxzpsULEkxXHpUe9-IKAZGciFCiE6fyTGKoUMwz9EzHwbkIN0rMIvRqcS4n60i6_KUuWh-4c_QQQ3PJltAKu7KrsYJujMs9C9QGU10xdB1kyESmhKHZzIJX-YgZ9B42I1",
+        "domain": "vertexaisearch.cloud.google.com"
+      },
+      {
+        "chunk_index": 1,
+        "title": "6park.com",
+        "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHrm0ilbfuvltoBBypsi5JPYKPk-kI9xfhWl6v2x1fR31gtBauHuVt7YHyFE1O6K24Nl5kQ-0cewOm3HZMQiXBSIJqMbS6At9FA6W-jz90hCnExbg3-N-LPKFpZJkTVW9TAm3t2-YM=",
+        "domain": "vertexaisearch.cloud.google.com"
+      },
+      {
+        "chunk_index": 2,
+        "title": "people.com.cn",
+        "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFItTkLBeurVUAUnD5hCpgtrUrc4ColBhBFDRbh4ZSIuvPxrp9ld-l5bFIJsY_7QE5vnTzg-7OuNaOkP2No2lRb5NdJ8uEmHCY54ai4XYFq2ADuamdGZmyVDApZHzKJQ8JHvaMTpIV0DJaHmHYvVYqqpRW3LBxm",
+        "domain": "vertexaisearch.cloud.google.com"
+      },
+      {
+        "chunk_index": 3,
+        "title": "wikipedia.org",
+        "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHlq-MtUonXO0OKabK4pf9FOqTy14DHaSVF8d0blumYzQhQltCMVeA4hnJUqWsRFdbbS8UXfdVSHhhSU7W-urkJ6zCmmXxB2sLSSdKjokAWiFBuyz9eDlnGw4ttrKBWHjTpL1p8Ee1v2RoQOVwU",
+        "domain": "vertexaisearch.cloud.google.com"
+      },
+      {
+        "chunk_index": 4,
+        "title": "ycwb.com",
+        "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG6qawyKYgAgCwmFScx2kqLvWkwcncHx3EygKR2_tHHZy2o0aKWApZOeRoas6Az5wUITBP75cBnCatfs8S4H_5EtDTTpRgBURnm0CmXBB0-zJW0zEPNWWK7O6Bg5uwJ3SXNs4kB30UkQ6H5kRYtEiU=",
+        "domain": "vertexaisearch.cloud.google.com"
+      },
+      {
+        "chunk_index": 5,
+        "title": "chinanews.com",
+        "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGz-5onEM8WNy0QKjwQ0k5mdxmFRt6W0HvsLB_VvmJiQU_jsi2OEVMrPp7P1syW94BJNOOahuAft-C-rWNYIGDKIYj2DdZT8qqMx6_-dvndjDrPvWkgqTITw4fh2bPg7lYZASycoZqktHY613teXqTL8MIFbt0=",
+        "domain": "vertexaisearch.cloud.google.com"
+      },
+      {
+        "chunk_index": 6,
+        "title": "e23.cn",
+        "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGCO72Pv6iZg7Z_RA8uUQHl4L7frIDirQb5rw_FBq0rYozSePyjtV2dsDvE1WEeN3TbOgLkxxUGkekLH95LXc7npg5PnX3zK8SJbCl7eB678c-awwjA3WBbp42MeR1-zJDc0H_W7dxoCZIcCgN0uk4C",
+        "domain": "vertexaisearch.cloud.google.com"
+      },
+      {
+        "chunk_index": 7,
+        "title": "youtube.com",
+        "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFmCHtxqDNu0BQLq8GHsezSZ2TtHbVRGOvDw8jgaKvOLZbfi6Ffy2r38-hQK_u7qCbWYefbA89GHyNYWjEtgaT7VhLu-O7x01hCxX_wbk5D9pFWULxg3gqI6VnK4v1LUCRpiQyvnw==",
+        "domain": "vertexaisearch.cloud.google.com"
+      },
+      {
+        "chunk_index": 8,
+        "title": "wikipedia.org",
+        "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGrxYEWXobCBDbkEXJDbGSTx5v5MP0x_xCqJdfktaJqXxWwsD_zUqnGuEnvLoo5UcIydxxQBqNcchaXcOCy7e_ebTEFCtw-vg1A3OQ9dFnu-ymmBPwM8loMSyGSHx17tCSOogr6HcoVI5NnRYEO8mnA44T2thm5yPQ8q9zF7KWrat5X5T7Wm21Qs5aPTNJVkWOmz4f-B0PU3GrjsBfz9OFbyJOBzt5i",
+        "domain": "vertexaisearch.cloud.google.com"
+      },
+      {
+        "chunk_index": 9,
+        "title": "aljazeera.com",
+        "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHX-FIRJ8GtrBsZOZzJKUZ0vEZkQQJA-37iyAgX_KpTJVGpUDHK5ak3B8xKtXdsirTMItQnhZ7I8qcuhS6xc4omV6XANfkYrJyIlWw1JxMKZB4T32Qpz8nh4kAinEgWUKE9TUgp9xvRJMRKM83mlSvhmCdt8WuHb0icxjrm4zMR0xyuzoXReXmclaYT_A5C8e0aBZjkF3F5dt996Xwoc2xwJVOQ0IGpMVYxCXp2m_f6CQ==",
+        "domain": "vertexaisearch.cloud.google.com"
+      },
+      {
+        "chunk_index": 10,
+        "title": "thepaper.cn",
+        "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHldPZg29_tFMGmFKGsncLOEF_s5Sg5exQi6r30-M4Q0R8jh3Yw_HQQ_fmJz2jGFp0q_Dzj5Az5lvqTbmaJTXfeSpWLzjw5jb-TIT0NCRPU7IICHJRFjbYQ-8Z-ve42m9Du2fIg0u3wQUd5ZULZVA==",
+        "domain": "vertexaisearch.cloud.google.com"
+      },
+      {
+        "chunk_index": 11,
+        "title": "cctv.com",
+        "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFaETkKD73Yo8sYFVAx1djFUZoxVxUciV6g_CQ5y42UIMMg5vwuk8_T093r_V2u0ISoGgOpH0Y2NcKId3egJgER-rjatk7CWm4nZBc6NyB2bC807fcz1ggblfJF5t98s7uaWzZQqqaNn0fIfwn5QwoTVJsAFm_A4HTooxxkmYByZ4IUq3-UMlU5q_RlxDGasCDJM0xZ",
+        "domain": "vertexaisearch.cloud.google.com"
+      }
+    ],
+    "text_segments": [
+      {
+        "support_index": 0,
+        "text": "他们在决赛中以2-1的比分战胜了英格兰队，第四次夺得欧洲杯冠军，也成为欧洲杯历史上夺冠次数最多的球队，并且是欧锦赛历史上首支以全胜战绩夺冠的球队",
+        "start_index": 62,
+        "end_index": 272,
+        "source_indices": [
+          0,
+          1,
+          2,
+          3,
+          4,
+          5,
+          6,
+          7,
+          8,
+          9
+        ],
+        "sources": [
+          {
+            "chunk_index": 0,
+            "title": "wikipedia.org",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEeVRN9RKSbxzpsULEkxXHpUe9-IKAZGciFCiE6fyTGKoUMwz9EzHwbkIN0rMIvRqcS4n60i6_KUuWh-4c_QQQ3PJltAKu7KrsYJujMs9C9QGU10xdB1kyESmhKHZzIJX-YgZ9B42I1",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 1,
+            "title": "6park.com",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHrm0ilbfuvltoBBypsi5JPYKPk-kI9xfhWl6v2x1fR31gtBauHuVt7YHyFE1O6K24Nl5kQ-0cewOm3HZMQiXBSIJqMbS6At9FA6W-jz90hCnExbg3-N-LPKFpZJkTVW9TAm3t2-YM=",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 2,
+            "title": "people.com.cn",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFItTkLBeurVUAUnD5hCpgtrUrc4ColBhBFDRbh4ZSIuvPxrp9ld-l5bFIJsY_7QE5vnTzg-7OuNaOkP2No2lRb5NdJ8uEmHCY54ai4XYFq2ADuamdGZmyVDApZHzKJQ8JHvaMTpIV0DJaHmHYvVYqqpRW3LBxm",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 3,
+            "title": "wikipedia.org",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHlq-MtUonXO0OKabK4pf9FOqTy14DHaSVF8d0blumYzQhQltCMVeA4hnJUqWsRFdbbS8UXfdVSHhhSU7W-urkJ6zCmmXxB2sLSSdKjokAWiFBuyz9eDlnGw4ttrKBWHjTpL1p8Ee1v2RoQOVwU",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 4,
+            "title": "ycwb.com",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG6qawyKYgAgCwmFScx2kqLvWkwcncHx3EygKR2_tHHZy2o0aKWApZOeRoas6Az5wUITBP75cBnCatfs8S4H_5EtDTTpRgBURnm0CmXBB0-zJW0zEPNWWK7O6Bg5uwJ3SXNs4kB30UkQ6H5kRYtEiU=",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 5,
+            "title": "chinanews.com",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGz-5onEM8WNy0QKjwQ0k5mdxmFRt6W0HvsLB_VvmJiQU_jsi2OEVMrPp7P1syW94BJNOOahuAft-C-rWNYIGDKIYj2DdZT8qqMx6_-dvndjDrPvWkgqTITw4fh2bPg7lYZASycoZqktHY613teXqTL8MIFbt0=",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 6,
+            "title": "e23.cn",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGCO72Pv6iZg7Z_RA8uUQHl4L7frIDirQb5rw_FBq0rYozSePyjtV2dsDvE1WEeN3TbOgLkxxUGkekLH95LXc7npg5PnX3zK8SJbCl7eB678c-awwjA3WBbp42MeR1-zJDc0H_W7dxoCZIcCgN0uk4C",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 7,
+            "title": "youtube.com",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFmCHtxqDNu0BQLq8GHsezSZ2TtHbVRGOvDw8jgaKvOLZbfi6Ffy2r38-hQK_u7qCbWYefbA89GHyNYWjEtgaT7VhLu-O7x01hCxX_wbk5D9pFWULxg3gqI6VnK4v1LUCRpiQyvnw==",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 8,
+            "title": "wikipedia.org",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGrxYEWXobCBDbkEXJDbGSTx5v5MP0x_xCqJdfktaJqXxWwsD_zUqnGuEnvLoo5UcIydxxQBqNcchaXcOCy7e_ebTEFCtw-vg1A3OQ9dFnu-ymmBPwM8loMSyGSHx17tCSOogr6HcoVI5NnRYEO8mnA44T2thm5yPQ8q9zF7KWrat5X5T7Wm21Qs5aPTNJVkWOmz4f-B0PU3GrjsBfz9OFbyJOBzt5i",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 9,
+            "title": "aljazeera.com",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHX-FIRJ8GtrBsZOZzJKUZ0vEZkQQJA-37iyAgX_KpTJVGpUDHK5ak3B8xKtXdsirTMItQnhZ7I8qcuhS6xc4omV6XANfkYrJyIlWw1JxMKZB4T32Qpz8nh4kAinEgWUKE9TUgp9xvRJMRKM83mlSvhmCdt8WuHb0icxjrm4zMR0xyuzoXReXmclaYT_A5C8e0aBZjkF3F5dt996Xwoc2xwJVOQ0IGpMVYxCXp2m_f6CQ==",
+            "domain": "vertexaisearch.cloud.google.com"
+          }
+        ]
+      },
+      {
+        "support_index": 1,
+        "text": "决赛于北京时间2024年7月15日凌晨在德国柏林奥林匹克球场举行",
+        "start_index": 277,
+        "end_index": 359,
+        "source_indices": [
+          1,
+          10,
+          2,
+          11,
+          4
+        ],
+        "sources": [
+          {
+            "chunk_index": 1,
+            "title": "6park.com",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHrm0ilbfuvltoBBypsi5JPYKPk-kI9xfhWl6v2x1fR31gtBauHuVt7YHyFE1O6K24Nl5kQ-0cewOm3HZMQiXBSIJqMbS6At9FA6W-jz90hCnExbg3-N-LPKFpZJkTVW9TAm3t2-YM=",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 10,
+            "title": "thepaper.cn",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHldPZg29_tFMGmFKGsncLOEF_s5Sg5exQi6r30-M4Q0R8jh3Yw_HQQ_fmJz2jGFp0q_Dzj5Az5lvqTbmaJTXfeSpWLzjw5jb-TIT0NCRPU7IICHJRFjbYQ-8Z-ve42m9Du2fIg0u3wQUd5ZULZVA==",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 2,
+            "title": "people.com.cn",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFItTkLBeurVUAUnD5hCpgtrUrc4ColBhBFDRbh4ZSIuvPxrp9ld-l5bFIJsY_7QE5vnTzg-7OuNaOkP2No2lRb5NdJ8uEmHCY54ai4XYFq2ADuamdGZmyVDApZHzKJQ8JHvaMTpIV0DJaHmHYvVYqqpRW3LBxm",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 11,
+            "title": "cctv.com",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFaETkKD73Yo8sYFVAx1djFUZoxVxUciV6g_CQ5y42UIMMg5vwuk8_T093r_V2u0ISoGgOpH0Y2NcKId3egJgER-rjatk7CWm4nZBc6NyB2bC807fcz1ggblfJF5t98s7uaWzZQqqaNn0fIfwn5QwoTVJsAFm_A4HTooxxkmYByZ4IUq3-UMlU5q_RlxDGasCDJM0xZ",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 4,
+            "title": "ycwb.com",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG6qawyKYgAgCwmFScx2kqLvWkwcncHx3EygKR2_tHHZy2o0aKWApZOeRoas6Az5wUITBP75cBnCatfs8S4H_5EtDTTpRgBURnm0CmXBB0-zJW0zEPNWWK7O6Bg5uwJ3SXNs4kB30UkQ6H5kRYtEiU=",
+            "domain": "vertexaisearch.cloud.google.com"
+          }
+        ]
+      },
+      {
+        "support_index": 2,
+        "text": "比赛细节：\n*   第47分钟，西班牙队的尼科·威廉姆斯率先攻入一球，帮助球队取得领先",
+        "start_index": 364,
+        "end_index": 478,
+        "source_indices": [
+          2,
+          11,
+          4,
+          5,
+          6
+        ],
+        "sources": [
+          {
+            "chunk_index": 2,
+            "title": "people.com.cn",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFItTkLBeurVUAUnD5hCpgtrUrc4ColBhBFDRbh4ZSIuvPxrp9ld-l5bFIJsY_7QE5vnTzg-7OuNaOkP2No2lRb5NdJ8uEmHCY54ai4XYFq2ADuamdGZmyVDApZHzKJQ8JHvaMTpIV0DJaHmHYvVYqqpRW3LBxm",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 11,
+            "title": "cctv.com",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFaETkKD73Yo8sYFVAx1djFUZoxVxUciV6g_CQ5y42UIMMg5vwuk8_T093r_V2u0ISoGgOpH0Y2NcKId3egJgER-rjatk7CWm4nZBc6NyB2bC807fcz1ggblfJF5t98s7uaWzZQqqaNn0fIfwn5QwoTVJsAFm_A4HTooxxkmYByZ4IUq3-UMlU5q_RlxDGasCDJM0xZ",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 4,
+            "title": "ycwb.com",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG6qawyKYgAgCwmFScx2kqLvWkwcncHx3EygKR2_tHHZy2o0aKWApZOeRoas6Az5wUITBP75cBnCatfs8S4H_5EtDTTpRgBURnm0CmXBB0-zJW0zEPNWWK7O6Bg5uwJ3SXNs4kB30UkQ6H5kRYtEiU=",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 5,
+            "title": "chinanews.com",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGz-5onEM8WNy0QKjwQ0k5mdxmFRt6W0HvsLB_VvmJiQU_jsi2OEVMrPp7P1syW94BJNOOahuAft-C-rWNYIGDKIYj2DdZT8qqMx6_-dvndjDrPvWkgqTITw4fh2bPg7lYZASycoZqktHY613teXqTL8MIFbt0=",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 6,
+            "title": "e23.cn",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGCO72Pv6iZg7Z_RA8uUQHl4L7frIDirQb5rw_FBq0rYozSePyjtV2dsDvE1WEeN3TbOgLkxxUGkekLH95LXc7npg5PnX3zK8SJbCl7eB678c-awwjA3WBbp42MeR1-zJDc0H_W7dxoCZIcCgN0uk4C",
+            "domain": "vertexaisearch.cloud.google.com"
+          }
+        ]
+      },
+      {
+        "support_index": 3,
+        "text": "*   第73分钟，英格兰队的科尔·帕尔默替补出场，扳平了比分",
+        "start_index": 482,
+        "end_index": 562,
+        "source_indices": [
+          1,
+          2,
+          11,
+          4,
+          5,
+          6
+        ],
+        "sources": [
+          {
+            "chunk_index": 1,
+            "title": "6park.com",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHrm0ilbfuvltoBBypsi5JPYKPk-kI9xfhWl6v2x1fR31gtBauHuVt7YHyFE1O6K24Nl5kQ-0cewOm3HZMQiXBSIJqMbS6At9FA6W-jz90hCnExbg3-N-LPKFpZJkTVW9TAm3t2-YM=",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 2,
+            "title": "people.com.cn",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFItTkLBeurVUAUnD5hCpgtrUrc4ColBhBFDRbh4ZSIuvPxrp9ld-l5bFIJsY_7QE5vnTzg-7OuNaOkP2No2lRb5NdJ8uEmHCY54ai4XYFq2ADuamdGZmyVDApZHzKJQ8JHvaMTpIV0DJaHmHYvVYqqpRW3LBxm",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 11,
+            "title": "cctv.com",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFaETkKD73Yo8sYFVAx1djFUZoxVxUciV6g_CQ5y42UIMMg5vwuk8_T093r_V2u0ISoGgOpH0Y2NcKId3egJgER-rjatk7CWm4nZBc6NyB2bC807fcz1ggblfJF5t98s7uaWzZQqqaNn0fIfwn5QwoTVJsAFm_A4HTooxxkmYByZ4IUq3-UMlU5q_RlxDGasCDJM0xZ",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 4,
+            "title": "ycwb.com",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG6qawyKYgAgCwmFScx2kqLvWkwcncHx3EygKR2_tHHZy2o0aKWApZOeRoas6Az5wUITBP75cBnCatfs8S4H_5EtDTTpRgBURnm0CmXBB0-zJW0zEPNWWK7O6Bg5uwJ3SXNs4kB30UkQ6H5kRYtEiU=",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 5,
+            "title": "chinanews.com",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGz-5onEM8WNy0QKjwQ0k5mdxmFRt6W0HvsLB_VvmJiQU_jsi2OEVMrPp7P1syW94BJNOOahuAft-C-rWNYIGDKIYj2DdZT8qqMx6_-dvndjDrPvWkgqTITw4fh2bPg7lYZASycoZqktHY613teXqTL8MIFbt0=",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 6,
+            "title": "e23.cn",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGCO72Pv6iZg7Z_RA8uUQHl4L7frIDirQb5rw_FBq0rYozSePyjtV2dsDvE1WEeN3TbOgLkxxUGkekLH95LXc7npg5PnX3zK8SJbCl7eB678c-awwjA3WBbp42MeR1-zJDc0H_W7dxoCZIcCgN0uk4C",
+            "domain": "vertexaisearch.cloud.google.com"
+          }
+        ]
+      },
+      {
+        "support_index": 4,
+        "text": "*   第86分钟，西班牙队的米克尔·奥亚萨瓦尔攻入制胜一球，将比分锁定为2-1",
+        "start_index": 566,
+        "end_index": 667,
+        "source_indices": [
+          2,
+          11,
+          4,
+          5,
+          6,
+          7,
+          9
+        ],
+        "sources": [
+          {
+            "chunk_index": 2,
+            "title": "people.com.cn",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFItTkLBeurVUAUnD5hCpgtrUrc4ColBhBFDRbh4ZSIuvPxrp9ld-l5bFIJsY_7QE5vnTzg-7OuNaOkP2No2lRb5NdJ8uEmHCY54ai4XYFq2ADuamdGZmyVDApZHzKJQ8JHvaMTpIV0DJaHmHYvVYqqpRW3LBxm",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 11,
+            "title": "cctv.com",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFaETkKD73Yo8sYFVAx1djFUZoxVxUciV6g_CQ5y42UIMMg5vwuk8_T093r_V2u0ISoGgOpH0Y2NcKId3egJgER-rjatk7CWm4nZBc6NyB2bC807fcz1ggblfJF5t98s7uaWzZQqqaNn0fIfwn5QwoTVJsAFm_A4HTooxxkmYByZ4IUq3-UMlU5q_RlxDGasCDJM0xZ",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 4,
+            "title": "ycwb.com",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG6qawyKYgAgCwmFScx2kqLvWkwcncHx3EygKR2_tHHZy2o0aKWApZOeRoas6Az5wUITBP75cBnCatfs8S4H_5EtDTTpRgBURnm0CmXBB0-zJW0zEPNWWK7O6Bg5uwJ3SXNs4kB30UkQ6H5kRYtEiU=",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 5,
+            "title": "chinanews.com",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGz-5onEM8WNy0QKjwQ0k5mdxmFRt6W0HvsLB_VvmJiQU_jsi2OEVMrPp7P1syW94BJNOOahuAft-C-rWNYIGDKIYj2DdZT8qqMx6_-dvndjDrPvWkgqTITw4fh2bPg7lYZASycoZqktHY613teXqTL8MIFbt0=",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 6,
+            "title": "e23.cn",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGCO72Pv6iZg7Z_RA8uUQHl4L7frIDirQb5rw_FBq0rYozSePyjtV2dsDvE1WEeN3TbOgLkxxUGkekLH95LXc7npg5PnX3zK8SJbCl7eB678c-awwjA3WBbp42MeR1-zJDc0H_W7dxoCZIcCgN0uk4C",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 7,
+            "title": "youtube.com",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFmCHtxqDNu0BQLq8GHsezSZ2TtHbVRGOvDw8jgaKvOLZbfi6Ffy2r38-hQK_u7qCbWYefbA89GHyNYWjEtgaT7VhLu-O7x01hCxX_wbk5D9pFWULxg3gqI6VnK4v1LUCRpiQyvnw==",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 9,
+            "title": "aljazeera.com",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHX-FIRJ8GtrBsZOZzJKUZ0vEZkQQJA-37iyAgX_KpTJVGpUDHK5ak3B8xKtXdsirTMItQnhZ7I8qcuhS6xc4omV6XANfkYrJyIlWw1JxMKZB4T32Qpz8nh4kAinEgWUKE9TUgp9xvRJMRKM83mlSvhmCdt8WuHb0icxjrm4zMR0xyuzoXReXmclaYT_A5C8e0aBZjkF3F5dt996Xwoc2xwJVOQ0IGpMVYxCXp2m_f6CQ==",
+            "domain": "vertexaisearch.cloud.google.com"
+          }
+        ]
+      },
+      {
+        "support_index": 5,
+        "text": "西班牙队在这届赛事中表现出色，罗德里荣膺本届欧洲杯最佳球员，拉明·亚马尔获得最佳新秀和助攻王，奥尔莫获得金靴奖",
+        "start_index": 672,
+        "end_index": 836,
+        "source_indices": [
+          5,
+          4
+        ],
+        "sources": [
+          {
+            "chunk_index": 5,
+            "title": "chinanews.com",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGz-5onEM8WNy0QKjwQ0k5mdxmFRt6W0HvsLB_VvmJiQU_jsi2OEVMrPp7P1syW94BJNOOahuAft-C-rWNYIGDKIYj2DdZT8qqMx6_-dvndjDrPvWkgqTITw4fh2bPg7lYZASycoZqktHY613teXqTL8MIFbt0=",
+            "domain": "vertexaisearch.cloud.google.com"
+          },
+          {
+            "chunk_index": 4,
+            "title": "ycwb.com",
+            "url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG6qawyKYgAgCwmFScx2kqLvWkwcncHx3EygKR2_tHHZy2o0aKWApZOeRoas6Az5wUITBP75cBnCatfs8S4H_5EtDTTpRgBURnm0CmXBB0-zJW0zEPNWWK7O6Bg5uwJ3SXNs4kB30UkQ6H5kRYtEiU=",
+            "domain": "vertexaisearch.cloud.google.com"
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -2,6 +2,7 @@ package com.instser.chat.controller;
 
 import com.instser.chat.common.result.Result;
 import com.instser.chat.common.util.ErrorResponseUtil;
+import com.instser.chat.common.util.LogUtils;
 import com.instser.chat.entity.Package;
 import com.instser.chat.entity.UserOrder;
 import com.instser.chat.service.OrderService;
@@ -177,23 +178,32 @@ public class PaymentController {
      */
     @PostMapping("/create")
     public Result<?> createPayment(@Valid @RequestBody PaymentRequestVO paymentRequest, Authentication authentication) {
+        Long userId = getCurrentUserId(authentication);
+
+        log.info("【API调用】创建支付订单接口，用户ID：{}，套餐ID：{}，支付方式：{}",
+            userId, paymentRequest.getPackageId(), paymentRequest.getPaymentMethod());
+
         try {
-            Long userId = getCurrentUserId(authentication);
             if (userId == null) {
+                log.warn("【API拒绝】用户未认证");
                 return ErrorResponseUtil.unauthorized("User not authenticated");
             }
 
             paymentRequest.setUserId(userId);
 
+            log.debug("【支付处理】开始创建支付订单，用户ID：{}", userId);
+
             PaymentResponseVO response = paymentService.createPayment(paymentRequest);
 
             if (response.getSuccess()) {
+                log.info("【API响应】支付订单创建成功，用户ID：{}，订单号：{}", userId, response.getOrderNo());
                 return Result.success(response, "支付订单创建成功");
             } else {
+                log.warn("【API响应】支付订单创建失败，用户ID：{}，错误：{}", userId, response.getErrorMessage());
                 return ErrorResponseUtil.paymentCreateFailed(response.getErrorMessage());
             }
         } catch (Exception e) {
-            log.error("创建支付订单失败", e);
+            log.error("【API异常】创建支付订单失败，用户ID：{}，错误：{}", userId, e.getMessage(), e);
 
             // 特殊处理重放攻击错误
             if (e.getMessage() != null && e.getMessage().contains("重复的支付请求")) {
@@ -219,11 +229,18 @@ public class PaymentController {
      */
     @GetMapping("/status/{orderNo}")
     public Result<?> getPaymentStatus(@PathVariable String orderNo) {
+        log.info("【API调用】查询支付状态接口，订单号：{}", orderNo);
+
         try {
+            log.debug("【支付查询】开始查询支付状态，订单号：{}", orderNo);
+
             UserOrder order = paymentService.queryPaymentStatus(orderNo);
             if (order == null) {
+                log.warn("【API响应】未找到订单，订单号：{}", orderNo);
                 return ErrorResponseUtil.orderNotFound();
             }
+
+            log.debug("【支付查询】找到订单，订单号：{}，状态：{}", orderNo, order.getPaymentStatus());
 
             // 构建简化的状态响应
             PaymentStatusResponseVO response = new PaymentStatusResponseVO();
@@ -231,9 +248,10 @@ public class PaymentController {
             response.setStatus(order.getPaymentStatus()); // 保持原始状态码
             response.setMessage(getPaymentStatusMessage(order.getPaymentStatus()));
 
+            log.info("【API响应】查询支付状态成功，订单号：{}，状态：{}", orderNo, response.getMessage());
             return Result.success(response);
         } catch (Exception e) {
-            log.error("查询支付状态失败，订单号: {}", orderNo, e);
+            log.error("【API异常】查询支付状态失败，订单号：{}，错误：{}", orderNo, e.getMessage(), e);
             return ErrorResponseUtil.paymentStatusQueryFailed();
         }
     }

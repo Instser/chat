@@ -35,6 +35,39 @@
         <druid.version>1.2.23</druid.version>
     </properties>
 
+    <repositories>
+        <!-- Maven Central Repository (优先) -->
+        <repository>
+            <id>central</id>
+            <name>Maven Central Repository</name>
+            <url>https://repo1.maven.org/maven2</url>
+            <layout>default</layout>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+        <!-- Google Maven Repository -->
+        <repository>
+            <id>google</id>
+            <name>Google Maven Repository</name>
+            <url>https://maven.google.com</url>
+            <layout>default</layout>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+        <!-- 阿里云 Maven 仓库 -->
+        <repository>
+            <id>aliyunmaven</id>
+            <name>阿里云公共仓库</name>
+            <url>https://maven.aliyun.com/repository/public</url>
+            <layout>default</layout>
+            <snapshots>
+                <enabled>false</enabled>
+            </snapshots>
+        </repository>
+    </repositories>
+
     <dependencies>
         <!-- Spring Boot Web Starter -->
         <dependency>
@@ -176,6 +209,8 @@
             <artifactId>pdfbox</artifactId>
             <version>2.0.29</version>
         </dependency>
+
+
 
         <!-- 测试依赖 -->
         <dependency>

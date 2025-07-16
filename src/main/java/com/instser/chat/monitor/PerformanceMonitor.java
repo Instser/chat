@@ -1,6 +1,7 @@
 package com.instser.chat.monitor;
 
 import com.alibaba.druid.pool.DruidDataSource;
+import com.instser.chat.common.util.LogUtils;
 import com.sun.management.OperatingSystemMXBean;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -37,7 +38,7 @@ public class PerformanceMonitor {
             logThreadInfo();
             logDatabaseConnectionPool();
         } catch (Exception e) {
-            log.error("性能监控异常", e);
+            log.error("【系统异常】组件：性能监控，错误：{}，影响：监控数据缺失", e.getMessage(), e);
         }
     }
 
@@ -47,20 +48,20 @@ public class PerformanceMonitor {
     @Scheduled(fixedRate = 3600000) // 1小时
     public void generatePerformanceReport() {
         try {
-            log.info("========================================");
-            log.info("📊 系统性能报告 (8核8G服务器)");
-            log.info("========================================");
-            
+            log.info("【性能报告】========================================");
+            log.info("【性能报告】📊 系统性能报告 (8核8G服务器)");
+            log.info("【性能报告】========================================");
+
             logDetailedSystemInfo();
             logDetailedMemoryInfo();
             logDetailedThreadInfo();
             logDetailedDatabaseInfo();
-            
-            log.info("========================================");
-            log.info("📊 性能报告结束");
-            log.info("========================================");
+
+            log.info("【性能报告】========================================");
+            log.info("【性能报告】📊 性能报告结束");
+            log.info("【性能报告】========================================");
         } catch (Exception e) {
-            log.error("生成性能报告异常", e);
+            log.error("【系统异常】组件：性能报告生成，错误：{}，影响：性能报告缺失", e.getMessage(), e);
         }
     }
 
@@ -81,15 +82,15 @@ public class PerformanceMonitor {
         }
 
         if (cpuUsage >= 0) {
-            log.info("💻 CPU使用率: 进程={}%, 系统={}%",
-                    String.format("%.1f", cpuUsage), String.format("%.1f", systemCpuUsage));
+            log.info("【性能报告】CPU：{}%，内存：计算中，线程：计算中，连接池：计算中",
+                    String.format("%.1f", cpuUsage));
 
             // CPU使用率告警
             if (cpuUsage > 80) {
-                log.warn("🚨 CPU使用率过高: {}%", String.format("%.1f", cpuUsage));
+                log.warn("【资源预警】类型：CPU，使用率：{}%，阈值：80%", String.format("%.1f", cpuUsage));
             }
         } else {
-            log.info("💻 CPU使用率: 当前JVM不支持CPU使用率监控");
+            log.info("【性能报告】CPU：N/A，内存：计算中，线程：计算中，连接池：计算中");
         }
     }
 
@@ -105,12 +106,12 @@ public class PerformanceMonitor {
         
         double heapUsagePercent = (double) heapUsed / heapMax * 100;
         
-        log.info("🧠 内存使用: 堆内存={}/{}MB ({}%), 非堆内存={}MB",
-                heapUsed, heapMax, String.format("%.1f", heapUsagePercent), nonHeapUsed);
-        
+        log.debug("【监控详情】堆内存：{}/{} MB，非堆：{} MB，GC次数：计算中",
+                heapUsed, heapMax, nonHeapUsed);
+
         // 内存使用率告警
         if (heapUsagePercent > 85) {
-            log.warn("🚨 堆内存使用率过高: {}%", String.format("%.1f", heapUsagePercent));
+            log.warn("【资源预警】类型：堆内存，使用率：{}%，阈值：85%", String.format("%.1f", heapUsagePercent));
         }
     }
 
@@ -124,12 +125,12 @@ public class PerformanceMonitor {
         int peakThreadCount = threadBean.getPeakThreadCount();
         int daemonThreadCount = threadBean.getDaemonThreadCount();
         
-        log.info("🧵 线程信息: 当前={}, 峰值={}, 守护线程={}", 
+        log.info("【线程池】活跃：{}/{}，队列：{}，完成率：计算中%",
                 threadCount, peakThreadCount, daemonThreadCount);
-        
+
         // 线程数告警
         if (threadCount > 500) {
-            log.warn("🚨 线程数过多: {}", threadCount);
+            log.warn("【资源预警】类型：线程数，使用率：{}个，阈值：500个", threadCount);
         }
     }
 
@@ -146,12 +147,12 @@ public class PerformanceMonitor {
             
             double activePercent = (double) activeCount / maxActive * 100;
             
-            log.info("🗄️ 数据库连接池: 活跃={}/{} ({}%), 空闲={}",
+            log.debug("【监控详情】数据库连接池：活跃={}/{} ({}%), 空闲={}",
                     activeCount, maxActive, String.format("%.1f", activePercent), poolingCount);
-            
+
             // 连接池使用率告警
             if (activePercent > 90) {
-                log.warn("🚨 数据库连接池使用率过高: {}%", String.format("%.1f", activePercent));
+                log.warn("【资源预警】类型：数据库连接池，使用率：{}%，阈值：90%", String.format("%.1f", activePercent));
             }
         }
     }

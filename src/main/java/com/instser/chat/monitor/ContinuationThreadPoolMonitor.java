@@ -1,5 +1,6 @@
 package com.instser.chat.monitor;
 
+import com.instser.chat.common.util.LogUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -51,14 +52,14 @@ public class ContinuationThreadPoolMonitor {
             int maximumPoolSize = executor.getMaximumPoolSize();
             
             // 记录基本状态
-            log.debug("续写线程池状态 - 活跃线程:{}/{}, 队列大小:{}, 完成任务:{}, 总任务:{}",
-                    activeCount, maximumPoolSize, queueSize, completedTaskCount, totalTaskCount);
-            
+            log.debug("【任务执行】任务类型：续写线程池，执行时间：监控中，结果：活跃线程{}/{}，队列{}",
+                    activeCount, maximumPoolSize, queueSize);
+
             // 检查告警条件
             checkAndAlert(activeCount, queueSize, corePoolSize, maximumPoolSize);
-            
+
         } catch (Exception e) {
-            log.error("监控续写线程池状态时发生异常", e);
+            log.error("【系统异常】组件：续写线程池监控，错误：{}，影响：监控数据缺失", e.getMessage(), e);
         }
     }
 
@@ -68,25 +69,25 @@ public class ContinuationThreadPoolMonitor {
     private void checkAndAlert(int activeCount, int queueSize, int corePoolSize, int maximumPoolSize) {
         // 队列积压告警
         if (queueSize > QUEUE_SIZE_WARNING_THRESHOLD) {
-            log.warn("🚨 续写线程池队列积压严重！当前队列大小：{}，建议检查续写请求处理速度", queueSize);
+            log.warn("【资源预警】类型：续写线程池队列，使用率：{}个任务，阈值：{}个", queueSize, QUEUE_SIZE_WARNING_THRESHOLD);
         }
-        
+
         // 活跃线程数告警
         if (activeCount > ACTIVE_THREAD_WARNING_THRESHOLD) {
-            log.warn("🚨 续写线程池活跃线程数较高！当前活跃线程：{}，最大线程：{}", activeCount, maximumPoolSize);
+            log.warn("【资源预警】类型：续写线程池活跃线程，使用率：{}/{}，阈值：{}", activeCount, maximumPoolSize, ACTIVE_THREAD_WARNING_THRESHOLD);
         }
-        
+
         // 队列使用率告警
         int queueCapacity = 50; // 从配置中获取
         double queueUsageRatio = (double) queueSize / queueCapacity;
         if (queueUsageRatio > QUEUE_USAGE_WARNING_RATIO) {
-            log.warn("🚨 续写线程池队列使用率过高！当前使用率：{}%，队列大小：{}/{}",
-                    String.format("%.1f", queueUsageRatio * 100), queueSize, queueCapacity);
+            log.warn("【资源预警】类型：续写线程池队列使用率，使用率：{}%，阈值：{}%",
+                    String.format("%.1f", queueUsageRatio * 100), String.format("%.1f", QUEUE_USAGE_WARNING_RATIO * 100));
         }
-        
+
         // 线程池饱和告警
         if (activeCount >= maximumPoolSize && queueSize > 0) {
-            log.warn("🚨 续写线程池已饱和！所有线程都在工作且有任务排队，活跃线程：{}，队列大小：{}",
+            log.warn("【性能下降】指标：续写线程池饱和度，当前值：活跃线程{}，队列{}，基准值：正常运行",
                     activeCount, queueSize);
         }
     }
@@ -116,15 +117,14 @@ public class ContinuationThreadPoolMonitor {
             double completionRate = totalTaskCount > 0 ? (double) completedTaskCount / totalTaskCount * 100 : 0;
             long pendingTasks = totalTaskCount - completedTaskCount;
             
-            log.info("📊 续写线程池性能报告：");
-            log.info("   ├─ 线程配置：核心线程={}, 最大线程={}, 当前线程={}", corePoolSize, maximumPoolSize, poolSize);
-            log.info("   ├─ 任务统计：总任务={}, 已完成={}, 待处理={}", totalTaskCount, completedTaskCount, pendingTasks);
-            log.info("   ├─ 完成率：{}%", String.format("%.2f", completionRate));
-            log.info("   ├─ 当前状态：活跃线程={}, 队列大小={}", activeCount, queueSize);
-            log.info("   └─ 健康状态：{}", getHealthStatus(activeCount, queueSize, maximumPoolSize));
-            
+            log.info("【线程池】活跃：{}/{}，队列：{}，完成率：{}%",
+                activeCount, maximumPoolSize, queueSize, String.format("%.2f", completionRate));
+            log.debug("【监控详情】线程配置：核心线程={}, 最大线程={}, 当前线程={}", corePoolSize, maximumPoolSize, poolSize);
+            log.debug("【监控详情】任务统计：总任务={}, 已完成={}, 待处理={}", totalTaskCount, completedTaskCount, pendingTasks);
+            log.debug("【监控详情】健康状态：{}", getHealthStatus(activeCount, queueSize, maximumPoolSize));
+
         } catch (Exception e) {
-            log.error("生成续写线程池性能报告时发生异常", e);
+            log.error("【系统异常】组件：续写线程池性能报告，错误：{}，影响：性能报告缺失", e.getMessage(), e);
         }
     }
 

@@ -2,6 +2,7 @@ package com.instser.chat.service.serviceimpl;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.instser.chat.common.util.LogUtils;
 import com.instser.chat.constants.PromptConstants;
 import com.instser.chat.dto.ChatRequestDTO;
 import com.instser.chat.dto.ChatResponseDTO;
@@ -10,7 +11,10 @@ import com.instser.chat.entity.AiModel;
 import com.instser.chat.entity.ChatMessage;
 import com.instser.chat.entity.ChatSession;
 import com.instser.chat.entity.FileUpload;
-import com.instser.chat.entity.TavilySearchResult;
+import com.instser.chat.entity.GeminiGroundingResponse;
+import com.instser.chat.entity.GeminiSource;
+import com.instser.chat.entity.GeminiTextSegment;
+import com.instser.chat.entity.WebSearchResult;
 
 import com.instser.chat.service.*;
 import com.instser.chat.util.ChatSessionManager;
@@ -41,6 +45,7 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 
 /**
  * 聊天业务服务实现类
@@ -63,8 +68,8 @@ public class ChatServiceImpl implements ChatService {
     private final WebClient.Builder webClientBuilder;
     private final RestTemplate restTemplate;
     private final TruncationDetectionService truncationDetectionService;
-    private final WebSearchExtractService webSearchExtractService;
     private final WebSearchContentService webSearchContentService;
+    private final NetworkAiService networkAiService;
 
     @Qualifier("continuationExecutor")
     private final Executor continuationExecutor;
@@ -144,7 +149,7 @@ public class ChatServiceImpl implements ChatService {
             // 更新request中的messages为从数据库构建的完整上下文
             request.setMessages(messages);
 
-            log.info("【AI调用开始】用户ID：{}，会话ID：{}，模型：{}，消息数：{}",
+            log.info("【聊天开始】用户ID：{}，会话ID：{}，模型：{}，消息数：{}",
                     request.getUserId(), request.getSessionId(), model.getModelCode(), messages.size());
 
             // 执行AI流式响应
@@ -161,8 +166,8 @@ public class ChatServiceImpl implements ChatService {
             return result;
 
         } catch (Exception e) {
-            log.info("【聊天结束】用户ID：{}，会话ID：{}，结果：异常",
-                    request.getUserId(), request.getSessionId());
+            log.error("【聊天异常】用户ID：{}，会话ID：{}，错误：{}",
+                    request.getUserId(), request.getSessionId(), e.getMessage(), e);
             return handleStreamChatException(e, request, response);
         }
     }
@@ -520,8 +525,34 @@ public class ChatServiceImpl implements ChatService {
                 if (userQuery != null && !userQuery.trim().isEmpty()) {
                     log.info("【联网搜索】开始处理联网搜索，用户ID：{}，会话ID：{}，查询：{}",
                             request.getUserId(), request.getSessionId(), userQuery);
+
+                    // 记录处理前的消息状态
+                    log.debug("【联网内容拼接】处理前消息数量：{}", messages.size());
+                    if (!messages.isEmpty()) {
+                        Map<String, String> lastMessage = messages.get(messages.size() - 1);
+                        if ("user".equals(lastMessage.get("role"))) {
+                            String originalContent = lastMessage.get("content");
+                            log.debug("【联网内容拼接】处理前最后一条用户消息长度：{}，内容预览：{}",
+                                    originalContent.length(),
+                                    originalContent.length() > 200 ? originalContent.substring(0, 200) + "..." : originalContent);
+                        }
+                    }
+
                     NetworkSearchResult networkResult = processNetworkContent(messages, userQuery);
                     messages = networkResult.getMessages();
+
+                    // 记录处理后的消息状态
+                    log.debug("【联网内容拼接】处理后消息数量：{}", messages.size());
+                    if (!messages.isEmpty()) {
+                        Map<String, String> lastMessage = messages.get(messages.size() - 1);
+                        if ("user".equals(lastMessage.get("role"))) {
+                            String updatedContent = lastMessage.get("content");
+                            log.debug("【联网内容拼接】处理后最后一条用户消息长度：{}，内容预览：{}",
+                                    updatedContent.length(),
+                                    updatedContent.length() > 200 ? updatedContent.substring(0, 200) + "..." : updatedContent);
+                        }
+                    }
+
                     // 将搜索结果存储到request中，供后续使用
                     request.setNetworkSearchResults(networkResult.getSearchResults());
 
@@ -3004,7 +3035,7 @@ public class ChatServiceImpl implements ChatService {
     /**
      * 发送联网搜索结果给前端
      */
-    private void sendNetworkSearchResults(HttpServletResponse response, List<TavilySearchResult> searchResults) {
+    private void sendNetworkSearchResults(HttpServletResponse response, List<WebSearchResult> searchResults) {
         if (searchResults == null || searchResults.isEmpty()) {
             return;
         }
@@ -3013,19 +3044,12 @@ public class ChatServiceImpl implements ChatService {
             ObjectMapper mapper = new ObjectMapper();
             log.info("开始发送{}个联网搜索结果给前端", searchResults.size());
 
-            for (TavilySearchResult result : searchResults) {
+            for (WebSearchResult result : searchResults) {
                 Map<String, String> resultData = new HashMap<>();
                 resultData.put("url", result.getUrl() != null ? result.getUrl() : "");
                 resultData.put("title", result.getTitle() != null ? result.getTitle() : "");
 
-                // 限制content字段为前100个字符
-                String content = result.getContent() != null ? result.getContent() : "";
-                if (content.length() > 100) {
-                    content = content.substring(0, 100) + "...";
-                }
-                resultData.put("content", content);
-
-                resultData.put("favicon", result.getFavicon() != null ? result.getFavicon() : "");
+                // 不再包含content和favicon字段
 
                 String resultJson = String.format("u:%s\n", mapper.writeValueAsString(resultData));
                 response.getWriter().write(resultJson);
@@ -3404,19 +3428,20 @@ public class ChatServiceImpl implements ChatService {
      */
     private static class NetworkSearchResult {
         private final List<Map<String, String>> messages;
-        private final List<TavilySearchResult> searchResults;
+        private final List<WebSearchResult> searchResults;
 
-        public NetworkSearchResult(List<Map<String, String>> messages, List<TavilySearchResult> searchResults) {
+        public NetworkSearchResult(List<Map<String, String>> messages, List<WebSearchResult> searchResults) {
             this.messages = messages;
             this.searchResults = searchResults;
         }
 
         public List<Map<String, String>> getMessages() { return messages; }
-        public List<TavilySearchResult> getSearchResults() { return searchResults; }
+        public List<WebSearchResult> getSearchResults() { return searchResults; }
     }
 
     /**
      * 处理联网搜索内容并附加到用户消息中
+     * 重构为使用Gemini API的完整响应格式
      *
      * @param messages 消息列表
      * @param query 搜索查询内容（从用户消息中提取）
@@ -3428,114 +3453,64 @@ public class ChatServiceImpl implements ChatService {
         }
 
         try {
-            log.info("开始处理联网搜索内容，查询：{}", query);
+            log.info("【Gemini联网】开始处理联网搜索内容，查询：{}", query);
 
-            // 调用联网搜索服务
-            com.instser.chat.entity.WebSearchExtractResult searchExtractResult = webSearchExtractService.searchAndExtract(query);
-            com.instser.chat.entity.TavilyExtractResponse extractResponse = searchExtractResult != null ? searchExtractResult.getExtractResponse() : null;
-            com.instser.chat.entity.TavilySearchResponse searchResponse = searchExtractResult != null ? searchExtractResult.getSearchResponse() : null;
+            // 使用Gemini API进行联网搜索
+            GeminiGroundingResponse geminiResponse = ((NetworkAiServiceImpl) networkAiService).queryWithGeminiGrounding(query);
 
-            // 调试日志
-            log.info("【联网调试】searchExtractResult是否为null: {}", searchExtractResult == null);
-            log.info("【联网调试】searchResponse是否为null: {}", searchResponse == null);
-            if (searchResponse != null) {
-                log.info("【联网调试】searchResponse.getResults()是否为null: {}", searchResponse.getResults() == null);
-                if (searchResponse.getResults() != null) {
-                    log.info("【联网调试】searchResponse结果数量: {}", searchResponse.getResults().size());
-                }
-            }
-
-            if (extractResponse == null || extractResponse.getResults() == null || extractResponse.getResults().isEmpty()) {
-                log.warn("联网搜索未返回有效结果，查询：{}", query);
+            if (geminiResponse == null) {
+                log.warn("【Gemini联网】Gemini响应为空，查询：{}", query);
                 return new NetworkSearchResult(messages, new ArrayList<>());
             }
 
-            // 获取搜索结果，用于后续发送给前端
-            List<TavilySearchResult> searchResults = new ArrayList<>();
-            if (searchResponse != null && searchResponse.getResults() != null && !searchResponse.getResults().isEmpty()) {
-                searchResults.addAll(searchResponse.getResults());
-                log.info("已获取{}个搜索结果", searchResults.size());
-            }
+            log.info("【Gemini联网】Gemini响应获取成功，sources数量：{}",
+                    geminiResponse.getSources() != null ? geminiResponse.getSources().size() : 0);
 
-            // 构建联网内容
-            StringBuilder networkContentBuilder = new StringBuilder();
-            networkContentBuilder.append("以下是你自己联网搜索得到的结果：[");
+            // 格式化完整的Gemini响应内容
+            String formattedNetworkContent = formatCompleteGeminiResponse(geminiResponse);
 
-            boolean hasValidContent = false;
-            int processedCount = 0;
-            final int MAX_RESULTS = 20; // 限制最多处理5个结果
-            final int MAX_CONTENT_LENGTH = 8000; // 限制每个结果的最大内容长度
+            log.debug("【联网内容拼接】格式化的联网内容详情：\n{}", formattedNetworkContent);
 
-            for (com.instser.chat.entity.TavilyExtractResult result : extractResponse.getResults()) {
-                if (processedCount >= MAX_RESULTS) {
-                    log.info("已达到最大结果数量限制：{}，停止处理更多结果", MAX_RESULTS);
-                    break;
-                }
+            // 将格式化后的完整响应拼接到最后一条用户消息
+            List<Map<String, String>> updatedMessages = new ArrayList<>(messages);
+            if (!updatedMessages.isEmpty()) {
+                Map<String, String> lastMessage = updatedMessages.get(updatedMessages.size() - 1);
+                if ("user".equals(lastMessage.get("role"))) {
+                    String originalContent = lastMessage.get("content");
+                    String updatedContent = originalContent + "\n\nBelow is the networking content you get from your own search:\n\n" + formattedNetworkContent;
+                    lastMessage.put("content", updatedContent);
 
-                if (result.getRawContent() != null && !result.getRawContent().trim().isEmpty()) {
-                    if (hasValidContent) {
-                        networkContentBuilder.append(",");
-                    }
+                    log.info("【Gemini联网】已将格式化的Gemini响应拼接到用户消息，原始长度：{}，拼接后长度：{}",
+                            originalContent.length(), updatedContent.length());
 
-                    // 限制内容长度，避免过长的内容
-                    String content = cleanNetworkContent(result.getRawContent());
-                    if (content.length() > MAX_CONTENT_LENGTH) {
-                        content = content.substring(0, MAX_CONTENT_LENGTH) + "...";
-                        log.info("内容过长，已截断，URL：{}，原长度：{}，截断后长度：{}",
-                                result.getUrl(), result.getRawContent().length(), content.length());
-                    }
-
-                    // 构建搜索结果格式：{"url":"content"}
-                    networkContentBuilder.append("{\"").append(escapeJsonString(result.getUrl()))
-                                        .append("\":\"").append(escapeJsonString(content)).append("\"}");
-
-                    hasValidContent = true;
-                    processedCount++;
-                    log.info("成功获取联网内容，URL：{}，内容长度：{}", result.getUrl(), content.length());
+                    log.debug("【联网内容拼接】原始用户内容：\n{}", originalContent);
+                    log.debug("【联网内容拼接】拼接后完整内容：\n{}", updatedContent);
                 }
             }
 
-            networkContentBuilder.append("]");
+            // 转换sources为WebSearchResult用于数据库存储
+            List<WebSearchResult> searchResults = convertGeminiSourcesToWebSearchResults(geminiResponse.getSources());
 
-            // 如果有有效的联网内容，则附加到最后一条用户消息中
-            if (hasValidContent) {
-                String networkContent = networkContentBuilder.toString();
-                final int MAX_TOTAL_CONTENT_LENGTH = 160000; // 限制总内容长度
-
-                // 检查联网内容长度
-                if (networkContent.length() > MAX_TOTAL_CONTENT_LENGTH) {
-                    log.warn("联网内容过长，长度：{}，将进行截断", networkContent.length());
-                    networkContent = networkContent.substring(0, MAX_TOTAL_CONTENT_LENGTH) + "...]";
-                }
-
-                // 找到最后一条用户消息
-                for (int i = messages.size() - 1; i >= 0; i--) {
-                    Map<String, String> message = messages.get(i);
-                    if ("user".equals(message.get("role"))) {
-                        String originalContent = message.get("content");
-                        String newContent = originalContent + "。" + networkContent;
-
-                        // 最终检查总长度
-                        if (newContent.length() > MAX_TOTAL_CONTENT_LENGTH) {
-                            log.warn("用户消息总长度过长，长度：{}，将进行截断", newContent.length());
-                            newContent = newContent.substring(0, MAX_TOTAL_CONTENT_LENGTH) + "...]";
-                        }
-
-                        message.put("content", newContent);
-
-                        log.info("已将联网内容附加到用户消息中，原始内容长度：{}，附加后长度：{}，处理结果数量：{}",
-                                originalContent.length(), newContent.length(), processedCount);
-                        break;
-                    }
-                }
-            }
-
-            return new NetworkSearchResult(messages, searchResults);
+            return new NetworkSearchResult(updatedMessages, searchResults);
 
         } catch (Exception e) {
             log.error("处理联网搜索内容失败，查询：{}", query, e);
             return new NetworkSearchResult(messages, new ArrayList<>()); // 出错时返回原消息列表和空搜索结果
         }
+    }
+
+    /**
+     * 将WebSearchResult列表转换为SearchResponse格式
+     * 用于兼容现有的存储逻辑
+     */
+    private com.instser.chat.entity.SearchResponse convertWebSearchResultsToSearchResponse(List<WebSearchResult> webSearchResults) {
+        com.instser.chat.entity.SearchResponse searchResponse = new com.instser.chat.entity.SearchResponse();
+
+        if (webSearchResults != null && !webSearchResults.isEmpty()) {
+            searchResponse.setResults(webSearchResults);
+        }
+
+        return searchResponse;
     }
 
     /**
@@ -3612,9 +3587,7 @@ public class ChatServiceImpl implements ChatService {
      */
     private void logAiRequestDetails(Map<String, Object> requestBody, AiModel model, Long userId) {
         try {
-            log.info("=== AI请求详细信息 ===");
-            log.info("用户ID: {}", userId);
-            log.info("模型: {} ({})", model.getModelCode(), model.getBaseUrl());
+            log.debug("【AI请求】用户ID：{}，模型：{}（{}）", userId, model.getModelCode(), model.getBaseUrl());
 
             // 处理请求体，截取content字段
             Map<String, Object> processedRequestBody = truncateRequestBodyContent(requestBody);
@@ -3622,11 +3595,10 @@ public class ChatServiceImpl implements ChatService {
             // 输出处理后的原始请求体
             ObjectMapper objectMapper = new ObjectMapper();
             String requestBodyJson = objectMapper.writeValueAsString(processedRequestBody);
-            log.info("原始请求体: {}", requestBodyJson);
+            log.debug("【AI请求】请求体：{}", LogUtils.truncateContent(requestBodyJson));
 
-            log.info("=== AI请求信息结束 ===");
         } catch (Exception e) {
-            log.warn("记录AI请求详细信息失败: {}", e.getMessage());
+            log.warn("【AI请求】记录请求详细信息失败：{}", e.getMessage());
         }
     }
 
@@ -3851,15 +3823,41 @@ public class ChatServiceImpl implements ChatService {
             }
 
             // 处理联网搜索内容（如果启用）
-            List<TavilySearchResult> retrySearchResults = new ArrayList<>();
+            List<WebSearchResult> retrySearchResults = new ArrayList<>();
             if (network != null && network) {
                 // 提取用户查询内容（从最后一条用户消息中获取）
                 String userQuery = extractUserQuery(messages);
                 if (userQuery != null && !userQuery.trim().isEmpty()) {
                     log.info("重试请求检测到联网搜索请求，开始处理联网内容，查询：{}", userQuery);
+
+                    // 记录重试场景下处理前的消息状态
+                    log.debug("【联网内容拼接-重试】处理前消息数量：{}", messages.size());
+                    if (!messages.isEmpty()) {
+                        Map<String, String> lastMessage = messages.get(messages.size() - 1);
+                        if ("user".equals(lastMessage.get("role"))) {
+                            String originalContent = lastMessage.get("content");
+                            log.debug("【联网内容拼接-重试】处理前最后一条用户消息长度：{}，内容预览：{}",
+                                    originalContent.length(),
+                                    originalContent.length() > 200 ? originalContent.substring(0, 200) + "..." : originalContent);
+                        }
+                    }
+
                     NetworkSearchResult networkResult = processNetworkContent(messages, userQuery);
                     messages = networkResult.getMessages();
                     retrySearchResults = networkResult.getSearchResults();
+
+                    // 记录重试场景下处理后的消息状态
+                    log.debug("【联网内容拼接-重试】处理后消息数量：{}", messages.size());
+                    if (!messages.isEmpty()) {
+                        Map<String, String> lastMessage = messages.get(messages.size() - 1);
+                        if ("user".equals(lastMessage.get("role"))) {
+                            String updatedContent = lastMessage.get("content");
+                            log.debug("【联网内容拼接-重试】处理后最后一条用户消息长度：{}，内容预览：{}",
+                                    updatedContent.length(),
+                                    updatedContent.length() > 200 ? updatedContent.substring(0, 200) + "..." : updatedContent);
+                        }
+                    }
+
                     log.info("重试请求联网内容处理完成");
                 } else {
                     log.warn("重试请求联网搜索但无法提取用户查询内容");
@@ -4077,15 +4075,41 @@ public class ChatServiceImpl implements ChatService {
             }
 
             // 处理联网搜索内容（如果启用）
-            List<TavilySearchResult> editResendSearchResults = new ArrayList<>();
+            List<WebSearchResult> editResendSearchResults = new ArrayList<>();
             if (network != null && network) {
                 // 提取用户查询内容（从最后一条用户消息中获取）
                 String userQuery = extractUserQuery(messages);
                 if (userQuery != null && !userQuery.trim().isEmpty()) {
                     log.info("编辑重发请求检测到联网搜索请求，开始处理联网内容，查询：{}", userQuery);
+
+                    // 记录编辑重发场景下处理前的消息状态
+                    log.debug("【联网内容拼接-编辑重发】处理前消息数量：{}", messages.size());
+                    if (!messages.isEmpty()) {
+                        Map<String, String> lastMessage = messages.get(messages.size() - 1);
+                        if ("user".equals(lastMessage.get("role"))) {
+                            String originalContent = lastMessage.get("content");
+                            log.debug("【联网内容拼接-编辑重发】处理前最后一条用户消息长度：{}，内容预览：{}",
+                                    originalContent.length(),
+                                    originalContent.length() > 200 ? originalContent.substring(0, 200) + "..." : originalContent);
+                        }
+                    }
+
                     NetworkSearchResult networkResult = processNetworkContent(messages, userQuery);
                     messages = networkResult.getMessages();
                     editResendSearchResults = networkResult.getSearchResults();
+
+                    // 记录编辑重发场景下处理后的消息状态
+                    log.debug("【联网内容拼接-编辑重发】处理后消息数量：{}", messages.size());
+                    if (!messages.isEmpty()) {
+                        Map<String, String> lastMessage = messages.get(messages.size() - 1);
+                        if ("user".equals(lastMessage.get("role"))) {
+                            String updatedContent = lastMessage.get("content");
+                            log.debug("【联网内容拼接-编辑重发】处理后最后一条用户消息长度：{}，内容预览：{}",
+                                    updatedContent.length(),
+                                    updatedContent.length() > 200 ? updatedContent.substring(0, 200) + "..." : updatedContent);
+                        }
+                    }
+
                     log.info("编辑重发请求联网内容处理完成");
                 } else {
                     log.warn("编辑重发请求联网搜索但无法提取用户查询内容");
@@ -4351,9 +4375,8 @@ public class ChatServiceImpl implements ChatService {
 
             if (networkEnabled && hasSearchResults) {
 
-                // 构建TavilySearchResponse对象
-                com.instser.chat.entity.TavilySearchResponse searchResponse = new com.instser.chat.entity.TavilySearchResponse();
-                searchResponse.setResults(request.getNetworkSearchResults());
+                // 构建SearchResponse对象（为了兼容现有存储逻辑）
+                com.instser.chat.entity.SearchResponse searchResponse = convertWebSearchResultsToSearchResponse(request.getNetworkSearchResults());
 
                 // 保存联网查询结果到AI响应消息
                 boolean saved = webSearchContentService.saveWebSearchContent(
@@ -4399,6 +4422,109 @@ public class ChatServiceImpl implements ChatService {
 
 
 
+
+
+    /**
+     * 格式化完整的Gemini响应内容
+     * 包括response_text、search_queries、sources、text_segments等所有信息
+     */
+    private String formatCompleteGeminiResponse(GeminiGroundingResponse response) {
+        StringBuilder formatted = new StringBuilder();
+
+        log.debug("【联网内容格式化】开始格式化Gemini响应");
+
+        // 1. 主要响应文本
+        if (response.getResponseText() != null) {
+            log.debug("【联网内容格式化】响应文本长度：{}，内容：{}",
+                    response.getResponseText().length(),
+                    response.getResponseText().length() > 200 ?
+                        response.getResponseText().substring(0, 200) + "..." :
+                        response.getResponseText());
+            formatted.append(response.getResponseText()).append("\n\n");
+        } else {
+            log.debug("【联网内容格式化】响应文本为空");
+        }
+
+        // 2. 搜索查询信息
+        if (response.getSearchQueries() != null && !response.getSearchQueries().isEmpty()) {
+            log.debug("【联网内容格式化】搜索查询数量：{}，查询列表：{}",
+                    response.getSearchQueries().size(), response.getSearchQueries());
+            formatted.append("Search Queries:\n");
+            for (String query : response.getSearchQueries()) {
+                formatted.append("- ").append(query).append("\n");
+            }
+            formatted.append("\n");
+        } else {
+            log.debug("【联网内容格式化】搜索查询为空");
+        }
+
+        // 3. 来源信息
+        if (response.getSources() != null && !response.getSources().isEmpty()) {
+            log.debug("【联网内容格式化】来源数量：{}", response.getSources().size());
+            formatted.append("Sources:\n");
+            for (int i = 0; i < response.getSources().size(); i++) {
+                GeminiSource source = response.getSources().get(i);
+                log.debug("【联网内容格式化】来源[{}]：标题={}，URL={}",
+                        i + 1, source.getTitle(), source.getUrl());
+                formatted.append(String.format("[%d] %s - %s\n",
+                    i + 1, source.getTitle(), source.getUrl()));
+            }
+            formatted.append("\n");
+        } else {
+            log.debug("【联网内容格式化】来源信息为空");
+        }
+
+        // 4. 文本段落支持信息（如果需要的话）
+        if (response.getTextSegments() != null && !response.getTextSegments().isEmpty()) {
+            log.debug("【联网内容格式化】文本段落数量：{}", response.getTextSegments().size());
+            formatted.append("Citation Details:\n");
+            for (int i = 0; i < response.getTextSegments().size(); i++) {
+                GeminiTextSegment segment = response.getTextSegments().get(i);
+                if (segment.getText() != null) {
+                    log.debug("【联网内容格式化】文本段落[{}]：文本长度={}，来源索引={}",
+                            i, segment.getText().length(), segment.getSourceIndices());
+                    formatted.append("\"").append(segment.getText()).append("\" ");
+                    if (segment.getSourceIndices() != null && !segment.getSourceIndices().isEmpty()) {
+                        formatted.append("(Sources: ");
+                        for (Integer index : segment.getSourceIndices()) {
+                            formatted.append("[").append(index + 1).append("] ");
+                        }
+                        formatted.append(")");
+                    }
+                    formatted.append("\n");
+                }
+            }
+        } else {
+            log.debug("【联网内容格式化】文本段落为空");
+        }
+
+        String result = formatted.toString().trim();
+        log.debug("【联网内容格式化】最终格式化结果长度：{}，内容预览：{}",
+                result.length(),
+                result.length() > 300 ? result.substring(0, 300) + "..." : result);
+
+        return result;
+    }
+
+    /**
+     * 转换Gemini sources为WebSearchResult格式（用于数据库存储）
+     */
+    private List<WebSearchResult> convertGeminiSourcesToWebSearchResults(List<GeminiSource> sources) {
+        if (sources == null) {
+            return new ArrayList<>();
+        }
+
+        return sources.stream()
+            .map(source -> {
+                WebSearchResult result = new WebSearchResult();
+                result.setUrl(source.getUrl());
+                result.setTitle(source.getTitle());
+
+                // 不设置其他字段，保持为null
+                return result;
+            })
+            .collect(Collectors.toList());
+    }
 
 
 }

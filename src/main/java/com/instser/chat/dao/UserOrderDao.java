@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -161,4 +162,42 @@ public interface UserOrderDao extends BaseMapper<UserOrder> {
     @Update("UPDATE t_user_order SET payment_status = 2, update_time = NOW() " +
             "WHERE user_id = #{userId} AND payment_status = 0 AND expire_time > NOW() AND deleted = 0")
     int cancelUserPendingOrders(Long userId);
+
+    /**
+     * 统计用户已支付订单数量
+     * 用于判定用户是否从未充值
+     *
+     * @param userId 用户ID
+     * @return 已支付订单数量
+     */
+    @Select("SELECT COUNT(*) FROM t_user_order WHERE user_id = #{userId} AND payment_status = 1 AND deleted = 0")
+    Integer countPaidOrdersByUserId(Long userId);
+
+    /**
+     * 统计用户已支付的非免费套餐订单数量
+     * 用于判定用户是否只使用免费套餐
+     *
+     * @param userId 用户ID
+     * @return 已支付的非免费套餐订单数量
+     */
+    @Select("SELECT COUNT(*) FROM t_user_order WHERE user_id = #{userId} AND payment_status = 1 AND package_id != 1 AND deleted = 0")
+    Integer countPaidNonFreeOrdersByUserId(Long userId);
+
+    /**
+     * 获取用户首次支付时间
+     *
+     * @param userId 用户ID
+     * @return 首次支付时间
+     */
+    @Select("SELECT MIN(payment_time) FROM t_user_order WHERE user_id = #{userId} AND payment_status = 1 AND deleted = 0")
+    LocalDateTime getFirstPaymentTimeByUserId(Long userId);
+
+    /**
+     * 获取用户总支付金额
+     *
+     * @param userId 用户ID
+     * @return 总支付金额
+     */
+    @Select("SELECT COALESCE(SUM(amount), 0) FROM t_user_order WHERE user_id = #{userId} AND payment_status = 1 AND deleted = 0")
+    BigDecimal getTotalPaidAmountByUserId(Long userId);
 }

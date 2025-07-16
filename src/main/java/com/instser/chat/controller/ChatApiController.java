@@ -1,6 +1,7 @@
 package com.instser.chat.controller;
 
 import com.instser.chat.common.result.Result;
+import com.instser.chat.common.util.LogUtils;
 import com.instser.chat.dto.ChatRequestDTO;
 import com.instser.chat.dto.ChatResponseDTO;
 import com.instser.chat.entity.AiModel;
@@ -57,7 +58,7 @@ public class ChatApiController {
     @PostMapping(value = "", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public void chat(@RequestBody Map<String, Object> request, Authentication authentication,
                      HttpServletRequest httpRequest, HttpServletResponse response) {
-        log.info("收到聊天请求：{}, 认证信息：{}", request, authentication);
+        log.info("【API调用】聊天接口，请求参数：{}", LogUtils.formatRequestParams(request));
 
         // 动态设置跨域头
         setCorsHeaders(httpRequest, response);
@@ -66,18 +67,22 @@ public class ChatApiController {
             // 将请求Map转换为DTO
             ChatRequestDTO chatRequest = ChatRequestDTO.fromMap(request);
 
+            log.debug("【聊天处理】开始处理聊天请求，用户ID：{}，会话ID：{}",
+                chatRequest.getUserId(), chatRequest.getSessionId());
+
             // 调用ChatService处理业务逻辑
             ChatResponseDTO chatResponse = chatService.processStreamChat(chatRequest, authentication, response);
 
             // 记录处理结果
             if (chatResponse.isSuccess()) {
-                log.info("用户{}聊天请求处理成功", chatRequest.getUserId());
+                log.info("【API响应】聊天请求处理成功，用户ID：{}", chatRequest.getUserId());
             } else {
-                log.warn("用户{}聊天请求处理失败: {}", chatRequest.getUserId(), chatResponse.getErrorMessage());
+                log.warn("【API响应】聊天请求处理失败，用户ID：{}，错误：{}",
+                    chatRequest.getUserId(), chatResponse.getErrorMessage());
             }
 
         } catch (Exception e) {
-            log.error("聊天接口异常", e);
+            log.error("【API异常】聊天接口异常：{}", e.getMessage(), e);
             // 异常情况下的错误处理已在ChatService中完成
         }
     }
@@ -97,19 +102,31 @@ public class ChatApiController {
     @PostMapping("/sessions")
     public Result<Map<String, String>> createSession(@RequestBody Map<String, Object> request, Authentication authentication) {
         Long userId = getCurrentUserId(authentication);
+        String modelCode = (String) request.getOrDefault("model", "qwen3-235b-a22b");
+
+        log.info("【API调用】创建会话接口，用户ID：{}，模型：{}", userId, modelCode);
+
         if (userId == null) {
+            log.warn("【API拒绝】用户未认证");
             return Result.unauthorized("用户未认证");
         }
 
-        String modelCode = (String) request.getOrDefault("model", "qwen3-235b-a22b");
+        try {
+            AiModel model = aiModelService.getModelByCode(modelCode);
+            if (model == null) {
+                log.warn("【API拒绝】指定的模型不存在：{}", modelCode);
+                return Result.failed("指定的模型不存在");
+            }
 
-        AiModel model = aiModelService.getModelByCode(modelCode);
-        if (model == null) {
-            return Result.failed("指定的模型不存在");
+            log.debug("【会话创建】开始创建会话，用户ID：{}，模型ID：{}", userId, model.getId());
+            String sessionId = chatSessionService.createSession(userId, model.getId());
+
+            log.info("【API响应】会话创建成功，用户ID：{}，会话ID：{}", userId, sessionId);
+            return Result.success(Map.of("sessionId", sessionId));
+        } catch (Exception e) {
+            log.error("【API异常】创建会话失败，用户ID：{}，错误：{}", userId, e.getMessage(), e);
+            return Result.failed("创建会话失败");
         }
-
-        String sessionId = chatSessionService.createSession(userId, model.getId());
-        return Result.success(Map.of("sessionId", sessionId));
     }
 
     /**

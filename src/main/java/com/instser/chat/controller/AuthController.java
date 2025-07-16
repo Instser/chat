@@ -74,32 +74,42 @@ public class AuthController {
             @Parameter(description = "注册请求信息", required = true)
             @Valid @RequestBody RegisterRequest request,
             HttpServletResponse response) {
+        log.info("【API调用】用户注册接口，邮箱：{}，用户名：{}",
+            request.getEmail(), request.getUsername());
+
         try {
             // 检查用户名和邮箱是否已存在
             if (userService.getUserByUsername(request.getUsername()) != null) {
+                log.warn("【注册拒绝】用户名已存在：{}", request.getUsername());
                 return ResponseEntity.ok(ErrorResponseUtil.usernameExists());
             }
             if (userService.getUserByEmail(request.getEmail()) != null) {
+                log.warn("【注册拒绝】邮箱已存在：{}", request.getEmail());
                 return ResponseEntity.ok(ErrorResponseUtil.emailExists());
             }
-            
+
+            log.debug("【注册处理】开始创建用户，邮箱：{}", request.getEmail());
+
             // 创建用户
             Long userId = userService.registerUser(request.getUsername(), request.getEmail(), request.getPassword());
             User user = userService.getById(userId);
-            
+
+            log.debug("【注册处理】用户创建成功，开始生成JWT令牌，用户ID：{}", userId);
+
             // 生成JWT Token
             String token = jwtUtil.generateToken(user);
-            
+
             // 设置Cookie
             response.addHeader(HttpHeaders.SET_COOKIE, jwtUtil.createAuthCookie(token).toString());
-            
+
             UserVO userVO = VOConverter.toUserVO(user);
-            log.info("用户注册成功: {}", user.getUsername());
-            
+            log.info("【API响应】用户注册成功，用户ID：{}，用户名：{}", userId, user.getUsername());
+
             return ResponseEntity.ok(Result.success(userVO, "注册成功"));
-            
+
         } catch (Exception e) {
-            log.error("用户注册失败", e);
+            log.error("【API异常】用户注册失败，邮箱：{}，错误：{}",
+                request.getEmail(), e.getMessage(), e);
             return ResponseEntity.ok(ErrorResponseUtil.registerFailed("Registration failed. Please try again later."));
         }
     }
@@ -110,36 +120,46 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request,
                                                HttpServletResponse response) {
+        String userIdentifier = request.getUsernameOrEmail();
+        log.info("【API调用】用户登录接口，用户标识：{}", userIdentifier);
+
         try {
+            log.debug("【登录处理】开始认证用户，用户标识：{}", userIdentifier);
+
             // 认证用户
             Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.getUsernameOrEmail(), request.getPassword())
             );
-            
+
             // 获取用户详情
-            UserDetailsServiceImpl.CustomUserDetails userDetails = 
+            UserDetailsServiceImpl.CustomUserDetails userDetails =
                 (UserDetailsServiceImpl.CustomUserDetails) authentication.getPrincipal();
             User user = userDetails.getUser();
-            
+
+            log.debug("【登录处理】用户认证成功，开始更新登录时间，用户ID：{}", user.getId());
+
             // 更新最后登录时间
             userService.updateLastLoginTime(user.getId());
-            
+
+            log.debug("【登录处理】开始生成JWT令牌，用户ID：{}", user.getId());
+
             // 生成JWT Token
             String token = jwtUtil.generateToken(user);
-            
+
             // 设置Cookie
             response.addHeader(HttpHeaders.SET_COOKIE, jwtUtil.createAuthCookie(token).toString());
-            
+
             UserVO userVO = VOConverter.toUserVO(user);
-            log.info("用户登录成功: {}", user.getUsername());
-            
+            log.info("【API响应】用户登录成功，用户ID：{}，用户名：{}", user.getId(), user.getUsername());
+
             return ResponseEntity.ok(Result.success(userVO, "登录成功"));
-            
+
         } catch (BadCredentialsException e) {
-            log.warn("用户登录失败: 用户名或密码错误");
+            log.warn("【登录失败】用户名或密码错误，用户标识：{}", userIdentifier);
             return ResponseEntity.ok(ErrorResponseUtil.invalidCredentials());
         } catch (Exception e) {
-            log.error("用户登录异常", e);
+            log.error("【API异常】用户登录异常，用户标识：{}，错误：{}",
+                userIdentifier, e.getMessage(), e);
             return ResponseEntity.ok(ErrorResponseUtil.loginFailed("Login failed. Please try again later."));
         }
     }
@@ -160,11 +180,14 @@ public class AuthController {
             User user = userDetails.getUser();
 
             // 获取用户套餐信息
-            String packageName = getUserPackageName(user.getId());
+            UserPackageInfo packageInfo = getUserPackageInfo(user.getId());
 
-            // 转换为VO并设置套餐名称
+            // 转换为VO并设置套餐信息
             UserVO userVO = VOConverter.toUserVO(user);
-            userVO.setPackageName(packageName);
+            if (packageInfo != null) {
+                userVO.setPackageName(packageInfo.getPackageName());
+                userVO.setPackageId(packageInfo.getPackageId());
+            }
 
             return ResponseEntity.ok(Result.success(userVO, "获取用户信息成功"));
 
@@ -175,9 +198,9 @@ public class AuthController {
     }
 
     /**
-     * 获取用户套餐名称
+     * 获取用户套餐信息
      */
-    private String getUserPackageName(Long userId) {
+    private UserPackageInfo getUserPackageInfo(Long userId) {
         try {
             // 获取用户账户信息
             UserAccount userAccount = userAccountService.getUserAccount(userId);
@@ -191,10 +214,31 @@ public class AuthController {
                 return null;
             }
 
-            return packageInfo.getPackageName();
+            return new UserPackageInfo(userAccount.getPackageId(), packageInfo.getPackageName());
         } catch (Exception e) {
-            log.error("获取用户套餐名称失败，用户ID：{}", userId, e);
+            log.error("获取用户套餐信息失败，用户ID：{}", userId, e);
             return null;
+        }
+    }
+
+    /**
+     * 用户套餐信息内部类
+     */
+    private static class UserPackageInfo {
+        private final Long packageId;
+        private final String packageName;
+
+        public UserPackageInfo(Long packageId, String packageName) {
+            this.packageId = packageId;
+            this.packageName = packageName;
+        }
+
+        public Long getPackageId() {
+            return packageId;
+        }
+
+        public String getPackageName() {
+            return packageName;
         }
     }
 

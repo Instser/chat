@@ -70,4 +70,10 @@ public class UserVO implements Serializable {
      * 套餐名称（可选字段，仅在userPackage=true时返回）
      */
     private String packageName;
+
+    /**
+     * 套餐ID
+     */
+    @JsonSerialize(using = ToStringSerializer.class)
+    private Long packageId;
 }

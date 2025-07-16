@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.instser.chat.common.exception.PaymentException;
 import com.instser.chat.common.exception.ResourceNotFoundException;
+import com.instser.chat.common.util.LogUtils;
 import com.instser.chat.config.AlipayConfig;
 import com.instser.chat.config.YiPayConfig;
 import com.instser.chat.entity.Package;
@@ -116,15 +117,24 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public PaymentResponseVO createPayment(PaymentRequestVO paymentRequest) {
+        log.info("【支付创建】用户ID：{}，套餐ID：{}，支付方式：{}",
+            paymentRequest.getUserId(), paymentRequest.getPackageId(), paymentRequest.getPaymentMethod());
+
         // ✅ 使用PaymentSessionManager确保会话锁正确释放
         try (PaymentSessionManager sessionManager = new PaymentSessionManager(
                 redisPaymentSecurityService, paymentRequest.getUserId())) {
 
+            log.debug("【支付处理】开始验证支付请求参数，用户ID：{}", paymentRequest.getUserId());
+
             // 1. 验证支付请求参数
             validatePaymentRequest(paymentRequest);
 
+            log.debug("【支付处理】开始支付安全性验证，用户ID：{}", paymentRequest.getUserId());
+
             // 2. 支付安全性验证（不包含会话锁管理）
             validatePaymentSecurityWithoutSession(paymentRequest);
+
+            log.debug("【支付处理】获取支付会话锁，用户ID：{}", paymentRequest.getUserId());
 
             // 3. 获取支付会话锁
             sessionManager.acquire();
@@ -132,8 +142,13 @@ public class PaymentServiceImpl implements PaymentService {
             // 4. 根据paymentMethod字段选择支付方式
             String paymentMethod = paymentRequest.getPaymentMethod();
 
+            log.debug("【支付策略】选择支付策略：{}，用户ID：{}", paymentMethod, paymentRequest.getUserId());
+
             // 5. 使用策略模式获取对应的支付策略
             PaymentStrategy strategy = paymentStrategyFactory.getStrategy(paymentMethod);
+
+            log.debug("【支付处理】执行支付创建，策略：{}，用户ID：{}",
+                strategy.getClass().getSimpleName(), paymentRequest.getUserId());
 
             // 6. 执行支付创建
             PaymentResponseVO response = strategy.createPayment(paymentRequest);
@@ -141,13 +156,19 @@ public class PaymentServiceImpl implements PaymentService {
             // 7. 记录支付创建审计日志
             recordCreatePaymentAudit(paymentRequest, response);
 
+            log.info("【支付创建】支付创建成功，用户ID：{}，订单号：{}",
+                paymentRequest.getUserId(), response.getOrderNo());
+
             return response;
 
         } catch (PaymentException | ResourceNotFoundException e) {
+            log.warn("【支付创建】支付创建失败，用户ID：{}，原因：{}",
+                paymentRequest.getUserId(), e.getMessage());
             // 业务异常直接抛出，由全局异常处理器处理
             throw e;
         } catch (Exception e) {
-            log.error("创建支付异常", e);
+            log.error("【支付创建】支付创建异常，用户ID：{}，错误：{}",
+                paymentRequest.getUserId(), e.getMessage(), e);
             throw new PaymentException("创建支付失败", e.getMessage());
         }
     }
@@ -439,27 +460,35 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     public boolean handlePaymentNotify(String notifyBody, String signature, String requestTime, String clientId) {
         try {
-            log.info("收到支付回调通知，clientId: {}, requestTime: {}", clientId, requestTime);
+            log.info("【支付回调】收到支付回调通知，clientId：{}，requestTime：{}", clientId, requestTime);
+
+            log.debug("【支付回调】生成回调唯一标识进行防重放检查");
 
             // 生成回调唯一标识进行防重放攻击检查
             String callbackId = generateCallbackId(clientId, requestTime, signature);
             if (redisPaymentSecurityService.isCallbackProcessed(callbackId)) {
-                log.warn("检测到重放攻击，回调ID: {}", callbackId);
+                log.warn("【支付回调】检测到重放攻击，回调ID：{}", callbackId);
                 return false;
             }
 
+            log.debug("【支付回调】开始验证签名，回调ID：{}", callbackId);
+
             // 验证签名
             if (!verifyNotifySignature("/api/payment/alipay/notify", "POST", clientId, requestTime, signature, notifyBody)) {
-                log.error("支付回调签名验证失败");
+                log.error("【支付回调】签名验证失败，回调ID：{}", callbackId);
                 throw PaymentException.callbackVerificationFailed("签名验证失败");
             }
+
+            log.debug("【支付回调】签名验证成功，回调ID：{}", callbackId);
+
+            log.debug("【支付回调】开始解析回调内容");
 
             // 解析回调内容
             JsonNode notifyJson;
             try {
                 notifyJson = objectMapper.readTree(notifyBody);
             } catch (Exception e) {
-                log.error("解析回调内容失败: {}", notifyBody, e);
+                log.error("【支付回调】解析回调内容失败：{}", LogUtils.truncateContent(notifyBody), e);
                 throw PaymentException.callbackVerificationFailed("回调内容格式错误");
             }
 
@@ -468,17 +497,24 @@ public class PaymentServiceImpl implements PaymentService {
             String paymentStatus = extractFromNotify(notifyJson, "paymentStatus");
             String transactionId = extractFromNotify(notifyJson, "paymentId");
 
+            log.debug("【支付回调】提取关键信息 - paymentRequestId：{}，paymentStatus：{}，transactionId：{}",
+                paymentRequestId, paymentStatus, transactionId);
+
             if (!StringUtils.hasText(paymentRequestId)) {
-                log.error("回调中缺少paymentRequestId");
+                log.error("【支付回调】回调中缺少paymentRequestId");
                 throw PaymentException.callbackVerificationFailed("缺少paymentRequestId");
             }
+
+            log.debug("【支付回调】查找订单，paymentRequestId：{}", paymentRequestId);
 
             // 查找订单
             UserOrder order = orderService.getOrderByPaymentRequestId(paymentRequestId);
             if (order == null) {
-                log.error("未找到对应订单，paymentRequestId: {}", paymentRequestId);
+                log.error("【支付回调】未找到对应订单，paymentRequestId：{}", paymentRequestId);
                 throw ResourceNotFoundException.orderNotFound(paymentRequestId);
             }
+
+            log.debug("【支付回调】找到订单，订单号：{}，当前状态：{}", order.getOrderNo(), order.getPaymentStatus());
 
             // 检查订单是否过期
             if (orderService.isOrderExpired(order.getOrderNo())) {

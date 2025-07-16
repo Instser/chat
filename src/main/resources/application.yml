@@ -313,10 +313,20 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,prometheus
+        # 暴露日志管理端点和其他监控端点
+        include: health,info,metrics,prometheus,loggers
+      # 只允许localhost访问
+      base-path: /actuator
   endpoint:
     health:
       show-details: when-authorized
+    # 日志级别管理端点配置
+    loggers:
+      enabled: true
+  # 安全配置 - 只允许localhost访问
+  server:
+    address: 127.0.0.1
+    port: 8081
   metrics:
     export:
       prometheus:
@@ -334,3 +344,37 @@ async:
   thread-name-prefix: "ChatAsync-"
   # 线程存活时间 (秒)
   keep-alive-seconds: 60
+
+# Google Gemini API配置
+gemini:
+  api:
+    # Gemini API密钥（向后兼容）
+    key: ${GEMINI_API_KEY:your-google-api-key}
+
+    # 多个API密钥列表（密钥轮询管理）
+    keys:
+      - ${GEMINI_API_KEY:your-google-api-key}
+      # 可以添加更多密钥
+      # - your-google-api-key2
+      # - your-google-api-key3
+
+    # 轮询策略：ROUND_ROBIN(轮询), RANDOM(随机), WEIGHTED(加权)
+    strategy: ${GEMINI_STRATEGY:ROUND_ROBIN}
+
+    # Gemini API基础URL
+    base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
+
+    # 请求超时时间（毫秒）
+    timeout: ${GEMINI_TIMEOUT:10000}
+
+    # 重试次数（向后兼容）
+    retry-count: ${GEMINI_RETRY_COUNT:3}
+
+    # 密钥健康检查间隔（秒）
+    health-check-interval: ${GEMINI_HEALTH_CHECK_INTERVAL:300}
+
+    # 密钥失败重试次数
+    max-retries: ${GEMINI_MAX_RETRIES:3}
+
+    # 密钥禁用时间（秒）
+    disable-timeout: ${GEMINI_DISABLE_TIMEOUT:600}

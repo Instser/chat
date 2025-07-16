@@ -1,7 +1,7 @@
 package com.instser.chat.service;
 
 import com.baomidou.mybatisplus.extension.service.IService;
-import com.instser.chat.entity.TavilySearchResponse;
+import com.instser.chat.entity.SearchResponse;
 import com.instser.chat.entity.WebSearchContent;
 
 import java.util.List;
@@ -24,7 +24,7 @@ public interface WebSearchContentService extends IService<WebSearchContent> {
      * @return 是否保存成功
      */
     boolean saveWebSearchContent(String messageId,
-                                TavilySearchResponse searchResponse, Long userId, String sessionId);
+                                SearchResponse searchResponse, Long userId, String sessionId);
 
     /**
      * 根据消息ID获取联网内容
@@ -43,7 +43,7 @@ public interface WebSearchContentService extends IService<WebSearchContent> {
      * @return 是否更新成功
      */
     boolean updateWebSearchContent(String oldMessageId, String newMessageId,
-                                  TavilySearchResponse searchResponse);
+                                  SearchResponse searchResponse);
 
     /**
      * 删除联网内容（消息删除时自动触发）

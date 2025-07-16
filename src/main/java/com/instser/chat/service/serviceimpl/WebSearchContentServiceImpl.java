@@ -3,9 +3,9 @@ package com.instser.chat.service.serviceimpl;
 import com.alibaba.fastjson.JSON;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.instser.chat.dao.WebSearchContentDao;
-import com.instser.chat.entity.TavilySearchResponse;
-import com.instser.chat.entity.TavilySearchResult;
+import com.instser.chat.entity.SearchResponse;
 import com.instser.chat.entity.WebSearchContent;
+import com.instser.chat.entity.WebSearchResult;
 
 import com.instser.chat.service.WebSearchContentService;
 import lombok.extern.slf4j.Slf4j;
@@ -38,7 +38,7 @@ public class WebSearchContentServiceImpl extends ServiceImpl<WebSearchContentDao
     @Override
     @Transactional
     public boolean saveWebSearchContent(String messageId,
-                                      TavilySearchResponse searchResponse, Long userId, String sessionId) {
+                                      SearchResponse searchResponse, Long userId, String sessionId) {
         try {
             // 参数验证
             if (messageId == null || messageId.trim().isEmpty()) {
@@ -105,7 +105,7 @@ public class WebSearchContentServiceImpl extends ServiceImpl<WebSearchContentDao
     @Override
     @Transactional
     public boolean updateWebSearchContent(String oldMessageId, String newMessageId,
-                                        TavilySearchResponse searchResponse) {
+                                        SearchResponse searchResponse) {
         try {
             // 参数验证
             if (oldMessageId == null || oldMessageId.trim().isEmpty()) {
@@ -182,18 +182,17 @@ public class WebSearchContentServiceImpl extends ServiceImpl<WebSearchContentDao
     }
 
     /**
-     * 格式化搜索结果为优化JSON（保留favicon，限制content为500字符）
+     * 格式化搜索结果为优化JSON（只包含title和url字段）
      */
-    private String formatSearchResponseToOptimizedJson(TavilySearchResponse searchResponse) {
+    private String formatSearchResponseToOptimizedJson(SearchResponse searchResponse) {
         List<Map<String, String>> validResults = new ArrayList<>();
         if (searchResponse.getResults() != null) {
-            for (TavilySearchResult result : searchResponse.getResults()) {
+            for (WebSearchResult result : searchResponse.getResults()) {
                 if (isValidResult(result)) {
                     Map<String, String> resultMap = new HashMap<>();
                     resultMap.put("url", result.getUrl() != null ? result.getUrl() : "");
                     resultMap.put("title", result.getTitle() != null ? result.getTitle() : "");
-                    resultMap.put("content", truncateContent(result.getContent()));
-                    resultMap.put("favicon", result.getFavicon() != null ? result.getFavicon() : "");
+                    // 不再包含content和favicon字段
                     validResults.add(resultMap);
                 }
             }
@@ -201,19 +200,16 @@ public class WebSearchContentServiceImpl extends ServiceImpl<WebSearchContentDao
         return JSON.toJSONString(validResults);
     }
 
-    private boolean isValidResult(TavilySearchResult result) {
+    private boolean isValidResult(WebSearchResult result) {
         return result != null &&
                (StringUtils.hasText(result.getUrl()) ||
                 StringUtils.hasText(result.getTitle()) ||
                 StringUtils.hasText(result.getContent()));
     }
 
-    private String truncateContent(String content) {
-        if (content == null) return "";
-        return content.length() > 500 ? content.substring(0, 500) + "..." : content;
-    }
 
-    private int getValidResultCount(TavilySearchResponse searchResponse) {
+
+    private int getValidResultCount(SearchResponse searchResponse) {
         if (searchResponse.getResults() == null) return 0;
         return (int) searchResponse.getResults().stream()
                 .filter(this::isValidResult)

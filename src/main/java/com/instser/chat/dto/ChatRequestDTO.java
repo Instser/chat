@@ -1,6 +1,6 @@
 package com.instser.chat.dto;
 
-import com.instser.chat.entity.TavilySearchResult;
+import com.instser.chat.entity.WebSearchResult;
 import lombok.Data;
 
 import java.util.List;
@@ -53,7 +53,7 @@ public class ChatRequestDTO {
     /**
      * 联网搜索结果（内部使用，不从请求中解析）
      */
-    private List<TavilySearchResult> networkSearchResults;
+    private List<WebSearchResult> networkSearchResults;
 
     /**
      * 原始消息列表（用于标题生成，不包含联网搜索内容，内部使用）

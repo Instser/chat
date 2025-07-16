@@ -4,6 +4,7 @@ import com.instser.chat.common.exception.FileUploadException;
 import com.instser.chat.common.result.Result;
 import com.instser.chat.common.result.ResultCode;
 import com.instser.chat.common.util.ErrorResponseUtil;
+import com.instser.chat.common.util.LogUtils;
 import com.instser.chat.entity.FileUpload;
 import com.instser.chat.security.UserDetailsServiceImpl;
 import com.instser.chat.service.FileUploadService;
@@ -58,15 +59,22 @@ public class FileController {
             @RequestParam("files") MultipartFile[] files,
             Authentication authentication) {
 
+        Long userId = getCurrentUserId(authentication);
+
+        log.info("【API调用】文件上传接口，用户ID：{}，文件数量：{}", userId, files != null ? files.length : 0);
+
         if (files == null || files.length == 0) {
+            log.warn("【API拒绝】文件为空，用户ID：{}", userId);
             return ErrorResponseUtil.fileEmpty();
         }
 
-        Long userId = getCurrentUserId(authentication);
-
         try {
+            log.debug("【文件上传】开始批量上传文件，用户ID：{}，文件数量：{}", userId, files.length);
+
             // 使用服务层进行文件上传（不传递sessionId和messageId，这些将在chat成功后更新）
             List<FileUpload> uploadedFiles = fileUploadService.uploadFiles(files, userId, null, null);
+
+            log.debug("【文件验证】开始校验存储完成性，用户ID：{}，上传文件数：{}", userId, uploadedFiles.size());
 
             // 校验存储完成性
             List<String> validatedFileIds = new ArrayList<>();
@@ -90,10 +98,10 @@ public class FileController {
                         fileInfo.put("fileName", fileUpload.getFileName());
                         validatedFiles.add(fileInfo);
 
-                        log.info("文件存储校验成功：文件ID={}, 文件名={}, 用户ID={}",
+                        log.debug("【文件验证】文件存储校验成功，文件ID：{}，文件名：{}，用户ID：{}",
                                 fileUpload.getFileId(), fileUpload.getFileName(), userId);
                     } else {
-                        log.error("文件存储校验失败：文件ID={}, 文件名={}, 用户ID={}",
+                        log.error("【文件验证】文件存储校验失败，文件ID：{}，文件名：{}，用户ID：{}",
                                 fileUpload.getFileId(), fileUpload.getFileName(), userId);
                         failedFiles.add(fileUpload);
                     }
@@ -103,11 +111,12 @@ public class FileController {
             // 清理验证失败的文件的临时文件
             if (!failedFiles.isEmpty()) {
                 fileUploadService.cleanupTempFiles(failedFiles);
-                log.info("清理了 {} 个验证失败的临时文件", failedFiles.size());
+                log.warn("【文件清理】清理了{}个验证失败的临时文件，用户ID：{}", failedFiles.size(), userId);
             }
 
             // 检查是否有文件上传成功
             if (validatedFileIds.isEmpty()) {
+                log.warn("【API响应】所有文件上传失败，用户ID：{}", userId);
                 return ErrorResponseUtil.fileUploadFailed();
             }
 
@@ -118,10 +127,14 @@ public class FileController {
             response.put("files", validatedFiles); // 文件详细信息数组
             response.put("message", "Upload succeed");
 
+            log.info("【API响应】文件上传成功，用户ID：{}，成功文件数：{}，文件ID：{}",
+                userId, validatedFileIds.size(), String.join(",", validatedFileIds));
+
             return Result.success(response, "OK");
 
         } catch (FileUploadException e) {
-            log.error("文件上传失败: {} - {}", e.getErrorType(), e.getErrorMessage());
+            log.error("【API异常】文件上传失败，用户ID：{}，错误类型：{}，错误信息：{}",
+                userId, e.getErrorType(), e.getErrorMessage());
 
             // 根据错误类型返回对应的错误响应
             switch (e.getErrorType()) {

@@ -73,83 +73,37 @@
         <appender-ref ref="ERROR_FILE"/>
     </appender>
     
-    <!-- 开发环境配置 -->
-    <springProfile name="dev,default">
-        <!-- 应用日志级别 -->
-        <logger name="com.instser.chat" level="DEBUG" additivity="false">
-            <appender-ref ref="CONSOLE"/>
-            <appender-ref ref="ASYNC_FILE"/>
-            <appender-ref ref="ASYNC_ERROR_FILE"/>
-        </logger>
+    <!-- 统一配置 - 通过启动参数控制日志级别 -->
+    <!-- 应用日志级别 - 默认INFO，可通过logging.level.com.instser.chat=DEBUG覆盖 -->
+    <logger name="com.instser.chat" level="INFO" additivity="false">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_FILE"/>
+        <appender-ref ref="ASYNC_ERROR_FILE"/>
+    </logger>
 
-        <!-- 减少第三方库日志输出 -->
-        <logger name="com.alibaba.druid" level="WARN"/>
-        <logger name="org.apache.ibatis" level="ERROR"/>
-        <logger name="org.springframework" level="INFO"/>
-        <logger name="org.apache.catalina" level="INFO"/>
-        <logger name="org.apache.tomcat" level="INFO"/>
-        <logger name="org.hibernate" level="WARN"/>
-        <logger name="org.springframework.web" level="INFO"/>
-        <logger name="org.springframework.security" level="INFO"/>
+    <!-- 第三方库日志配置 - 可通过启动参数覆盖 -->
+    <logger name="com.alibaba.druid" level="WARN"/>
+    <logger name="org.apache.ibatis" level="ERROR"/>
+    <logger name="org.springframework" level="INFO"/>
+    <logger name="org.apache.catalina" level="INFO"/>
+    <logger name="org.apache.tomcat" level="INFO"/>
+    <logger name="org.hibernate" level="WARN"/>
+    <logger name="org.springframework.web" level="INFO"/>
+    <logger name="org.springframework.security" level="INFO"/>
 
-        <!-- MyBatis SQL日志配置 - 只在错误时记录 -->
-        <logger name="com.instser.chat.dao" level="ERROR"/>
-        <logger name="org.apache.ibatis.logging.jdbc" level="ERROR"/>
-        <logger name="java.sql.Connection" level="ERROR"/>
-        <logger name="java.sql.Statement" level="ERROR"/>
-        <logger name="java.sql.PreparedStatement" level="ERROR"/>
-        <logger name="java.sql.ResultSet" level="ERROR"/>
+    <!-- MyBatis SQL日志配置 - 可通过logging.level.com.instser.chat.dao=DEBUG开启SQL日志 -->
+    <logger name="com.instser.chat.dao" level="ERROR"/>
+    <logger name="org.apache.ibatis.logging.jdbc" level="ERROR"/>
+    <logger name="java.sql.Connection" level="ERROR"/>
+    <logger name="java.sql.Statement" level="ERROR"/>
+    <logger name="java.sql.PreparedStatement" level="ERROR"/>
+    <logger name="java.sql.ResultSet" level="ERROR"/>
 
-        <!-- 根日志级别 -->
-        <root level="INFO">
-            <appender-ref ref="CONSOLE"/>
-            <appender-ref ref="ASYNC_FILE"/>
-            <appender-ref ref="ASYNC_ERROR_FILE"/>
-        </root>
-    </springProfile>
-    
-    <!-- 生产环境配置 -->
-    <springProfile name="prod">
-        <!-- 应用日志级别 -->
-        <logger name="com.instser.chat" level="INFO" additivity="false">
-            <appender-ref ref="ASYNC_FILE"/>
-            <appender-ref ref="ASYNC_ERROR_FILE"/>
-        </logger>
-        
-        <!-- 减少第三方库日志输出 -->
-        <logger name="com.alibaba.druid" level="WARN"/>
-        <logger name="org.apache.ibatis" level="ERROR"/>
-        <logger name="org.springframework" level="WARN"/>
-        <logger name="org.apache.catalina" level="WARN"/>
-        <logger name="org.apache.tomcat" level="WARN"/>
+    <!-- 根日志级别 - 默认INFO，可通过logging.level.root=WARN覆盖 -->
+    <root level="INFO">
+        <appender-ref ref="CONSOLE"/>
+        <appender-ref ref="ASYNC_FILE"/>
+        <appender-ref ref="ASYNC_ERROR_FILE"/>
+    </root>
 
-        <!-- MyBatis SQL日志配置 - 只在错误时记录 -->
-        <logger name="com.instser.chat.dao" level="ERROR"/>
-        <logger name="org.apache.ibatis.logging.jdbc" level="ERROR"/>
-        <logger name="java.sql.Connection" level="ERROR"/>
-        <logger name="java.sql.Statement" level="ERROR"/>
-        <logger name="java.sql.PreparedStatement" level="ERROR"/>
-        <logger name="java.sql.ResultSet" level="ERROR"/>
-        
-        <!-- 根日志级别 -->
-        <root level="WARN">
-            <appender-ref ref="ASYNC_FILE"/>
-            <appender-ref ref="ASYNC_ERROR_FILE"/>
-        </root>
-    </springProfile>
-    
-    <!-- 测试环境配置 -->
-    <springProfile name="test">
-        <!-- 应用日志级别 -->
-        <logger name="com.instser.chat" level="DEBUG" additivity="false">
-            <appender-ref ref="CONSOLE"/>
-            <appender-ref ref="ASYNC_FILE"/>
-        </logger>
-        
-        <!-- 根日志级别 -->
-        <root level="INFO">
-            <appender-ref ref="CONSOLE"/>
-            <appender-ref ref="ASYNC_FILE"/>
-        </root>
-    </springProfile>
 </configuration>

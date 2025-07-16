@@ -14,8 +14,8 @@
 - **汇率服务**: 完整的实时汇率API系统 (exchangerate-api.com)
 - **缓存系统**: Redis 分布式缓存 (your-db-host.example.com:31122)
 - **分布式锁**: Redisson 3.24.3 (基于Redis实现)
-- **联网搜索**: Tavily Search API集成 (your-tavily-api-key)
-- **内容提取**: Tavily Extract API集成，支持URL详细内容提取
+- **联网搜索**: 联网AI模块 (专用联网AI模型，支持结构化响应)
+- **内容提取**: 联网AI一体化处理，智能内容获取和摘要生成
 
 ## 开发环境设置
 - **编码**: UTF-8
@@ -42,8 +42,8 @@
 - **图片解析策略**: AI服务集成，Base64编码传输，JSON格式响应解析
 - **支付安全策略**: Redis分布式缓存实现支付频率限制、防重放攻击、可疑行为记录
 - **分布式锁策略**: Redisson实现订单状态保护、用户支付会话管理
-- **联网搜索策略**: Tavily Search API集成，支持实时网络信息检索，JSON格式请求响应
-- **内容提取策略**: Tavily Extract API集成，支持URL详细内容提取，Markdown格式输出，批量处理
+- **联网搜索策略**: 联网AI模块重构，单步式智能联网搜索，结构化JSON响应，自动内容摘要
+- **内容适配策略**: NetworkAiService适配器模式，保持与现有存储逻辑的完全兼容性
 
 ## 数据库设计规范
 - **命名**: 下划线命名法
