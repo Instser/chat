@@ -972,10 +972,10 @@ No 'Access-Control-Allow-Origin' header is present on the requested resource.
    - **安全审计日志**: 详细记录所有OAuth操作，支持安全事件监控
 
 2. **OAuth2核心层**:
-   - **OAuth2Controller**: 处理登录URL生成、回调处理、账号绑定/解绑
+   - **OAuth2Controller**: 处理OAuth2登录、账号绑定，前端主导流程
    - **OAuth2Service**: 业务逻辑处理，用户信息获取，账号合并策略
    - **OAuth2SecurityConfig**: 安全配置管理，状态验证，错误处理
-   - **OAuth2ErrorHandler**: 统一错误处理，用户友好提示
+   - **前端主导架构**: 前端负责OAuth2流程控制，后端专注业务逻辑
 
 3. **数据持久层**:
    - **UserOAuth表**: OAuth账号绑定信息，支持多提供商绑定

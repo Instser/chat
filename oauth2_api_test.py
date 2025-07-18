@@ -165,23 +165,7 @@ class OAuth2ApiTester:
         except Exception as e:
             self.log_test_result(test_name, False, f"请求异常: {str(e)}")
     
-    def test_oauth2_unbind_endpoint(self):
-        """测试OAuth2解绑端点"""
-        test_name = "OAuth2解绑端点测试"
-        
-        try:
-            url = f"{self.base_url}/auth/oauth2/unbind/google"
-            
-            # 不带认证信息的请求
-            response = self.session.delete(url)
-            
-            if response.status_code in [401, 403]:
-                self.log_test_result(test_name, True, f"未认证解绑请求正确返回: {response.status_code}")
-            else:
-                self.log_test_result(test_name, False, f"未认证解绑请求响应异常: {response.status_code}", response)
-                
-        except Exception as e:
-            self.log_test_result(test_name, False, f"请求异常: {str(e)}")
+
     
     def test_server_connectivity(self):
         """测试服务器连通性"""
@@ -292,9 +276,8 @@ class OAuth2ApiTester:
         # 4. OAuth2用户信息端点测试
         self.test_oauth2_user_info_endpoint()
         
-        # 5. OAuth2绑定/解绑端点测试
+        # 5. OAuth2绑定端点测试
         self.test_oauth2_bind_endpoint()
-        self.test_oauth2_unbind_endpoint()
         
         # 6. OAuth2配置测试
         self.test_oauth2_configuration()

@@ -1,6 +1,7 @@
 package com.instser.chat.controller;
 
 import com.instser.chat.common.result.Result;
+import com.instser.chat.dto.OAuth2LoginRequest;
 import com.instser.chat.dto.OAuth2LoginResult;
 import com.instser.chat.dto.OAuth2UserInfo;
 import com.instser.chat.entity.Package;
@@ -40,7 +41,7 @@ import java.util.List;
  * @since 2025-07-16
  */
 @RestController
-@RequestMapping("/auth/oauth2")
+@RequestMapping("/oauth2")
 @Slf4j
 @Validated
 @Tag(name = "OAuth2认证", description = "OAuth2登录、绑定、解绑等功能")
@@ -70,8 +71,7 @@ public class OAuth2Controller {
     @Operation(summary = "OAuth2 API登录", description = "处理前端主导的OAuth2登录并返回用户数据")
     public ResponseEntity<Result<UserVO>> handleApiLogin(
             @PathVariable @Pattern(regexp = "^(google|github)$", message = "不支持的OAuth提供商") String provider,
-            @RequestParam String code,
-            @RequestParam(required = false) String error,
+            @RequestBody @Validated OAuth2LoginRequest loginRequest,
             HttpServletRequest request,
             HttpServletResponse response) {
 
@@ -82,19 +82,11 @@ public class OAuth2Controller {
         log.info("【API调用】OAuth2 API登录接口，提供商：{}，客户端IP：{}", provider, clientIp);
 
         try {
-            // 1. 处理OAuth错误
-            if (StringUtils.hasText(error)) {
-                String errorMessage = getOAuthErrorMessage(error);
-                auditService.logOAuth2Event(null, provider, "API_LOGIN", "OAUTH_ERROR",
-                    clientIp, userAgent, System.currentTimeMillis() - startTime, error, errorMessage);
-                return ResponseEntity.ok(Result.failed(errorMessage));
-            }
-
-            // 2. 前端主导流程，直接处理用户信息获取
+            // 1. 前端主导流程，直接处理用户信息获取
             log.debug("【OAuth2处理】前端主导流程，开始获取用户信息，提供商：{}", provider);
 
-            // 3. 获取用户信息
-            OAuth2UserInfo userInfo = oauth2Service.getUserInfo(provider, code);
+            // 2. 获取用户信息
+            OAuth2UserInfo userInfo = oauth2Service.getUserInfo(provider, loginRequest.getCode());
 
             log.debug("【OAuth2处理】用户信息获取成功，开始处理登录，OAuth用户ID：{}", userInfo.getId());
 
@@ -153,7 +145,7 @@ public class OAuth2Controller {
     @Operation(summary = "绑定OAuth账号", description = "为当前用户绑定指定的OAuth账号")
     public ResponseEntity<Result<String>> bindOAuthAccount(
             @PathVariable String provider,
-            @RequestParam String code,
+            @RequestBody @Validated OAuth2LoginRequest bindRequest,
             Authentication authentication,
             HttpServletRequest request) {
 
@@ -162,7 +154,7 @@ public class OAuth2Controller {
         Long userId = getCurrentUserId(authentication);
 
         try {
-            oauth2Service.bindOAuthAccount(userId, provider, code, clientIp);
+            oauth2Service.bindOAuthAccount(userId, provider, bindRequest.getCode(), clientIp);
 
             auditService.logOAuth2Event(userId, provider, "BIND", "SUCCESS",
                 clientIp, userAgent, 0, null, null);
@@ -177,36 +169,7 @@ public class OAuth2Controller {
         }
     }
 
-    /**
-     * 解绑OAuth账号 - 新增功能
-     */
-    @DeleteMapping("/unbind/{provider}")
-    @PreAuthorize("hasRole('USER')")
-    @Operation(summary = "解绑OAuth账号", description = "解绑当前用户的指定OAuth账号")
-    public ResponseEntity<Result<String>> unbindOAuthAccount(
-            @PathVariable String provider,
-            Authentication authentication,
-            HttpServletRequest request) {
 
-        String clientIp = getClientIp(request);
-        String userAgent = request.getHeader("User-Agent");
-        Long userId = getCurrentUserId(authentication);
-
-        try {
-            oauth2Service.unbindOAuthAccount(userId, provider);
-
-            auditService.logOAuth2Event(userId, provider, "UNBIND", "SUCCESS",
-                clientIp, userAgent, 0, null, null);
-
-            return ResponseEntity.ok(Result.success("账号解绑成功"));
-
-        } catch (OAuth2Exception e) {
-            auditService.logOAuth2Event(userId, provider, "UNBIND", "FAILED",
-                clientIp, userAgent, 0, e.getErrorCode(), e.getMessage());
-
-            return ResponseEntity.ok(Result.failed(e.getMessage()));
-        }
-    }
 
     /**
      * 获取用户绑定的OAuth账号列表
@@ -222,6 +185,8 @@ public class OAuth2Controller {
 
         return ResponseEntity.ok(Result.success(bindings));
     }
+
+
 
     /**
      * 获取支持的OAuth提供商列表
@@ -303,21 +268,7 @@ public class OAuth2Controller {
         }
     }
 
-    /**
-     * 获取OAuth错误消息
-     */
-    private String getOAuthErrorMessage(String error) {
-        return switch (error) {
-            case "access_denied" -> "用户拒绝授权";
-            case "invalid_request" -> "请求参数无效";
-            case "unauthorized_client" -> "客户端未授权";
-            case "unsupported_response_type" -> "不支持的响应类型";
-            case "invalid_scope" -> "无效的权限范围";
-            case "server_error" -> "服务器错误";
-            case "temporarily_unavailable" -> "服务暂时不可用";
-            default -> "未知错误: " + error;
-        };
-    }
+
 
 
 

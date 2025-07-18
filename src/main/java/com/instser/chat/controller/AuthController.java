@@ -4,7 +4,7 @@ import com.instser.chat.common.result.Result;
 import com.instser.chat.common.util.ErrorResponseUtil;
 import com.instser.chat.dto.request.ChangePasswordRequest;
 import com.instser.chat.dto.request.LoginRequest;
-import com.instser.chat.dto.request.RegisterRequest;
+
 import com.instser.chat.dto.request.UpdateProfileRequest;
 import com.instser.chat.entity.Package;
 import com.instser.chat.entity.User;
@@ -17,9 +17,7 @@ import com.instser.chat.util.JwtUtil;
 import com.instser.chat.vo.converter.VOConverter;
 import com.instser.chat.vo.UserVO;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.Parameter;
-import io.swagger.v3.oas.annotations.responses.ApiResponse;
-import io.swagger.v3.oas.annotations.responses.ApiResponses;
+
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
@@ -29,8 +27,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 
-import java.util.List;
-import java.util.Map;
+
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -64,33 +61,7 @@ public class AuthController {
     private final PackageService packageService;
     private final JwtUtil jwtUtil;
     
-    /**
-     * 用户注册 - 已禁用，引导用户使用OAuth2登录
-     */
-    @Operation(summary = "用户注册（已禁用）", description = "传统邮箱注册已禁用，请使用Google或GitHub登录")
-    @ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "返回引导信息"),
-        @ApiResponse(responseCode = "400", description = "功能已禁用")
-    })
-    @PostMapping("/register")
-    public ResponseEntity<?> register(
-            @Parameter(description = "注册请求信息", required = true)
-            @Valid @RequestBody RegisterRequest request,
-            HttpServletResponse response) {
-        log.info("【API调用】用户尝试使用传统注册接口，邮箱：{}，用户名：{} - 已禁用",
-            request.getEmail(), request.getUsername());
 
-        // 返回引导用户使用OAuth2登录的提示
-        Map<String, Object> data = Map.of(
-            "message", "传统邮箱注册已禁用，请使用Google或GitHub账号登录注册",
-            "oauth2_providers", List.of("google", "github"),
-            "oauth2_login_url", "/api/oauth2/login/{provider}",
-            "error_code", "REGISTRATION_DISABLED"
-        );
-
-        return ResponseEntity.ok(Result.success(data,
-            "Traditional email registration is disabled. Please use Google or GitHub to sign up."));
-    }
     
     /**
      * 用户登录
@@ -167,8 +138,7 @@ public class AuthController {
                 userVO.setPackageId(packageInfo.getPackageId());
             }
 
-            // 设置绑定状态（对于/auth/me接口，默认为普通登录状态）
-            userVO.setBind(0);
+
 
             return ResponseEntity.ok(Result.success(userVO, "获取用户信息成功"));
 
@@ -251,21 +221,16 @@ public class AuthController {
     public ResponseEntity<Result<Void>> changePassword(@Valid @RequestBody ChangePasswordRequest request,
                                                       Authentication authentication) {
         try {
-            UserDetailsServiceImpl.CustomUserDetails userDetails = 
+            UserDetailsServiceImpl.CustomUserDetails userDetails =
                 (UserDetailsServiceImpl.CustomUserDetails) authentication.getPrincipal();
             User user = userDetails.getUser();
-            
-            // 验证当前密码
-            if (!userService.checkPassword(request.getCurrentPassword(), user.getPassword())) {
-                return ResponseEntity.badRequest().body(Result.failed("当前密码错误"));
-            }
-            
-            // 更新密码
+
+            // 直接更新密码，无需验证当前密码
             userService.updatePassword(user.getId(), request.getNewPassword());
-            
+
             log.info("用户修改密码成功: {}", user.getUsername());
             return ResponseEntity.ok(Result.success(null, "密码修改成功"));
-            
+
         } catch (Exception e) {
             log.error("修改密码失败", e);
             return ResponseEntity.status(500).body(Result.failed("密码修改失败"));

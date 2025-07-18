@@ -100,14 +100,14 @@ curl -X POST "http://localhost:8080/api/package/info" \
     "paymentMethods": [
       {
         "id": "alipay",
-        "name": "支付宝",
+        "name": "AliPay",
         "type": "alipay",
         "available": true
       },
       {
         "id": "wechat",
-        "name": "微信支付",
-        "type": "wechat", 
+        "name": "WeChatPay",
+        "type": "wechat",
         "available": true
       }
     ]

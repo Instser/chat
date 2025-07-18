@@ -177,8 +177,8 @@ public class SecurityConfig {
                 .requestMatchers("/", "/favicon.ico").permitAll()
                 .requestMatchers("/static/**", "/public/**").permitAll()
 
-                // OAuth2接口 - 登录和回调需要公开访问
-                .requestMatchers("/auth/oauth2/login/**", "/auth/oauth2/callback/**").permitAll()
+                // OAuth2接口 - 登录和绑定需要公开访问
+                .requestMatchers("/oauth2/login/**", "/oauth2/bind/**", "/oauth2/providers").permitAll()
 
                 // 支付回调接口 - 允许第三方支付平台回调（无需JWT认证）
                 .requestMatchers("/payment/alipay/notify", "/payment/yipay/notify").permitAll()

@@ -277,13 +277,13 @@ export const EXAMPLE_PACKAGE_INFO_RESPONSE: ApiResult<PackageInfoResponse> = {
     paymentMethods: [
       {
         id: "alipay",
-        name: "支付宝",
+        name: "AliPay",
         type: "alipay",
         available: true
       },
       {
         id: "wechat",
-        name: "微信支付",
+        name: "WeChatPay",
         type: "wechat",
         available: true
       }

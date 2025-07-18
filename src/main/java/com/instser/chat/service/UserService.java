@@ -29,14 +29,15 @@ public interface UserService extends IService<User> {
     User getUserByUsername(String username);
 
     /**
-     * 注册新用户
+     * 注册新用户（OAuth2专用）
      *
      * @param username 用户名
      * @param email    邮箱
-     * @param password 密码
-     * @return 用户ID
+     * @param password 随机密码
+     * @param avatar   头像URL
+     * @return 创建的用户对象
      */
-    Long registerUser(String username, String email, String password);
+    User registerUser(String username, String email, String password, String avatar);
 
     /**
      * 用户登录

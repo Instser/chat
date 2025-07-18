@@ -14,10 +14,7 @@ import java.util.List;
  */
 public interface OAuth2Service {
 
-    /**
-     * 获取授权URL
-     */
-    String getAuthorizationUrl(String provider, String state);
+
 
     /**
      * 获取用户信息
@@ -33,11 +30,6 @@ public interface OAuth2Service {
      * 绑定OAuth账号
      */
     void bindOAuthAccount(Long userId, String provider, String code, String clientIp);
-
-    /**
-     * 解绑OAuth账号
-     */
-    void unbindOAuthAccount(Long userId, String provider);
 
     /**
      * 获取用户OAuth绑定列表

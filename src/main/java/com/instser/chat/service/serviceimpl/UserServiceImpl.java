@@ -52,8 +52,8 @@ public class UserServiceImpl extends ServiceImpl<UserDao, User> implements UserS
 
     @Override
     @Transactional
-    public Long registerUser(String username, String email, String password) {
-        log.info("【用户注册开始】邮箱：{}，用户名：{}", email, username);
+    public User registerUser(String username, String email, String password, String avatar) {
+        log.info("【OAuth2用户注册开始】邮箱：{}，用户名：{}", email, username);
 
         try {
             // 检查邮箱是否已存在
@@ -73,30 +73,36 @@ public class UserServiceImpl extends ServiceImpl<UserDao, User> implements UserS
             log.debug("【注册验证】用户名验证通过：{}", username);
 
             // 创建用户
+            LocalDateTime now = LocalDateTime.now();
             User user = new User();
             user.setUsername(username);
             user.setEmail(email);
-            user.setPassword(passwordEncoder.encode(password));
+            user.setPassword(passwordEncoder.encode(password)); // OAuth2用户的随机密码
+            user.setAvatar(avatar);
             user.setRole("user");
             user.setStatus(1);
-            user.setCreatedTime(LocalDateTime.now());
-            user.setUpdateTime(LocalDateTime.now());
+            user.setLastLoginTime(now); // OAuth2注册即登录，设置最后登录时间
+            user.setCreatedTime(now);
+            user.setUpdateTime(now);
 
             this.save(user);
 
-            log.info("【用户注册成功】用户ID：{}，邮箱：{}，用户名：{}",
+            log.info("【OAuth2用户注册成功】用户ID：{}，邮箱：{}，用户名：{}",
                 user.getId(), email, username);
+
+            // 为新用户创建账户信息
+            userAccountService.initUserAccount(user.getId());
 
             // 为新用户自动绑定ID为1的套餐
             bindDefaultPackage(user.getId());
 
-            return user.getId();
+            return user;
 
         } catch (BusinessException e) {
-            log.warn("【用户注册失败】邮箱：{}，原因：{}", email, e.getMessage());
+            log.warn("【OAuth2用户注册失败】邮箱：{}，原因：{}", email, e.getMessage());
             throw e;
         } catch (Exception e) {
-            log.error("【用户注册异常】邮箱：{}，异常：{}", email, e.getMessage(), e);
+            log.error("【OAuth2用户注册异常】邮箱：{}，异常：{}", email, e.getMessage(), e);
             throw new BusinessException("注册失败", e);
         }
     }

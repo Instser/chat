@@ -96,13 +96,13 @@ public class PaymentServiceImpl implements PaymentService {
             // 设置显示名称
             switch (method.toLowerCase()) {
                 case "alipay":
-                    paymentMethod.setName("支付宝");
+                    paymentMethod.setName("AliPay");
                     break;
                 case "wechatpay":
-                    paymentMethod.setName("微信支付");
+                    paymentMethod.setName("WeChatPay");
                     break;
                 case "yipay":
-                    paymentMethod.setName("易支付");
+                    paymentMethod.setName("YiPay");
                     break;
                 default:
                     paymentMethod.setName(method);

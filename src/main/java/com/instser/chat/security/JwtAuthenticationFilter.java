@@ -115,6 +115,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         // 跳过不需要认证的路径 (注意：context-path是/api，所以这里的路径是相对于/api的)
         return path.startsWith("/auth/login") ||
                path.startsWith("/auth/register") ||
+               path.startsWith("/oauth2/login") ||
+               path.startsWith("/oauth2/providers") ||
                path.startsWith("/druid/") ||
                path.startsWith("/actuator/") ||
                path.startsWith("/error") ||
