@@ -112,7 +112,8 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
         // 使用分布式锁保护订单状态更新
         return distributedLockService.executeOrderLock(orderNo, () -> {
             try {
-                int result = baseMapper.updatePaymentStatus(orderNo, paymentStatus, transactionId);
+                LocalDateTime now = LocalDateTime.now();
+                int result = baseMapper.updatePaymentStatus(orderNo, paymentStatus, transactionId, now, now);
                 if (result > 0) {
                     log.info("更新订单支付状态成功，订单号: {}, 状态: {}, 交易号: {}", orderNo, paymentStatus, transactionId);
                     return true;

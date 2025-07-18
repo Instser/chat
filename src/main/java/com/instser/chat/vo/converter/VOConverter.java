@@ -359,6 +359,13 @@ public class VOConverter {
      * 套餐实体转前端套餐VO（支持汇率转换）
      */
     public static FrontendPackageVO toFrontendPackageVO(Package packageEntity, String currency, ExchangeRateService exchangeRateService) {
+        return toFrontendPackageVO(packageEntity, currency, exchangeRateService, true);
+    }
+
+    /**
+     * 套餐实体转前端套餐VO（支持汇率转换和优惠价格控制）
+     */
+    public static FrontendPackageVO toFrontendPackageVO(Package packageEntity, String currency, ExchangeRateService exchangeRateService, boolean showDiscountPrice) {
         if (packageEntity == null) {
             return null;
         }
@@ -373,8 +380,12 @@ public class VOConverter {
         // 根据请求货币进行价格转换
         frontendPackageVO.setPrice(calculatePrice(packageEntity, currency, exchangeRateService));
 
-        // 设置优惠价格
-        frontendPackageVO.setDiscountPrice(packageEntity.getDiscountPrice());
+        // 根据showDiscountPrice参数决定是否设置优惠价格
+        if (showDiscountPrice && packageEntity.getDiscountPrice() != null) {
+            frontendPackageVO.setDiscountPrice(packageEntity.getDiscountPrice());
+        } else {
+            frontendPackageVO.setDiscountPrice(null);
+        }
 
         // 直接映射有效期天数
         frontendPackageVO.setPeriod(packageEntity.getValidityDays());
@@ -443,12 +454,19 @@ public class VOConverter {
      * 批量转换套餐列表为前端格式（支持汇率转换）
      */
     public static List<FrontendPackageVO> toFrontendPackageVOList(List<Package> packages, String currency, ExchangeRateService exchangeRateService) {
+        return toFrontendPackageVOList(packages, currency, exchangeRateService, true);
+    }
+
+    /**
+     * 批量转换套餐列表为前端格式（支持汇率转换和优惠价格控制）
+     */
+    public static List<FrontendPackageVO> toFrontendPackageVOList(List<Package> packages, String currency, ExchangeRateService exchangeRateService, boolean showDiscountPrice) {
         if (packages == null) {
             return null;
         }
 
         return packages.stream()
-                .map(pkg -> toFrontendPackageVO(pkg, currency, exchangeRateService))
+                .map(pkg -> toFrontendPackageVO(pkg, currency, exchangeRateService, showDiscountPrice))
                 .collect(Collectors.toList());
     }
 

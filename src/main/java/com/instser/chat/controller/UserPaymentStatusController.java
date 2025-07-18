@@ -26,7 +26,7 @@ import java.util.Map;
  */
 @Slf4j
 @RestController
-@RequestMapping("/api/user/status")
+@RequestMapping("/user/status")
 @RequiredArgsConstructor
 @Tag(name = "用户支付状态", description = "用户充值状态查询相关接口")
 public class UserPaymentStatusController {

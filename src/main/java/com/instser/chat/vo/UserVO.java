@@ -76,4 +76,6 @@ public class UserVO implements Serializable {
      */
     @JsonSerialize(using = ToStringSerializer.class)
     private Long packageId;
+
+
 }

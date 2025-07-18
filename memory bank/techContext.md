@@ -7,7 +7,7 @@
 - **数据库**: MySQL 8.0 (已从5.7升级完成)
 - **连接池**: Druid 1.2.23
 - **响应式**: Spring WebFlux (用于流式响应)
-- **安全**: Spring Security Crypto (密码加密)
+- **安全**: Spring Security Crypto (密码加密)、Spring Security OAuth2 Client (第三方登录)
 - **构建工具**: Maven
 - **文档解析**: Apache POI 4.1.2 (Office文档)、Apache PDFBox 2.0.29 (PDF文档)
 - **图片处理**: Base64编码、AI图片解析服务集成
@@ -16,6 +16,9 @@
 - **分布式锁**: Redisson 3.24.3 (基于Redis实现)
 - **联网搜索**: 联网AI模块 (专用联网AI模型，支持结构化响应)
 - **内容提取**: 联网AI一体化处理，智能内容获取和摘要生成
+- **第三方登录**: Google OAuth2、GitHub OAuth2 (完整实施，支持账号绑定和解绑)
+- **OAuth2安全**: OAuth2SecurityUtil安全工具类 (状态令牌、AES加密、设备指纹、风险评分)
+- **OAuth2审计**: OAuth2AuditService审计服务 (异步日志记录、安全事件监控)
 
 ## 开发环境设置
 - **编码**: UTF-8
@@ -44,6 +47,8 @@
 - **分布式锁策略**: Redisson实现订单状态保护、用户支付会话管理
 - **联网搜索策略**: 联网AI模块重构，单步式智能联网搜索，结构化JSON响应，自动内容摘要
 - **内容适配策略**: NetworkAiService适配器模式，保持与现有存储逻辑的完全兼容性
+- **OAuth2认证策略**: 标准OAuth2.0协议，完整实施Google和GitHub第三方登录，账号绑定机制，JWT令牌统一认证
+- **OAuth2安全策略**: CSRF状态验证、AES令牌加密存储、设备指纹识别、风险评分算法、异步审计日志
 
 ## 数据库设计规范
 - **命名**: 下划线命名法

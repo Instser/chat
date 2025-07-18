@@ -1,0 +1,886 @@
+2025-07-17 01:52:03,614 - INFO - ============================================================
+2025-07-17 01:52:03,615 - INFO - 支付模块完整流程测试开始
+2025-07-17 01:52:03,615 - INFO - ============================================================
+2025-07-17 01:52:03,615 - INFO - 测试时间: 2025-07-17 01:52:03
+2025-07-17 01:52:03,615 - INFO - === 开始用户登录 ===
+2025-07-17 01:52:04,111 - INFO - 登录成功，用户ID: None
+2025-07-17 01:52:04,111 - INFO - === 获取支付前用户账户信息 ===
+2025-07-17 01:52:04,130 - ERROR - 获取账户信息请求失败: 401
+2025-07-17 01:52:04,130 - ERROR - ❌ 获取支付前账户信息失败
+2025-07-17 01:52:34,862 - INFO - ============================================================
+2025-07-17 01:52:34,863 - INFO - 支付模块完整流程测试开始
+2025-07-17 01:52:34,863 - INFO - ============================================================
+2025-07-17 01:52:34,863 - INFO - 测试时间: 2025-07-17 01:52:34
+2025-07-17 01:52:34,863 - INFO - === 开始用户登录 ===
+2025-07-17 01:52:34,886 - INFO - 登录响应: {
+  "code": 200,
+  "message": "操作成功",
+  "data": {
+    "code": 422,
+    "message": "usernameOrEmail用户名或邮箱不能为空"
+  },
+  "timestamp": 1752688354884
+}
+2025-07-17 01:52:34,886 - INFO - 登录成功，用户ID: None, Token: None...
+2025-07-17 01:52:34,886 - INFO - === 获取支付前用户账户信息 ===
+2025-07-17 01:52:34,889 - ERROR - 获取账户信息请求失败: 401
+2025-07-17 01:52:34,889 - ERROR - ❌ 获取支付前账户信息失败
+2025-07-17 01:52:59,549 - INFO - ============================================================
+2025-07-17 01:52:59,549 - INFO - 支付模块完整流程测试开始
+2025-07-17 01:52:59,549 - INFO - ============================================================
+2025-07-17 01:52:59,549 - INFO - 测试时间: 2025-07-17 01:52:59
+2025-07-17 01:52:59,549 - INFO - === 开始用户登录 ===
+2025-07-17 01:53:02,382 - INFO - 登录响应: {
+  "code": 200,
+  "message": "登录成功",
+  "data": {
+    "id": "1",
+    "username": "admin",
+    "email": "admin@example.com",
+    "avatar": null,
+    "role": "admin",
+    "status": 1,
+    "lastLoginTime": "2025-07-17T00:44:09",
+    "createdTime": "2025-06-05T23:26:18",
+    "updateTime": "2025-07-17T00:44:09",
+    "packageName": null,
+    "packageId": null
+  },
+  "timestamp": 1752688382363
+}
+2025-07-17 01:53:02,382 - INFO - 登录成功，用户ID: 1, Token: None...
+2025-07-17 01:53:02,382 - INFO - === 获取支付前用户账户信息 ===
+2025-07-17 01:53:02,825 - INFO - 支付前账户信息: {
+  "package_id": null,
+  "package_name": null,
+  "expire_time": null,
+  "chat_remaining": null,
+  "total_amount": 0
+}
+2025-07-17 01:53:02,825 - INFO - === 获取套餐信息 (ID: 2) ===
+2025-07-17 01:53:03,164 - ERROR - 未找到套餐ID: 2
+2025-07-17 01:53:03,164 - ERROR - ❌ 获取套餐信息失败
+2025-07-17 01:53:31,642 - INFO - ============================================================
+2025-07-17 01:53:31,644 - INFO - 支付模块完整流程测试开始
+2025-07-17 01:53:31,644 - INFO - ============================================================
+2025-07-17 01:53:31,645 - INFO - 测试时间: 2025-07-17 01:53:31
+2025-07-17 01:53:31,645 - INFO - === 开始用户登录 ===
+2025-07-17 01:53:32,255 - INFO - 登录响应: {
+  "code": 200,
+  "message": "登录成功",
+  "data": {
+    "id": "1",
+    "username": "admin",
+    "email": "admin@example.com",
+    "avatar": null,
+    "role": "admin",
+    "status": 1,
+    "lastLoginTime": "2025-07-17T01:53:02",
+    "createdTime": "2025-06-05T23:26:18",
+    "updateTime": "2025-07-17T01:53:02",
+    "packageName": null,
+    "packageId": null
+  },
+  "timestamp": 1752688412250
+}
+2025-07-17 01:53:32,255 - INFO - 登录成功，用户ID: 1, Token: None...
+2025-07-17 01:53:32,255 - INFO - === 获取支付前用户账户信息 ===
+2025-07-17 01:53:32,631 - INFO - 支付前账户信息: {
+  "package_id": null,
+  "package_name": null,
+  "expire_time": null,
+  "chat_remaining": null,
+  "total_amount": 0
+}
+2025-07-17 01:53:32,631 - INFO - === 获取套餐信息 (ID: 2) ===
+2025-07-17 01:53:32,932 - INFO - 可用套餐列表: [
+  {
+    "id": 1,
+    "name": "Free",
+    "description": "Free trial package for new users",
+    "price": 0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": -1,
+    "features": [
+      "Basic AI models",
+      "Limited messages",
+      "Standard support"
+    ]
+  },
+  {
+    "id": 2,
+    "name": "Free",
+    "description": "Free trial package for new users",
+    "price": 0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": -1,
+    "features": [
+      "Basic AI models",
+      "Limited messages",
+      "Standard support"
+    ]
+  },
+  {
+    "id": 3,
+    "name": "Pro",
+    "description": "Meets daily chat needs",
+    "price": 10.0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": 30,
+    "features": [
+      "Standard features"
+    ]
+  },
+  {
+    "id": 4,
+    "name": "Pro",
+    "description": "Meets daily chat needs",
+    "price": 100.0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": 365,
+    "features": [
+      "Standard features"
+    ]
+  },
+  {
+    "id": 5,
+    "name": "Premium",
+    "description": "Suitable for heavy users",
+    "price": 20.0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": 30,
+    "features": [
+      "Standard features"
+    ]
+  },
+  {
+    "id": 6,
+    "name": "Premium",
+    "description": "Suitable for heavy users",
+    "price": 200.0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": 365,
+    "features": [
+      "Standard features"
+    ]
+  }
+]
+2025-07-17 01:53:32,932 - ERROR - 未找到套餐ID: 2
+2025-07-17 01:53:32,932 - INFO - 尝试使用第一个可用套餐...
+2025-07-17 01:53:32,932 - INFO - 使用套餐: {
+  "id": 1,
+  "name": "Free",
+  "description": "Free trial package for new users",
+  "price": 0,
+  "discountPrice": null,
+  "currency": "USD",
+  "period": -1,
+  "features": [
+    "Basic AI models",
+    "Limited messages",
+    "Standard support"
+  ]
+}
+2025-07-17 01:53:32,933 - INFO - === 创建支付订单 ===
+2025-07-17 01:53:33,387 - INFO - 订单创建成功:
+2025-07-17 01:53:33,387 - INFO -   订单号: None
+2025-07-17 01:53:33,387 - INFO -   支付URL: None
+2025-07-17 01:53:33,387 - ERROR - ❌ 创建支付订单失败
+2025-07-17 01:54:36,000 - INFO - ============================================================
+2025-07-17 01:54:36,000 - INFO - 支付模块完整流程测试开始
+2025-07-17 01:54:36,000 - INFO - ============================================================
+2025-07-17 01:54:36,000 - INFO - 测试时间: 2025-07-17 01:54:36
+2025-07-17 01:54:36,000 - INFO - === 开始用户登录 ===
+2025-07-17 01:54:36,675 - INFO - 登录响应: {
+  "code": 200,
+  "message": "登录成功",
+  "data": {
+    "id": "1",
+    "username": "admin",
+    "email": "admin@example.com",
+    "avatar": null,
+    "role": "admin",
+    "status": 1,
+    "lastLoginTime": "2025-07-17T01:53:32",
+    "createdTime": "2025-06-05T23:26:18",
+    "updateTime": "2025-07-17T01:53:32",
+    "packageName": null,
+    "packageId": null
+  },
+  "timestamp": 1752688476667
+}
+2025-07-17 01:54:36,675 - INFO - 登录成功，用户ID: 1, Token: None...
+2025-07-17 01:54:36,676 - INFO - === 获取支付前用户账户信息 ===
+2025-07-17 01:54:37,305 - INFO - 支付前账户信息: {
+  "package_id": null,
+  "package_name": null,
+  "expire_time": null,
+  "chat_remaining": null,
+  "total_amount": 0
+}
+2025-07-17 01:54:37,305 - INFO - === 获取套餐信息 (ID: 3) ===
+2025-07-17 01:54:37,598 - INFO - 可用套餐列表: [
+  {
+    "id": 1,
+    "name": "Free",
+    "description": "Free trial package for new users",
+    "price": 0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": -1,
+    "features": [
+      "Basic AI models",
+      "Limited messages",
+      "Standard support"
+    ]
+  },
+  {
+    "id": 2,
+    "name": "Free",
+    "description": "Free trial package for new users",
+    "price": 0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": -1,
+    "features": [
+      "Basic AI models",
+      "Limited messages",
+      "Standard support"
+    ]
+  },
+  {
+    "id": 3,
+    "name": "Pro",
+    "description": "Meets daily chat needs",
+    "price": 10.0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": 30,
+    "features": [
+      "Standard features"
+    ]
+  },
+  {
+    "id": 4,
+    "name": "Pro",
+    "description": "Meets daily chat needs",
+    "price": 100.0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": 365,
+    "features": [
+      "Standard features"
+    ]
+  },
+  {
+    "id": 5,
+    "name": "Premium",
+    "description": "Suitable for heavy users",
+    "price": 20.0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": 30,
+    "features": [
+      "Standard features"
+    ]
+  },
+  {
+    "id": 6,
+    "name": "Premium",
+    "description": "Suitable for heavy users",
+    "price": 200.0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": 365,
+    "features": [
+      "Standard features"
+    ]
+  }
+]
+2025-07-17 01:54:37,599 - INFO - 套餐信息: {
+  "id": 3,
+  "name": "Pro",
+  "description": "Meets daily chat needs",
+  "price": 10.0,
+  "discountPrice": null,
+  "currency": "USD",
+  "period": 30,
+  "features": [
+    "Standard features"
+  ]
+}
+2025-07-17 01:54:37,599 - INFO - === 创建支付订单 ===
+2025-07-17 01:54:40,904 - INFO - 创建订单响应: {
+  "code": 200,
+  "message": "支付订单创建成功",
+  "data": {
+    "orderNo": "JY202507170154398160",
+    "paymentRequestId": null,
+    "paymentUrl": "https://your-pay-gateway.example.com/submit.php?out_trade_no=JY202507170154398160&money=10.00&name=%E5%A5%97%E9%A4%90%E8%B4%AD%E4%B9%B0&sign=db6b845b31b213a73f8f83a6d2b5cef8&return_url=https%3A%2F%2Fapi.example.com%2Fapi%2Fpayment%2Fyipay%2Fnotify&pid=1674&type=alipay&notify_url=https%3A%2F%2Fapi.example.com%2Fapi%2Fpayment%2Fyipay%2Fnotify&sign_type=MD5",
+    "amount": 10.0,
+    "currency": "USD",
+    "paymentStatus": null,
+    "errorMessage": null,
+    "success": true,
+    "paymentMethod": "alipay",
+    "message": "支付宝订单创建成功",
+    "createdTime": "2025-07-17T01:54:39.898741",
+    "qrCodeUrl": "https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=https%3A%2F%your-pay-gateway.example.com%2Fsubmit.php%3Fout_trade_no%3DJY202507170154398160%26money%3D10.00%26name%3D%25E5%25A5%2597%25E9%25A4%2590%25E8%25B4%25AD%25E4%25B9%25B0%26sign%3Ddb6b845b31b213a73f8f83a6d2b5cef8%26return_url%3Dhttps%253A%252F%252Fapi.example.com%252Fapi%252Fpayment%252Fyipay%252Fnotify%26pid%3D1674%26type%3Dalipay%26notify_url%3Dhttps%253A%252F%252Fapi.example.com%252Fapi%252Fpayment%252Fyipay%252Fnotify%26sign_type%3DMD5&format=png&margin=10"
+  },
+  "timestamp": 1752688480899
+}
+2025-07-17 01:54:40,904 - INFO - 订单创建成功:
+2025-07-17 01:54:40,904 - INFO -   订单号: JY202507170154398160
+2025-07-17 01:54:40,904 - INFO -   支付URL: https://your-pay-gateway.example.com/submit.php?out_trade_no=JY202507170154398160&money=10.00&name=%E5%A5%97%E9%A4%90%E8%B4%AD%E4%B9%B0&sign=db6b845b31b213a73f8f83a6d2b5cef8&return_url=https%3A%2F%2Fapi.example.com%2Fapi%2Fpayment%2Fyipay%2Fnotify&pid=1674&type=alipay&notify_url=https%3A%2F%2Fapi.example.com%2Fapi%2Fpayment%2Fyipay%2Fnotify&sign_type=MD5
+2025-07-17 01:54:40,905 - INFO - === 检查订单初始状态 ===
+2025-07-17 01:54:41,233 - INFO - 订单初始状态: {
+  "order_no": "JY202507170154398160",
+  "payment_status": null,
+  "payment_time": null,
+  "amount": null,
+  "currency": null
+}
+2025-07-17 01:54:41,233 - INFO - === 模拟易支付成功回调 ===
+2025-07-17 01:54:41,234 - INFO - 回调参数: {
+  "pid": "1674",
+  "trade_no": "yipay_1752688481",
+  "out_trade_no": "JY202507170154398160",
+  "type": "alipay",
+  "name": "套餐购买",
+  "money": "0.00",
+  "trade_status": "TRADE_SUCCESS",
+  "sign": "4c6b2b0017f1c9b2216b1e3290f82432",
+  "sign_type": "MD5"
+}
+2025-07-17 01:54:41,249 - ERROR - 易支付回调请求失败: 403
+2025-07-17 01:54:41,249 - ERROR - ❌ 模拟支付回调失败
+2025-07-17 01:56:03,496 - INFO - ============================================================
+2025-07-17 01:56:03,496 - INFO - 支付模块完整流程测试开始
+2025-07-17 01:56:03,496 - INFO - ============================================================
+2025-07-17 01:56:03,497 - INFO - 测试时间: 2025-07-17 01:56:03
+2025-07-17 01:56:03,497 - INFO - === 开始用户登录 ===
+2025-07-17 01:56:07,015 - INFO - 登录响应: {
+  "code": 200,
+  "message": "登录成功",
+  "data": {
+    "id": "1",
+    "username": "admin",
+    "email": "admin@example.com",
+    "avatar": null,
+    "role": "admin",
+    "status": 1,
+    "lastLoginTime": "2025-07-17T01:54:36",
+    "createdTime": "2025-06-05T23:26:18",
+    "updateTime": "2025-07-17T01:54:36",
+    "packageName": null,
+    "packageId": null
+  },
+  "timestamp": 1752688567009
+}
+2025-07-17 01:56:07,016 - INFO - 登录成功，用户ID: 1, Token: None...
+2025-07-17 01:56:07,016 - INFO - === 获取支付前用户账户信息 ===
+2025-07-17 01:56:07,430 - INFO - 支付前账户信息: {
+  "package_id": null,
+  "package_name": null,
+  "expire_time": null,
+  "chat_remaining": null,
+  "total_amount": 0
+}
+2025-07-17 01:56:07,430 - INFO - === 获取套餐信息 (ID: 3) ===
+2025-07-17 01:56:07,712 - INFO - 可用套餐列表: [
+  {
+    "id": 1,
+    "name": "Free",
+    "description": "Free trial package for new users",
+    "price": 0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": -1,
+    "features": [
+      "Basic AI models",
+      "Limited messages",
+      "Standard support"
+    ]
+  },
+  {
+    "id": 2,
+    "name": "Free",
+    "description": "Free trial package for new users",
+    "price": 0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": -1,
+    "features": [
+      "Basic AI models",
+      "Limited messages",
+      "Standard support"
+    ]
+  },
+  {
+    "id": 3,
+    "name": "Pro",
+    "description": "Meets daily chat needs",
+    "price": 10.0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": 30,
+    "features": [
+      "Standard features"
+    ]
+  },
+  {
+    "id": 4,
+    "name": "Pro",
+    "description": "Meets daily chat needs",
+    "price": 100.0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": 365,
+    "features": [
+      "Standard features"
+    ]
+  },
+  {
+    "id": 5,
+    "name": "Premium",
+    "description": "Suitable for heavy users",
+    "price": 20.0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": 30,
+    "features": [
+      "Standard features"
+    ]
+  },
+  {
+    "id": 6,
+    "name": "Premium",
+    "description": "Suitable for heavy users",
+    "price": 200.0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": 365,
+    "features": [
+      "Standard features"
+    ]
+  }
+]
+2025-07-17 01:56:07,712 - INFO - 套餐信息: {
+  "id": 3,
+  "name": "Pro",
+  "description": "Meets daily chat needs",
+  "price": 10.0,
+  "discountPrice": null,
+  "currency": "USD",
+  "period": 30,
+  "features": [
+    "Standard features"
+  ]
+}
+2025-07-17 01:56:07,712 - INFO - === 创建支付订单 ===
+2025-07-17 01:56:11,206 - INFO - 创建订单响应: {
+  "code": 200,
+  "message": "支付订单创建成功",
+  "data": {
+    "orderNo": "JY202507170156104685",
+    "paymentRequestId": null,
+    "paymentUrl": "https://your-pay-gateway.example.com/submit.php?out_trade_no=JY202507170156104685&money=10.00&name=%E5%A5%97%E9%A4%90%E8%B4%AD%E4%B9%B0&sign=480a5eb97c7708c701b8ffb824ecc64b&return_url=https%3A%2F%2Fapi.example.com%2Fapi%2Fpayment%2Fyipay%2Fnotify&pid=1674&type=alipay&notify_url=https%3A%2F%2Fapi.example.com%2Fapi%2Fpayment%2Fyipay%2Fnotify&sign_type=MD5",
+    "amount": 10.0,
+    "currency": "USD",
+    "paymentStatus": null,
+    "errorMessage": null,
+    "success": true,
+    "paymentMethod": "alipay",
+    "message": "支付宝订单创建成功",
+    "createdTime": "2025-07-17T01:56:10.020602",
+    "qrCodeUrl": "https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=https%3A%2F%your-pay-gateway.example.com%2Fsubmit.php%3Fout_trade_no%3DJY202507170156104685%26money%3D10.00%26name%3D%25E5%25A5%2597%25E9%25A4%2590%25E8%25B4%25AD%25E4%25B9%25B0%26sign%3D480a5eb97c7708c701b8ffb824ecc64b%26return_url%3Dhttps%253A%252F%252Fapi.example.com%252Fapi%252Fpayment%252Fyipay%252Fnotify%26pid%3D1674%26type%3Dalipay%26notify_url%3Dhttps%253A%252F%252Fapi.example.com%252Fapi%252Fpayment%252Fyipay%252Fnotify%26sign_type%3DMD5&format=png&margin=10"
+  },
+  "timestamp": 1752688571205
+}
+2025-07-17 01:56:11,207 - INFO - 订单创建成功:
+2025-07-17 01:56:11,207 - INFO -   订单号: JY202507170156104685
+2025-07-17 01:56:11,207 - INFO -   支付URL: https://your-pay-gateway.example.com/submit.php?out_trade_no=JY202507170156104685&money=10.00&name=%E5%A5%97%E9%A4%90%E8%B4%AD%E4%B9%B0&sign=480a5eb97c7708c701b8ffb824ecc64b&return_url=https%3A%2F%2Fapi.example.com%2Fapi%2Fpayment%2Fyipay%2Fnotify&pid=1674&type=alipay&notify_url=https%3A%2F%2Fapi.example.com%2Fapi%2Fpayment%2Fyipay%2Fnotify&sign_type=MD5
+2025-07-17 01:56:11,207 - INFO - === 检查订单初始状态 ===
+2025-07-17 01:56:11,572 - INFO - 订单初始状态: {
+  "order_no": "JY202507170156104685",
+  "payment_status": null,
+  "payment_time": null,
+  "amount": null,
+  "currency": null
+}
+2025-07-17 01:56:11,573 - INFO - === 模拟易支付成功回调 ===
+2025-07-17 01:56:11,573 - INFO - 回调参数: {
+  "pid": "1674",
+  "trade_no": "yipay_1752688571",
+  "out_trade_no": "JY202507170156104685",
+  "type": "alipay",
+  "name": "套餐购买",
+  "money": "10.0",
+  "trade_status": "TRADE_SUCCESS",
+  "sign": "8c668275910cf521eff26a7c2295f7ab",
+  "sign_type": "MD5"
+}
+2025-07-17 01:56:14,706 - INFO - 回调响应: success
+2025-07-17 01:56:14,707 - INFO - 易支付回调处理成功
+2025-07-17 01:56:14,707 - INFO - === 检查订单支付后状态 ===
+2025-07-17 01:56:15,008 - INFO - 订单支付后状态: {
+  "order_no": "JY202507170156104685",
+  "payment_status": null,
+  "payment_time": null,
+  "amount": null,
+  "currency": null
+}
+2025-07-17 01:56:15,008 - INFO - === 获取支付后用户账户信息 ===
+2025-07-17 01:56:17,908 - INFO - 支付后账户信息: {
+  "package_id": null,
+  "package_name": null,
+  "expire_time": null,
+  "chat_remaining": null,
+  "total_amount": 0
+}
+2025-07-17 01:56:17,908 - INFO - ============================================================
+2025-07-17 01:56:17,908 - INFO - 测试结果验证
+2025-07-17 01:56:17,908 - INFO - ============================================================
+2025-07-17 01:56:17,908 - INFO - 🔍 验证订单状态更新:
+2025-07-17 01:56:17,908 - ERROR - ❌ 订单状态更新异常: None -> None
+2025-07-17 01:56:17,908 - INFO - 🔍 验证用户套餐更新:
+2025-07-17 01:56:17,908 - ERROR - ❌ 用户套餐更新异常: 期望3, 实际None
+2025-07-17 01:56:17,908 - ERROR - ❌ 套餐过期时间更新异常: None -> None
+2025-07-17 01:56:17,909 - ERROR - ❌ 聊天次数更新异常: 期望0, 实际None
+2025-07-17 01:56:17,909 - INFO - ============================================================
+2025-07-17 01:56:17,909 - ERROR - ❌ 支付模块测试存在问题，请检查日志
+2025-07-17 01:56:17,909 - INFO - ============================================================
+2025-07-17 01:56:45,475 - INFO - ============================================================
+2025-07-17 01:56:45,475 - INFO - 支付模块完整流程测试开始
+2025-07-17 01:56:45,475 - INFO - ============================================================
+2025-07-17 01:56:45,476 - INFO - 测试时间: 2025-07-17 01:56:45
+2025-07-17 01:56:45,476 - INFO - === 开始用户登录 ===
+2025-07-17 01:56:46,064 - INFO - 登录响应: {
+  "code": 200,
+  "message": "登录成功",
+  "data": {
+    "id": "1",
+    "username": "admin",
+    "email": "admin@example.com",
+    "avatar": null,
+    "role": "admin",
+    "status": 1,
+    "lastLoginTime": "2025-07-17T01:56:07",
+    "createdTime": "2025-06-05T23:26:18",
+    "updateTime": "2025-07-17T01:56:07",
+    "packageName": null,
+    "packageId": null
+  },
+  "timestamp": 1752688606053
+}
+2025-07-17 01:56:46,065 - INFO - 登录成功，用户ID: 1, Token: None...
+2025-07-17 01:56:46,065 - INFO - === 获取支付前用户账户信息 ===
+2025-07-17 01:56:46,919 - INFO - 支付前账户信息: {
+  "package_id": null,
+  "package_name": null,
+  "expire_time": null,
+  "chat_remaining": null,
+  "total_amount": 0
+}
+2025-07-17 01:56:46,920 - INFO - === 获取套餐信息 (ID: 3) ===
+2025-07-17 01:56:47,787 - INFO - 可用套餐列表: [
+  {
+    "id": 1,
+    "name": "Free",
+    "description": "Free trial package for new users",
+    "price": 0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": -1,
+    "features": [
+      "Basic AI models",
+      "Limited messages",
+      "Standard support"
+    ]
+  },
+  {
+    "id": 2,
+    "name": "Free",
+    "description": "Free trial package for new users",
+    "price": 0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": -1,
+    "features": [
+      "Basic AI models",
+      "Limited messages",
+      "Standard support"
+    ]
+  },
+  {
+    "id": 3,
+    "name": "Pro",
+    "description": "Meets daily chat needs",
+    "price": 10.0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": 30,
+    "features": [
+      "Standard features"
+    ]
+  },
+  {
+    "id": 4,
+    "name": "Pro",
+    "description": "Meets daily chat needs",
+    "price": 100.0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": 365,
+    "features": [
+      "Standard features"
+    ]
+  },
+  {
+    "id": 5,
+    "name": "Premium",
+    "description": "Suitable for heavy users",
+    "price": 20.0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": 30,
+    "features": [
+      "Standard features"
+    ]
+  },
+  {
+    "id": 6,
+    "name": "Premium",
+    "description": "Suitable for heavy users",
+    "price": 200.0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": 365,
+    "features": [
+      "Standard features"
+    ]
+  }
+]
+2025-07-17 01:56:47,788 - INFO - 套餐信息: {
+  "id": 3,
+  "name": "Pro",
+  "description": "Meets daily chat needs",
+  "price": 10.0,
+  "discountPrice": null,
+  "currency": "USD",
+  "period": 30,
+  "features": [
+    "Standard features"
+  ]
+}
+2025-07-17 01:56:47,788 - INFO - === 创建支付订单 ===
+2025-07-17 01:56:49,175 - INFO - 创建订单响应: {
+  "code": 4001,
+  "message": "重复的支付请求，请勿重复提交",
+  "data": null,
+  "timestamp": 1752688609172
+}
+2025-07-17 01:56:49,175 - ERROR - 创建订单失败: 重复的支付请求，请勿重复提交
+2025-07-17 01:56:49,175 - ERROR - ❌ 创建支付订单失败
+2025-07-17 01:58:07,902 - INFO - ============================================================
+2025-07-17 01:58:07,903 - INFO - 支付模块完整流程测试开始
+2025-07-17 01:58:07,903 - INFO - ============================================================
+2025-07-17 01:58:07,903 - INFO - 测试时间: 2025-07-17 01:58:07
+2025-07-17 01:58:07,903 - INFO - === 开始用户登录 ===
+2025-07-17 01:58:11,126 - INFO - 登录响应: {
+  "code": 200,
+  "message": "登录成功",
+  "data": {
+    "id": "1",
+    "username": "admin",
+    "email": "admin@example.com",
+    "avatar": null,
+    "role": "admin",
+    "status": 1,
+    "lastLoginTime": "2025-07-17T01:56:46",
+    "createdTime": "2025-06-05T23:26:18",
+    "updateTime": "2025-07-17T01:56:46",
+    "packageName": null,
+    "packageId": null
+  },
+  "timestamp": 1752688691087
+}
+2025-07-17 01:58:11,126 - INFO - 登录成功，用户ID: 1, Token: None...
+2025-07-17 01:58:11,126 - INFO - === 获取支付前用户账户信息 ===
+2025-07-17 01:58:11,759 - INFO - 支付前账户信息: {
+  "package_id": null,
+  "package_name": null,
+  "expire_time": null,
+  "chat_remaining": null,
+  "total_amount": 0
+}
+2025-07-17 01:58:11,759 - INFO - === 获取套餐信息 (ID: 3) ===
+2025-07-17 01:58:12,172 - INFO - 可用套餐列表: [
+  {
+    "id": 1,
+    "name": "Free",
+    "description": "Free trial package for new users",
+    "price": 0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": -1,
+    "features": [
+      "Basic AI models",
+      "Limited messages",
+      "Standard support"
+    ]
+  },
+  {
+    "id": 2,
+    "name": "Free",
+    "description": "Free trial package for new users",
+    "price": 0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": -1,
+    "features": [
+      "Basic AI models",
+      "Limited messages",
+      "Standard support"
+    ]
+  },
+  {
+    "id": 3,
+    "name": "Pro",
+    "description": "Meets daily chat needs",
+    "price": 10.0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": 30,
+    "features": [
+      "Standard features"
+    ]
+  },
+  {
+    "id": 4,
+    "name": "Pro",
+    "description": "Meets daily chat needs",
+    "price": 100.0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": 365,
+    "features": [
+      "Standard features"
+    ]
+  },
+  {
+    "id": 5,
+    "name": "Premium",
+    "description": "Suitable for heavy users",
+    "price": 20.0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": 30,
+    "features": [
+      "Standard features"
+    ]
+  },
+  {
+    "id": 6,
+    "name": "Premium",
+    "description": "Suitable for heavy users",
+    "price": 200.0,
+    "discountPrice": null,
+    "currency": "USD",
+    "period": 365,
+    "features": [
+      "Standard features"
+    ]
+  }
+]
+2025-07-17 01:58:12,173 - INFO - 套餐信息: {
+  "id": 3,
+  "name": "Pro",
+  "description": "Meets daily chat needs",
+  "price": 10.0,
+  "discountPrice": null,
+  "currency": "USD",
+  "period": 30,
+  "features": [
+    "Standard features"
+  ]
+}
+2025-07-17 01:58:12,173 - INFO - === 创建支付订单 ===
+2025-07-17 01:58:15,527 - INFO - 创建订单响应: {
+  "code": 200,
+  "message": "支付订单创建成功",
+  "data": {
+    "orderNo": "JY202507170158142693",
+    "paymentRequestId": null,
+    "paymentUrl": "https://your-pay-gateway.example.com/submit.php?out_trade_no=JY202507170158142693&money=10.00&name=%E5%A5%97%E9%A4%90%E8%B4%AD%E4%B9%B0&sign=5a893de916eaae59bbdc2483028ac742&return_url=https%3A%2F%2Fapi.example.com%2Fapi%2Fpayment%2Fyipay%2Fnotify&pid=1674&type=alipay&notify_url=https%3A%2F%2Fapi.example.com%2Fapi%2Fpayment%2Fyipay%2Fnotify&sign_type=MD5",
+    "amount": 10.0,
+    "currency": "USD",
+    "paymentStatus": null,
+    "errorMessage": null,
+    "success": true,
+    "paymentMethod": "alipay",
+    "message": "支付宝订单创建成功",
+    "createdTime": "2025-07-17T01:58:14.404893",
+    "qrCodeUrl": "https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=https%3A%2F%your-pay-gateway.example.com%2Fsubmit.php%3Fout_trade_no%3DJY202507170158142693%26money%3D10.00%26name%3D%25E5%25A5%2597%25E9%25A4%2590%25E8%25B4%25AD%25E4%25B9%25B0%26sign%3D5a893de916eaae59bbdc2483028ac742%26return_url%3Dhttps%253A%252F%252Fapi.example.com%252Fapi%252Fpayment%252Fyipay%252Fnotify%26pid%3D1674%26type%3Dalipay%26notify_url%3Dhttps%253A%252F%252Fapi.example.com%252Fapi%252Fpayment%252Fyipay%252Fnotify%26sign_type%3DMD5&format=png&margin=10"
+  },
+  "timestamp": 1752688695521
+}
+2025-07-17 01:58:15,527 - INFO - 订单创建成功:
+2025-07-17 01:58:15,527 - INFO -   订单号: JY202507170158142693
+2025-07-17 01:58:15,527 - INFO -   支付URL: https://your-pay-gateway.example.com/submit.php?out_trade_no=JY202507170158142693&money=10.00&name=%E5%A5%97%E9%A4%90%E8%B4%AD%E4%B9%B0&sign=5a893de916eaae59bbdc2483028ac742&return_url=https%3A%2F%2Fapi.example.com%2Fapi%2Fpayment%2Fyipay%2Fnotify&pid=1674&type=alipay&notify_url=https%3A%2F%2Fapi.example.com%2Fapi%2Fpayment%2Fyipay%2Fnotify&sign_type=MD5
+2025-07-17 01:58:15,527 - INFO - === 检查订单初始状态 ===
+2025-07-17 01:58:15,888 - INFO - 订单初始状态: {
+  "order_no": "JY202507170158142693",
+  "payment_status": null,
+  "payment_time": null,
+  "amount": null,
+  "currency": null
+}
+2025-07-17 01:58:15,888 - INFO - === 模拟易支付成功回调 ===
+2025-07-17 01:58:15,888 - INFO - 回调参数: {
+  "pid": "1674",
+  "trade_no": "yipay_1752688695",
+  "out_trade_no": "JY202507170158142693",
+  "type": "alipay",
+  "name": "套餐购买",
+  "money": "10.0",
+  "trade_status": "TRADE_SUCCESS",
+  "sign": "abb3fbfa9d4efc44f5725f82065c3346",
+  "sign_type": "MD5"
+}
+2025-07-17 01:58:18,697 - INFO - 回调响应: success
+2025-07-17 01:58:18,697 - INFO - 易支付回调处理成功
+2025-07-17 01:58:18,698 - INFO - === 检查订单支付后状态 ===
+2025-07-17 01:58:19,049 - INFO - 订单支付后状态: {
+  "order_no": "JY202507170158142693",
+  "payment_status": null,
+  "payment_time": null,
+  "amount": null,
+  "currency": null
+}
+2025-07-17 01:58:19,049 - INFO - === 获取支付后用户账户信息 ===
+2025-07-17 01:58:21,593 - INFO - 支付后账户信息: {
+  "package_id": null,
+  "package_name": null,
+  "expire_time": null,
+  "chat_remaining": null,
+  "total_amount": 0
+}
+2025-07-17 01:58:21,593 - INFO - ============================================================
+2025-07-17 01:58:21,593 - INFO - 测试结果验证
+2025-07-17 01:58:21,594 - INFO - ============================================================
+2025-07-17 01:58:21,594 - INFO - 🔍 验证订单状态更新:
+2025-07-17 01:58:21,594 - ERROR - ❌ 订单状态更新异常: None -> None
+2025-07-17 01:58:21,594 - INFO - 🔍 验证用户套餐更新:
+2025-07-17 01:58:21,594 - ERROR - ❌ 用户套餐更新异常: 期望3, 实际None
+2025-07-17 01:58:21,594 - ERROR - ❌ 套餐过期时间更新异常: None -> None
+2025-07-17 01:58:21,594 - ERROR - ❌ 聊天次数更新异常: 期望0, 实际None
+2025-07-17 01:58:21,594 - INFO - ============================================================
+2025-07-17 01:58:21,594 - ERROR - ❌ 支付模块测试存在问题，请检查日志
+2025-07-17 01:58:21,594 - INFO - ============================================================

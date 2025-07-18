@@ -28,6 +28,9 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
+
+import java.util.List;
+import java.util.Map;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -62,56 +65,31 @@ public class AuthController {
     private final JwtUtil jwtUtil;
     
     /**
-     * 用户注册
+     * 用户注册 - 已禁用，引导用户使用OAuth2登录
      */
-    @Operation(summary = "用户注册", description = "创建新用户账户")
+    @Operation(summary = "用户注册（已禁用）", description = "传统邮箱注册已禁用，请使用Google或GitHub登录")
     @ApiResponses(value = {
-        @ApiResponse(responseCode = "200", description = "注册成功"),
-        @ApiResponse(responseCode = "400", description = "参数错误或用户已存在")
+        @ApiResponse(responseCode = "200", description = "返回引导信息"),
+        @ApiResponse(responseCode = "400", description = "功能已禁用")
     })
     @PostMapping("/register")
     public ResponseEntity<?> register(
             @Parameter(description = "注册请求信息", required = true)
             @Valid @RequestBody RegisterRequest request,
             HttpServletResponse response) {
-        log.info("【API调用】用户注册接口，邮箱：{}，用户名：{}",
+        log.info("【API调用】用户尝试使用传统注册接口，邮箱：{}，用户名：{} - 已禁用",
             request.getEmail(), request.getUsername());
 
-        try {
-            // 检查用户名和邮箱是否已存在
-            if (userService.getUserByUsername(request.getUsername()) != null) {
-                log.warn("【注册拒绝】用户名已存在：{}", request.getUsername());
-                return ResponseEntity.ok(ErrorResponseUtil.usernameExists());
-            }
-            if (userService.getUserByEmail(request.getEmail()) != null) {
-                log.warn("【注册拒绝】邮箱已存在：{}", request.getEmail());
-                return ResponseEntity.ok(ErrorResponseUtil.emailExists());
-            }
+        // 返回引导用户使用OAuth2登录的提示
+        Map<String, Object> data = Map.of(
+            "message", "传统邮箱注册已禁用，请使用Google或GitHub账号登录注册",
+            "oauth2_providers", List.of("google", "github"),
+            "oauth2_login_url", "/api/oauth2/login/{provider}",
+            "error_code", "REGISTRATION_DISABLED"
+        );
 
-            log.debug("【注册处理】开始创建用户，邮箱：{}", request.getEmail());
-
-            // 创建用户
-            Long userId = userService.registerUser(request.getUsername(), request.getEmail(), request.getPassword());
-            User user = userService.getById(userId);
-
-            log.debug("【注册处理】用户创建成功，开始生成JWT令牌，用户ID：{}", userId);
-
-            // 生成JWT Token
-            String token = jwtUtil.generateToken(user);
-
-            // 设置Cookie
-            response.addHeader(HttpHeaders.SET_COOKIE, jwtUtil.createAuthCookie(token).toString());
-
-            UserVO userVO = VOConverter.toUserVO(user);
-            log.info("【API响应】用户注册成功，用户ID：{}，用户名：{}", userId, user.getUsername());
-
-            return ResponseEntity.ok(Result.success(userVO, "注册成功"));
-
-        } catch (Exception e) {
-            log.error("【API异常】用户注册失败，邮箱：{}，错误：{}",
-                request.getEmail(), e.getMessage(), e);
-            return ResponseEntity.ok(ErrorResponseUtil.registerFailed("Registration failed. Please try again later."));
-        }
+        return ResponseEntity.ok(Result.success(data,
+            "Traditional email registration is disabled. Please use Google or GitHub to sign up."));
     }
     
     /**
@@ -188,6 +166,9 @@ public class AuthController {
                 userVO.setPackageName(packageInfo.getPackageName());
                 userVO.setPackageId(packageInfo.getPackageId());
             }
+
+            // 设置绑定状态（对于/auth/me接口，默认为普通登录状态）
+            userVO.setBind(0);
 
             return ResponseEntity.ok(Result.success(userVO, "获取用户信息成功"));
 

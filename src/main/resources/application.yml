@@ -194,6 +194,45 @@ jwt:
   # 请求头名称
   header-name: ${JWT_HEADER_NAME:Authorization}
 
+# OAuth2配置
+oauth2:
+  # 安全配置
+  security:
+    max-login-attempts: 5 # 最大登录尝试次数
+    rate-limit-window: 3600 # 频率限制窗口(秒)
+    encryption-key: ${OAUTH2_ENCRYPTION_KEY:change-me-32-char-encryption-key} # AES加密密钥
+
+  # 重定向URL配置
+  redirect-urls:
+    success: ${OAUTH2_SUCCESS_URL:http://localhost:3000/dashboard}
+    error: ${OAUTH2_ERROR_URL:http://localhost:3000/login}
+    bind-success: ${OAUTH2_BIND_SUCCESS_URL:http://localhost:3000/profile}
+
+  # 提供商配置
+  providers:
+    google:
+      name: "Google"
+      icon: "google"
+      enabled: true
+      client-id: ${GOOGLE_CLIENT_ID:334016856445-jlpdr73dr7jr0mrtdn0iu4082rh987gm.apps.googleusercontent.com}
+      client-secret: ${GOOGLE_CLIENT_SECRET:your-google-client-secret}
+      authorization-uri: https://accounts.google.com/o/oauth2/v2/auth
+      token-uri: https://oauth2.googleapis.com/token
+      user-info-uri: https://www.googleapis.com/oauth2/v2/userinfo
+      scope: openid,email,profile
+      redirect-uri: ${OAUTH2_GOOGLE_REDIRECT_URI:http://localhost:8080/api/auth/oauth2/callback/google}
+    github:
+      name: "GitHub"
+      icon: "github"
+      enabled: true
+      client-id: ${GITHUB_CLIENT_ID:Ov23li7fEzHfvRyIT53F}
+      client-secret: ${GITHUB_CLIENT_SECRET:your-github-oauth-client-secret}
+      authorization-uri: https://github.com/login/oauth/authorize
+      token-uri: https://github.com/login/oauth/access_token
+      user-info-uri: https://api.github.com/user
+      scope: user:email
+      redirect-uri: ${OAUTH2_GITHUB_REDIRECT_URI:http://localhost:8080/api/auth/oauth2/callback/github}
+
 
 
 # 文件上传配置
@@ -391,3 +430,4 @@ gemini:
 
     # 密钥禁用时间（秒）
     disable-timeout: ${GEMINI_DISABLE_TIMEOUT:600}
+

@@ -12,6 +12,7 @@ import com.instser.chat.service.PackageActivationService;
 import com.instser.chat.service.PaymentService;
 import com.instser.chat.service.PaymentSecurityEnhancer;
 import com.instser.chat.service.PaymentSyncService;
+import com.instser.chat.service.UserPaymentStatusService;
 
 import com.instser.chat.vo.*;
 import com.instser.chat.vo.converter.VOConverter;
@@ -57,6 +58,7 @@ public class PaymentController {
     private final PackageActivationService packageActivationService;
     private final PaymentSecurityEnhancer paymentSecurityEnhancer;
     private final ExchangeRateService exchangeRateService;
+    private final UserPaymentStatusService userPaymentStatusService;
 
     /**
      * 获取当前认证用户ID
@@ -86,13 +88,26 @@ public class PaymentController {
      * 获取套餐列表 - 返回前端兼容格式（支持实时汇率转换）
      */
     @GetMapping("/packages")
-    public Result<List<FrontendPackageVO>> getPackages(@RequestParam(defaultValue = "USD") String currency) {
+    public Result<List<FrontendPackageVO>> getPackages(@RequestParam(defaultValue = "USD") String currency,
+                                                       Authentication authentication) {
         try {
             List<Package> packages = packageService.getEnabledPackages();
-            // 转换为前端格式（使用汇率服务进行价格转换）
-            List<FrontendPackageVO> packageVOs = VOConverter.toFrontendPackageVOList(packages, currency, exchangeRateService);
 
-            log.info("获取套餐列表成功，货币: {}, 套餐数量: {}", currency, packageVOs.size());
+            // 获取当前用户ID，用于判断是否显示优惠价格
+            Long userId = getCurrentUserId(authentication);
+            if (userId == null) {
+                log.warn("未登录用户尝试访问套餐列表");
+                return Result.unauthorized("请先登录");
+            }
+
+            // 检查用户是否从未付费，如果是则显示优惠价格
+            boolean showDiscountPrice = userPaymentStatusService.hasNeverPaid(userId);
+            log.debug("用户{}支付状态检查: 从未付费={}, 显示优惠价格={}", userId, showDiscountPrice, showDiscountPrice);
+
+            // 转换为前端格式（使用汇率服务进行价格转换）
+            List<FrontendPackageVO> packageVOs = VOConverter.toFrontendPackageVOList(packages, currency, exchangeRateService, showDiscountPrice);
+
+            log.info("获取套餐列表成功，货币: {}, 套餐数量: {}, 显示优惠价格: {}", currency, packageVOs.size(), showDiscountPrice);
             return Result.success(packageVOs);
         } catch (Exception e) {
             log.error("获取套餐列表失败，货币: {}", currency, e);
@@ -104,7 +119,8 @@ public class PaymentController {
      * 获取套餐信息和支付方式 - 前端API兼容接口
      */
     @PostMapping("/package/info")
-    public Result<PackageInfoResponseVO> getPackageInfo(@Valid @RequestBody PackageInfoRequestVO request) {
+    public Result<PackageInfoResponseVO> getPackageInfo(@Valid @RequestBody PackageInfoRequestVO request,
+                                                        Authentication authentication) {
         try {
             // 根据套餐ID获取套餐信息
             Package packageEntity = packageService.getPackageByFrontendId(request.getPackageId());
@@ -116,8 +132,19 @@ public class PaymentController {
                 return Result.failed("套餐已下架");
             }
 
+            // 获取当前用户ID，用于判断是否显示优惠价格
+            Long userId = getCurrentUserId(authentication);
+            if (userId == null) {
+                log.warn("未登录用户尝试访问套餐信息，packageId: {}", request.getPackageId());
+                return Result.unauthorized("请先登录");
+            }
+
+            // 检查用户是否从未付费，如果是则显示优惠价格
+            boolean showDiscountPrice = userPaymentStatusService.hasNeverPaid(userId);
+            log.debug("用户{}套餐信息查询: 从未付费={}, 显示优惠价格={}", userId, showDiscountPrice, showDiscountPrice);
+
             // 转换为前端格式（使用汇率服务进行价格转换）
-            FrontendPackageVO packageVO = VOConverter.toFrontendPackageVO(packageEntity, request.getCurrency(), exchangeRateService);
+            FrontendPackageVO packageVO = VOConverter.toFrontendPackageVO(packageEntity, request.getCurrency(), exchangeRateService, showDiscountPrice);
 
             // 获取可用支付方式
             List<PaymentMethodVO> paymentMethods = paymentService.getAvailablePaymentMethods();
@@ -125,6 +152,7 @@ public class PaymentController {
             // 构建响应
             PackageInfoResponseVO response = new PackageInfoResponseVO(packageVO, paymentMethods);
 
+            log.info("获取套餐信息成功，packageId: {}, 显示优惠价格: {}", request.getPackageId(), showDiscountPrice);
             return Result.success(response, "获取套餐信息成功");
         } catch (Exception e) {
             log.error("获取套餐信息失败，packageId: {}", request.getPackageId(), e);

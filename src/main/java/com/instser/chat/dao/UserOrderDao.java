@@ -62,11 +62,14 @@ public interface UserOrderDao extends BaseMapper<UserOrder> {
      * @param orderNo 订单号
      * @param paymentStatus 支付状态
      * @param transactionId 交易流水号
+     * @param paymentTime 支付时间
+     * @param updateTime 更新时间
      * @return 更新行数
      */
     @Update("UPDATE t_user_order SET payment_status = #{paymentStatus}, transaction_id = #{transactionId}, " +
-            "payment_time = NOW(), update_time = NOW() WHERE order_no = #{orderNo} AND deleted = 0")
-    int updatePaymentStatus(String orderNo, Integer paymentStatus, String transactionId);
+            "payment_time = #{paymentTime}, update_time = #{updateTime} WHERE order_no = #{orderNo} AND deleted = 0")
+    int updatePaymentStatus(String orderNo, Integer paymentStatus, String transactionId,
+                           LocalDateTime paymentTime, LocalDateTime updateTime);
 
     /**
      * 查询用户的有效订单数量
