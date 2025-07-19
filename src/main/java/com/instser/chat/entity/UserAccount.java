@@ -97,10 +97,12 @@ public class UserAccount {
 
     /**
      * 检查套餐是否过期
+     * 注意：过期时间为null表示永久有效
      *
      * @return true-已过期，false-未过期
      */
     public boolean isPackageExpired() {
+        // 过期时间为null表示永久有效，永远不过期
         return packageExpireTime != null && packageExpireTime.isBefore(LocalDateTime.now());
     }
 

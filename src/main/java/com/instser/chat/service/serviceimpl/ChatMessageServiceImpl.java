@@ -6,7 +6,7 @@ import com.instser.chat.dao.ChatMessageDao;
 import com.instser.chat.entity.ChatMessage;
 import com.instser.chat.entity.ChatSession;
 import com.instser.chat.service.ChatMessageService;
-import com.instser.chat.service.ChatSessionService;
+import com.instser.chat.dao.ChatSessionDao;
 import com.instser.chat.service.FileUploadService;
 import com.instser.chat.service.WebSearchContentService;
 import com.instser.chat.dto.MessageSaveResult;
@@ -29,7 +29,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMessage> implements ChatMessageService {
 
-    private final ChatSessionService chatSessionService;
+    private final ChatSessionDao chatSessionDao;
     private final FileUploadService fileUploadService;
     private final WebSearchContentService webSearchContentService;
 
@@ -297,7 +297,7 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
     private Long getModelIdFromSession(String sessionId) {
         try {
             if (sessionId != null) {
-                ChatSession session = chatSessionService.getSessionInfo(sessionId);
+                ChatSession session = chatSessionDao.selectBySessionId(sessionId);
                 if (session != null && session.getModelId() != null) {
                     return session.getModelId();
                 }
@@ -516,5 +516,81 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
 
         log.error("【数据库重试】联网标记更新失败，已达到最大重试次数，消息ID：{}", messageId);
         return false;
+    }
+
+    @Override
+    public int deleteAllBySessionId(String sessionId, Long userId) {
+        log.info("【会话消息删除】开始删除会话所有消息，会话ID：{}，用户ID：{}", sessionId, userId);
+
+        try {
+            // 获取该会话的所有消息
+            List<ChatMessage> allMessages = getSessionMessages(sessionId);
+            if (allMessages == null || allMessages.isEmpty()) {
+                log.info("【会话消息删除】会话无消息记录，会话ID：{}", sessionId);
+                return 0;
+            }
+
+            // 验证权限：检查消息是否都属于指定用户
+            for (ChatMessage message : allMessages) {
+                if (!message.getUserId().equals(userId)) {
+                    log.error("【会话消息删除】权限验证失败，消息不属于指定用户，会话ID：{}，用户ID：{}，消息用户ID：{}",
+                            sessionId, userId, message.getUserId());
+                    return 0;
+                }
+            }
+
+            List<Long> messagesToDelete = new ArrayList<>();
+            List<String> messageIdsToDelete = new ArrayList<>();
+
+            for (ChatMessage message : allMessages) {
+                messagesToDelete.add(message.getId());
+                messageIdsToDelete.add(message.getMessageId());
+            }
+
+            log.debug("【会话消息删除】准备删除{}条消息", messagesToDelete.size());
+
+            // 先删除关联的文件
+            int deletedFilesCount = 0;
+            try {
+                deletedFilesCount = fileUploadService.deleteFilesByMessageIds(messageIdsToDelete, userId);
+                log.debug("【会话消息删除】删除关联文件完成，文件数量：{}", deletedFilesCount);
+            } catch (Exception e) {
+                log.error("【会话消息删除】删除关联文件失败，继续删除消息", e);
+            }
+
+            // 删除关联的联网内容
+            int deletedWebSearchCount = 0;
+            try {
+                for (String msgId : messageIdsToDelete) {
+                    if (webSearchContentService.deleteByMessageId(msgId)) {
+                        deletedWebSearchCount++;
+                    }
+                }
+                log.debug("【会话消息删除】删除关联联网内容完成，联网内容数量：{}", deletedWebSearchCount);
+            } catch (Exception e) {
+                log.error("【会话消息删除】删除关联联网内容失败，继续删除消息", e);
+            }
+
+            // 删除消息记录
+            LambdaQueryWrapper<ChatMessage> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(ChatMessage::getSessionId, sessionId);
+            wrapper.eq(ChatMessage::getUserId, userId);
+
+            boolean result = this.remove(wrapper);
+            int deletedCount = result ? messagesToDelete.size() : 0;
+
+            if (result) {
+                log.info("【会话消息删除】会话所有消息删除成功，会话ID：{}，删除消息：{}条，删除文件：{}个，删除联网内容：{}条",
+                        sessionId, deletedCount, deletedFilesCount, deletedWebSearchCount);
+            } else {
+                log.error("【会话消息删除】会话消息删除失败，会话ID：{}", sessionId);
+            }
+
+            return deletedCount;
+
+        } catch (Exception e) {
+            log.error("【会话消息删除】删除会话所有消息失败，会话ID：{}", sessionId, e);
+            return 0;
+        }
     }
 }

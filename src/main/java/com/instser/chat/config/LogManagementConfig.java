@@ -76,28 +76,28 @@ public class LogManagementConfig {
     }
 
     /**
-     * 每天凌晨2点清理过期日志文件
+     * 每天凌晨2点自动清理过期日志文件（保留最新5个文件）
      */
     @Scheduled(cron = "0 0 2 * * ?")
     public void cleanupOldLogFiles() {
         try {
-            log.info("【日志清理】开始清理过期日志文件");
-            
+            log.info("【自动日志清理】开始自动清理过期日志文件");
+
             File logDir = new File(logPath);
             if (!logDir.exists()) {
-                log.warn("【日志清理】日志目录不存在：{}", logPath);
+                log.warn("【自动日志清理】日志目录不存在：{}", logPath);
                 return;
             }
 
-            File[] logFiles = logDir.listFiles((dir, name) -> 
-                name.endsWith(".log") && !name.equals("jinyu-chat.log") && !name.equals("jinyu-chat-error.log"));
+            File[] logFiles = logDir.listFiles((dir, name) ->
+                name.endsWith(".log") && !isCurrentLogFile(name));
 
             if (logFiles == null || logFiles.length == 0) {
-                log.info("【日志清理】没有找到需要清理的日志文件");
+                log.info("【自动日志清理】没有找到需要清理的日志文件");
                 return;
             }
 
-            // 按修改时间排序，删除最旧的文件
+            // 按修改时间排序，最新的在后面
             Arrays.sort(logFiles, Comparator.comparingLong(File::lastModified));
 
             long totalSize = calculateTotalLogSize();
@@ -105,7 +105,12 @@ public class LogManagementConfig {
             int deletedCount = 0;
             long deletedSize = 0;
 
-            for (File file : logFiles) {
+            // 确保至少保留最新的5个日志文件
+            int minKeepFiles = Math.min(5, logFiles.length);
+            int maxDeleteFiles = Math.max(0, logFiles.length - minKeepFiles);
+
+            for (int i = 0; i < maxDeleteFiles && i < logFiles.length; i++) {
+                File file = logFiles[i];
                 // 如果总大小超过限制，删除最旧的文件
                 if (totalSize > maxTotalSizeBytes) {
                     long fileSize = file.length();
@@ -113,21 +118,24 @@ public class LogManagementConfig {
                         totalSize -= fileSize;
                         deletedSize += fileSize;
                         deletedCount++;
-                        log.info("【日志清理】删除过期日志文件：{}，大小：{}MB", 
+                        log.info("【自动日志清理】删除过期日志文件：{}，大小：{}MB",
                             file.getName(), fileSize / 1024 / 1024);
                     }
+                } else {
+                    // 如果总大小已经在限制内，停止删除
+                    break;
                 }
             }
 
             if (deletedCount > 0) {
-                log.info("【日志清理】清理完成，删除文件数：{}，释放空间：{}MB", 
-                    deletedCount, deletedSize / 1024 / 1024);
+                log.info("【自动日志清理】自动清理完成，删除文件数：{}，释放空间：{}MB，保留文件数：{}",
+                    deletedCount, deletedSize / 1024 / 1024, logFiles.length - deletedCount);
             } else {
-                log.info("【日志清理】无需清理，当前日志总大小：{}MB", totalSize / 1024 / 1024);
+                log.info("【自动日志清理】无需清理，当前日志总大小：{}MB", totalSize / 1024 / 1024);
             }
 
         } catch (Exception e) {
-            log.error("【日志清理】清理过期日志文件时发生异常：{}", e.getMessage(), e);
+            log.error("【自动日志清理】自动清理过期日志文件时发生异常：{}", e.getMessage(), e);
         }
     }
 
@@ -211,41 +219,57 @@ public class LogManagementConfig {
     }
 
     /**
-     * 紧急清理 - 磁盘空间严重不足时
+     * 紧急清理 - 磁盘空间严重不足时（自动执行，保留最新5个文件）
      */
     private void emergencyCleanup() {
         try {
-            log.warn("【紧急清理】开始紧急清理日志文件");
-            
+            log.warn("【紧急自动清理】开始紧急自动清理日志文件");
+
             File logDir = new File(logPath);
-            File[] logFiles = logDir.listFiles((dir, name) -> 
-                name.endsWith(".log") && !name.equals("jinyu-chat.log") && !name.equals("jinyu-chat-error.log"));
+            File[] logFiles = logDir.listFiles((dir, name) ->
+                name.endsWith(".log") && !isCurrentLogFile(name));
 
             if (logFiles == null || logFiles.length == 0) {
+                log.warn("【紧急自动清理】没有可清理的历史日志文件");
                 return;
             }
 
-            // 按修改时间排序，删除最旧的50%文件
+            // 按修改时间排序，最新的在后面
             Arrays.sort(logFiles, Comparator.comparingLong(File::lastModified));
-            int deleteCount = Math.max(1, logFiles.length / 2);
-            
+
+            // 紧急情况下也至少保留最新的5个文件，确保重要日志不丢失
+            int minKeepFiles = Math.min(5, logFiles.length);
+            int maxDeleteFiles = Math.max(0, logFiles.length - minKeepFiles);
+
             long deletedSize = 0;
-            for (int i = 0; i < deleteCount && i < logFiles.length; i++) {
+            int actualDeleted = 0;
+
+            for (int i = 0; i < maxDeleteFiles && i < logFiles.length; i++) {
                 File file = logFiles[i];
                 long fileSize = file.length();
                 if (file.delete()) {
                     deletedSize += fileSize;
-                    log.warn("【紧急清理】删除日志文件：{}，大小：{}MB", 
+                    actualDeleted++;
+                    log.warn("【紧急自动清理】删除日志文件：{}，大小：{}MB",
                         file.getName(), fileSize / 1024 / 1024);
                 }
             }
 
-            log.warn("【紧急清理】紧急清理完成，删除文件数：{}，释放空间：{}MB", 
-                deleteCount, deletedSize / 1024 / 1024);
+            log.warn("【紧急自动清理】紧急自动清理完成，删除文件数：{}，释放空间：{}MB，保留文件数：{}",
+                actualDeleted, deletedSize / 1024 / 1024, logFiles.length - actualDeleted);
 
         } catch (Exception e) {
-            log.error("【紧急清理】紧急清理时发生异常：{}", e.getMessage(), e);
+            log.error("【紧急自动清理】紧急自动清理时发生异常：{}", e.getMessage(), e);
         }
+    }
+
+    /**
+     * 判断是否为当前活跃的日志文件
+     */
+    private boolean isCurrentLogFile(String fileName) {
+        return fileName.equals("jinyu-chat-all.log") ||
+               fileName.equals("jinyu-chat-error.log") ||
+               fileName.equals("jinyu-chat.log"); // 兼容旧的日志文件名
     }
 
     /**
@@ -288,6 +312,8 @@ public class LogManagementConfig {
         }
     }
 
+
+
     /**
      * 获取日志管理状态
      */
@@ -299,8 +325,16 @@ public class LogManagementConfig {
             long totalSpace = logDir.getTotalSpace();
             double diskUsage = (double) (totalSpace - freeSpace) / totalSpace * 100;
 
-            return String.format("日志总大小: %dMB, 磁盘使用率: %.1f%%, 可用空间: %dGB", 
-                totalSize / 1024 / 1024, diskUsage, freeSpace / 1024 / 1024 / 1024);
+            File[] allLogFiles = logDir.listFiles((dir, name) -> name.endsWith(".log"));
+            File[] historyLogFiles = logDir.listFiles((dir, name) ->
+                name.endsWith(".log") && !isCurrentLogFile(name));
+
+            int totalLogFiles = allLogFiles != null ? allLogFiles.length : 0;
+            int historyLogFiles_count = historyLogFiles != null ? historyLogFiles.length : 0;
+
+            return String.format("日志总大小: %dMB, 磁盘使用率: %.1f%%, 可用空间: %dGB, 总日志文件: %d, 历史文件: %d",
+                totalSize / 1024 / 1024, diskUsage, freeSpace / 1024 / 1024 / 1024,
+                totalLogFiles, historyLogFiles_count);
 
         } catch (Exception e) {
             return "获取日志管理状态失败: " + e.getMessage();

@@ -3441,25 +3441,32 @@ public class ChatServiceImpl implements ChatService {
 
     /**
      * 处理联网搜索内容并附加到用户消息中
-     * 重构为使用Gemini API的完整响应格式
+     * 重构为使用Gemini API的完整响应格式，发送完整会话上下文
      *
      * @param messages 消息列表
-     * @param query 搜索查询内容（从用户消息中提取）
+     * @param query 搜索查询内容（从用户消息中提取，用于日志记录）
      * @return 包含处理后的消息列表和搜索结果的对象
      */
     private NetworkSearchResult processNetworkContent(List<Map<String, String>> messages, String query) {
-        if (query == null || query.trim().isEmpty() || messages == null || messages.isEmpty()) {
+        if (messages == null || messages.isEmpty()) {
             return new NetworkSearchResult(messages, new ArrayList<>());
         }
 
         try {
-            log.info("【Gemini联网】开始处理联网搜索内容，查询：{}", query);
+            log.info("【Gemini联网】开始处理联网搜索内容，最新查询：{}，会话消息数量：{}", query, messages.size());
 
-            // 使用Gemini API进行联网搜索
-            GeminiGroundingResponse geminiResponse = ((NetworkAiServiceImpl) networkAiService).queryWithGeminiGrounding(query);
+            // 构建完整的会话上下文发送给Gemini API
+            String fullContext = buildFullContextForNetworkSearch(messages);
+
+            log.debug("【Gemini联网】构建的完整上下文长度：{}，内容预览：{}",
+                    fullContext.length(),
+                    fullContext.length() > 300 ? fullContext.substring(0, 300) + "..." : fullContext);
+
+            // 使用Gemini API进行联网搜索，发送完整上下文
+            GeminiGroundingResponse geminiResponse = ((NetworkAiServiceImpl) networkAiService).queryWithGeminiGrounding(fullContext);
 
             if (geminiResponse == null) {
-                log.warn("【Gemini联网】Gemini响应为空，查询：{}", query);
+                log.warn("【Gemini联网】Gemini响应为空，上下文长度：{}", fullContext.length());
                 return new NetworkSearchResult(messages, new ArrayList<>());
             }
 
@@ -3494,7 +3501,7 @@ public class ChatServiceImpl implements ChatService {
             return new NetworkSearchResult(updatedMessages, searchResults);
 
         } catch (Exception e) {
-            log.error("处理联网搜索内容失败，查询：{}", query, e);
+            log.error("处理联网搜索内容失败，查询：{}，消息数量：{}", query, messages.size(), e);
             return new NetworkSearchResult(messages, new ArrayList<>()); // 出错时返回原消息列表和空搜索结果
         }
     }
@@ -3511,6 +3518,49 @@ public class ChatServiceImpl implements ChatService {
         }
 
         return searchResponse;
+    }
+
+    /**
+     * 构建完整的会话上下文用于联网搜索
+     * 将整个会话历史转换为自然语言格式，让联网AI能够理解完整的对话上下文
+     *
+     * @param messages 消息列表
+     * @return 格式化的会话上下文
+     */
+    private String buildFullContextForNetworkSearch(List<Map<String, String>> messages) {
+        if (messages == null || messages.isEmpty()) {
+            return "";
+        }
+
+        StringBuilder contextBuilder = new StringBuilder();
+        contextBuilder.append("以下是用户与AI助手的完整对话历史，请基于这个上下文理解用户的最新需求并进行网络搜索：\n\n");
+
+        // 遍历所有消息，构建对话上下文
+        for (int i = 0; i < messages.size(); i++) {
+            Map<String, String> message = messages.get(i);
+            String role = message.get("role");
+            String content = message.get("content");
+
+            if (content == null || content.trim().isEmpty()) {
+                continue;
+            }
+
+            // 清理内容，移除之前的联网搜索结果和文件内容
+            String cleanContent = extractOriginalUserContent(content);
+
+            if ("user".equals(role)) {
+                contextBuilder.append("用户: ").append(cleanContent).append("\n\n");
+            } else if ("assistant".equals(role)) {
+                // 对于AI回复，只保留前200个字符作为上下文参考
+                String shortContent = cleanContent.length() > 200 ?
+                    cleanContent.substring(0, 200) + "..." : cleanContent;
+                contextBuilder.append("AI助手: ").append(shortContent).append("\n\n");
+            }
+        }
+
+        contextBuilder.append("请基于以上对话上下文，理解用户的最新需求并进行相关的网络搜索。");
+
+        return contextBuilder.toString();
     }
 
     /**
@@ -3558,29 +3608,7 @@ public class ChatServiceImpl implements ChatService {
                   .replaceAll("[\\x00-\\x1F\\x7F]", " ");
     }
 
-    /**
-     * 清理联网搜索内容，移除可能导致问题的字符和格式
-     *
-     * @param content 原始内容
-     * @return 清理后的内容
-     */
-    private String cleanNetworkContent(String content) {
-        if (content == null) {
-            return "";
-        }
 
-        return content.trim()
-                // 移除多余的空白字符
-                .replaceAll("\\s+", " ")
-                // 移除HTML标签
-                .replaceAll("<[^>]+>", "")
-                // 移除特殊的Unicode字符
-                .replaceAll("[\\u0000-\\u001F\\u007F-\\u009F]", " ")
-                // 移除连续的标点符号
-                .replaceAll("[.]{3,}", "...")
-                // 确保内容不为空
-                .trim();
-    }
 
     /**
      * 记录详细的AI请求信息

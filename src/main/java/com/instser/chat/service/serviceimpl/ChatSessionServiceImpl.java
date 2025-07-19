@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.instser.chat.dao.ChatSessionDao;
 import com.instser.chat.entity.ChatSession;
 import com.instser.chat.service.ChatSessionService;
+import com.instser.chat.service.ChatMessageService;
 import com.instser.chat.service.FileUploadService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -24,9 +25,11 @@ import java.util.UUID;
 public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionDao, ChatSession> implements ChatSessionService {
 
     private final FileUploadService fileUploadService;
+    private final ChatMessageService chatMessageService;
 
-    public ChatSessionServiceImpl(FileUploadService fileUploadService) {
+    public ChatSessionServiceImpl(FileUploadService fileUploadService, ChatMessageService chatMessageService) {
         this.fileUploadService = fileUploadService;
+        this.chatMessageService = chatMessageService;
     }
 
     @Override
@@ -107,7 +110,16 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionDao, ChatSess
                 return false;
             }
 
-            // 删除会话关联的文件
+            // 删除会话下的所有消息及其关联数据（文件、联网内容等）
+            int deletedMessagesCount = 0;
+            try {
+                deletedMessagesCount = chatMessageService.deleteAllBySessionId(sessionId, session.getUserId());
+                log.info("删除会话关联消息完成，消息数量：{}，会话ID：{}", deletedMessagesCount, sessionId);
+            } catch (Exception e) {
+                log.error("删除会话关联消息失败，继续删除会话，会话ID：{}", sessionId, e);
+            }
+
+            // 删除会话关联的文件（兜底处理，防止有遗漏的文件）
             int deletedFilesCount = 0;
             try {
                 deletedFilesCount = fileUploadService.deleteFilesBySessionId(sessionId, session.getUserId());
@@ -122,7 +134,7 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionDao, ChatSess
 
             boolean result = this.remove(wrapper);
             if (result) {
-                log.info("会话删除成功，会话ID：{}，删除关联文件：{}个", sessionId, deletedFilesCount);
+                log.info("会话删除成功，会话ID：{}，删除关联消息：{}条，删除关联文件：{}个", sessionId, deletedMessagesCount, deletedFilesCount);
             } else {
                 log.warn("会话删除失败，会话ID：{}", sessionId);
             }

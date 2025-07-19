@@ -66,7 +66,17 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
                 return false;
             }
 
-            LocalDateTime expireTime = getBusinessDateTime().plusDays(validityDays);
+            // 计算过期时间：-1表示永久有效
+            LocalDateTime expireTime;
+            if (validityDays == -1) {
+                // 永久有效：设置为null或很远的未来时间
+                expireTime = null;
+                log.info("套餐{}为永久有效套餐，过期时间设置为null", packageId);
+            } else {
+                expireTime = getBusinessDateTime().plusDays(validityDays);
+                log.debug("套餐{}有效期{}天，过期时间：{}", packageId, validityDays, expireTime);
+            }
+
             Integer chatCount;
 
             // 根据套餐限制类型设置总次数

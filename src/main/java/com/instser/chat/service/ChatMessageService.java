@@ -141,4 +141,13 @@ public interface ChatMessageService extends IService<ChatMessage> {
      * @return 是否更新成功
      */
     boolean updateWebSearchFlag(String messageId, boolean hasWebSearch);
+
+    /**
+     * 删除指定会话的所有消息及其关联数据
+     *
+     * @param sessionId 会话ID
+     * @param userId    用户ID（用于验证权限）
+     * @return 删除的消息数量
+     */
+    int deleteAllBySessionId(String sessionId, Long userId);
 }

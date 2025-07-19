@@ -37,7 +37,7 @@ public class NetworkAiServiceImpl implements NetworkAiService {
         }
 
         try {
-            log.info("【Gemini联网】开始处理联网查询，用户上下文长度：{}", userContext.length());
+            log.info("【Gemini联网】开始处理联网查询，会话上下文长度：{}", userContext.length());
 
             // 使用Gemini服务替代原有实现
             GeminiGroundingResponse geminiResponse = geminiNetworkService.queryWithGrounding(userContext);

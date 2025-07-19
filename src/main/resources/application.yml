@@ -392,34 +392,15 @@ async:
 # Google Gemini API配置
 gemini:
   api:
-    # Gemini API密钥（向后兼容）
-    key: ${GEMINI_API_KEY:your-google-api-key}
-
-    # 多个API密钥列表（密钥轮询管理）
-    keys:
-      - ${GEMINI_API_KEY:your-google-api-key}
-      # 可以添加更多密钥
-      # - your-google-api-key2
-      # - your-google-api-key3
-
-    # 轮询策略：ROUND_ROBIN(轮询), RANDOM(随机), WEIGHTED(加权)
-    strategy: ${GEMINI_STRATEGY:ROUND_ROBIN}
+    # Gemini API密钥
+    key: ${GEMINI_API_KEY:your-gemini-api-key}
 
     # Gemini API基础URL
-    base-url: ${GEMINI_BASE_URL:https://generativelanguage.googleapis.com/v1beta}
+    base-url: ${GEMINI_BASE_URL:http://your-gemini-proxy.example.com:5321/v1beta}
 
     # 请求超时时间（毫秒）
     timeout: ${GEMINI_TIMEOUT:10000}
 
-    # 重试次数（向后兼容）
+    # 重试次数
     retry-count: ${GEMINI_RETRY_COUNT:3}
-
-    # 密钥健康检查间隔（秒）
-    health-check-interval: ${GEMINI_HEALTH_CHECK_INTERVAL:300}
-
-    # 密钥失败重试次数
-    max-retries: ${GEMINI_MAX_RETRIES:3}
-
-    # 密钥禁用时间（秒）
-    disable-timeout: ${GEMINI_DISABLE_TIMEOUT:600}
 

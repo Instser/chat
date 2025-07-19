@@ -72,8 +72,12 @@ public class ChatLimitServiceImpl implements ChatLimitService {
             // }
 
             // 检查套餐是否过期（使用业务时区）
+            // 注意：过期时间为null表示永久有效
             if (userAccount.getPackageExpireTime() != null &&
                 userAccount.getPackageExpireTime().isBefore(getBusinessDateTime())) {
+                log.warn("用户{}套餐已过期，套餐ID：{}，套餐名称：{}，过期时间：{}，当前时间：{}",
+                    userId, userAccount.getPackageId(), packageInfo.getPackageName(),
+                    userAccount.getPackageExpireTime(), getBusinessDateTime());
                 return ChatLimitVO.failed("套餐已过期");
             }
 

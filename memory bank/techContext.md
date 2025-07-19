@@ -14,8 +14,8 @@
 - **汇率服务**: 完整的实时汇率API系统 (exchangerate-api.com)
 - **缓存系统**: Redis 分布式缓存 (your-db-host.example.com:31122)
 - **分布式锁**: Redisson 3.24.3 (基于Redis实现)
-- **联网搜索**: 联网AI模块 (专用联网AI模型，支持结构化响应)
-- **内容提取**: 联网AI一体化处理，智能内容获取和摘要生成
+- **联网搜索**: Gemini联网AI模块 (单KEY模式，基于Gemini 2.5-flash模型)
+- **内容提取**: Gemini联网一体化处理，智能内容获取和摘要生成
 - **第三方登录**: Google OAuth2、GitHub OAuth2 (前端主导流程，后端API处理)
 - **OAuth2安全**: OAuth2SecurityUtil安全工具类 (状态令牌、AES加密、设备指纹、风险评分)
 - **OAuth2审计**: OAuth2AuditService审计服务 (异步日志记录、安全事件监控)
@@ -45,8 +45,8 @@
 - **图片解析策略**: AI服务集成，Base64编码传输，JSON格式响应解析
 - **支付安全策略**: Redis分布式缓存实现支付频率限制、防重放攻击、可疑行为记录
 - **分布式锁策略**: Redisson实现订单状态保护、用户支付会话管理
-- **联网搜索策略**: 联网AI模块重构，单步式智能联网搜索，结构化JSON响应，自动内容摘要
-- **内容适配策略**: NetworkAiService适配器模式，保持与现有存储逻辑的完全兼容性
+- **联网搜索策略**: Gemini联网AI模块，单KEY模式，基于Gemini 2.5-flash模型，结构化JSON响应，自动内容摘要
+- **内容适配策略**: GeminiNetworkService简化实现，直接使用单个API密钥，移除轮询管理复杂性
 - **OAuth2认证策略**: 前端主导OAuth2流程，后端专注授权码交换和用户信息获取，JWT令牌统一认证
 - **OAuth2安全策略**: CSRF状态验证、AES令牌加密存储、设备指纹识别、风险评分算法、异步审计日志
 

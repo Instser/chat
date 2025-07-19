@@ -77,8 +77,12 @@ public class ChatApiController {
             if (chatResponse.isSuccess()) {
                 log.info("【API响应】聊天请求处理成功，用户ID：{}", chatRequest.getUserId());
             } else {
-                log.warn("【API响应】聊天请求处理失败，用户ID：{}，错误：{}",
-                    chatRequest.getUserId(), chatResponse.getErrorMessage());
+                String errorMsg = chatResponse.getErrorMessage();
+                if (errorMsg == null || errorMsg.trim().isEmpty()) {
+                    errorMsg = "未知错误";
+                }
+                log.warn("【API响应】聊天请求处理失败，用户ID：{}，会话ID：{}，错误：{}",
+                    chatRequest.getUserId(), chatRequest.getSessionId(), errorMsg);
             }
 
         } catch (Exception e) {

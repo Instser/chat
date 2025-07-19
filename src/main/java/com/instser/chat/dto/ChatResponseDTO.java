@@ -107,6 +107,7 @@ public class ChatResponseDTO {
         response.setHasContentSent(true);
         response.setRealAiResponse(false);
         response.setAiResponseContent(errorContent);
+        response.setErrorMessage(errorContent); // 同时设置错误消息，确保getErrorMessage()不返回null
         response.setShouldRecordUsage(false);
         return response;
     }

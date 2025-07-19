@@ -121,11 +121,5 @@ public class LogManagementController {
         return Result.success(status);
     }
 
-    @PostMapping("/files/cleanup")
-    @Operation(summary = "手动清理过期日志文件")
-    public Result<String> cleanupLogFiles() {
-        log.info("【日志管理】手动清理过期日志文件");
-        logManagementConfig.cleanupOldLogFiles();
-        return Result.success("日志文件清理完成");
-    }
+
 }

@@ -1,9 +1,7 @@
 package com.instser.chat.service.serviceimpl;
 
-import com.instser.chat.common.util.LogUtils;
 import com.instser.chat.config.GeminiConfig;
 import com.instser.chat.entity.GeminiGroundingResponse;
-import com.instser.chat.service.GeminiApiKeyManager;
 import com.instser.chat.service.GeminiNetworkService;
 import com.instser.chat.service.GeminiResponseParser;
 import lombok.RequiredArgsConstructor;
@@ -34,7 +32,6 @@ public class GeminiNetworkServiceImpl implements GeminiNetworkService {
 
     private final GeminiConfig geminiConfig;
     private final GeminiResponseParser responseParser;
-    private final GeminiApiKeyManager apiKeyManager; // 新增密钥管理器
 
     // 硬编码的Gemini模型参数
     private static final String GEMINI_MODEL_CODE = "gemini-2.5-flash";
@@ -42,29 +39,27 @@ public class GeminiNetworkServiceImpl implements GeminiNetworkService {
     @Override
     public GeminiGroundingResponse queryWithGrounding(String userContext) {
         if (userContext == null || userContext.trim().isEmpty()) {
-            log.warn("【Gemini联网】用户上下文为空，返回空结果");
+            log.warn("【Gemini联网】会话上下文为空，返回空结果");
             return null;
         }
 
-        String currentApiKey = null;
         try {
-            log.info("【Gemini联网】开始处理联网查询，用户上下文长度：{}", userContext.length());
-
-            // 获取下一个可用的API密钥
-            currentApiKey = apiKeyManager.getNextApiKey();
+            log.info("【Gemini联网】开始处理联网查询，会话上下文长度：{}", userContext.length());
+            log.debug("【Gemini联网】发送的完整上下文内容：\n{}", userContext);
 
             // 构建请求体，基于gemini-test.py的实现
             Map<String, Object> requestBody = buildGeminiRequest(userContext);
 
-            // 设置请求头
+            // 设置请求头，使用Bearer认证
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.setBearerAuth(geminiConfig.getApiKey());
 
             HttpEntity<Map<String, Object>> httpEntity = new HttpEntity<>(requestBody, headers);
 
-            // 构建请求URL，使用轮询的API密钥
-            String requestUrl = String.format("%s/models/%s:generateContent?key=%s",
-                    geminiConfig.getBaseUrl(), GEMINI_MODEL_CODE, currentApiKey);
+            // 构建请求URL，不再使用key参数
+            String requestUrl = String.format("%s/models/%s:generateContent",
+                    geminiConfig.getBaseUrl(), GEMINI_MODEL_CODE);
 
             log.info("【Gemini联网】发送请求到：{}，模型：{}", geminiConfig.getBaseUrl(), GEMINI_MODEL_CODE);
 
@@ -83,27 +78,19 @@ public class GeminiNetworkServiceImpl implements GeminiNetworkService {
 
             log.info("【Gemini联网】API调用成功，开始解析响应");
 
-            // 报告成功
-            apiKeyManager.reportSuccess(currentApiKey);
-
             // 解析响应
             GeminiGroundingResponse result = responseParser.parseResponse(response.getBody());
 
             if (result != null && result.getSources() != null) {
-                log.info("【内容提取】URL数量：{}，成功：{}，失败：{}",
-                    result.getSources().size(), result.getSources().size(), 0);
+                log.info("【联网搜索结果】获取到{}个搜索来源，解析成功", result.getSources().size());
+            } else {
+                log.warn("【联网搜索结果】未获取到有效的搜索来源");
             }
 
             return result;
 
         } catch (Exception e) {
             log.error("【Gemini联网】查询失败：{}", e.getMessage(), e);
-
-            // 报告失败
-            if (currentApiKey != null) {
-                apiKeyManager.reportFailure(currentApiKey, e);
-            }
-
             return null;
         }
     }
@@ -132,12 +119,6 @@ public class GeminiNetworkServiceImpl implements GeminiNetworkService {
         tool.put("googleSearch", googleSearch);
 
         requestBody.put("tools", List.of(tool));
-
-        // 添加生成配置
-        Map<String, Object> generationConfig = new HashMap<>();
-        generationConfig.put("temperature", 0.7);
-        generationConfig.put("maxOutputTokens", 2048);
-        requestBody.put("generationConfig", generationConfig);
 
         return requestBody;
     }
