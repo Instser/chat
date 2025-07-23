@@ -48,7 +48,6 @@ spring:
     type: redis
     redis:
       time-to-live: 1800000  # 30分钟
-      cache-null-values: false
 
   # 数据源配置
   datasource:
@@ -81,14 +80,33 @@ spring:
       pool-prepared-statements: true              # 开启预编译语句缓存
       max-pool-prepared-statement-per-connection-size: 50  # 每连接最大缓存数 (提升到50)
 
-      # 监控和性能配置 (移除DruidStatViewServlet)
-      filters: stat,wall                          # 监控统计和防火墙
-      connection-properties: druid.stat.mergeSql=true;druid.stat.slowSqlMillis=1000;useServerPrepStmts=true;cachePrepStmts=true;rewriteBatchedStatements=true
-      # 禁用Druid Web监控功能
-      web-stat-filter:
-        enabled: false                            # 禁用Web统计过滤器
+      # 监控配置
       stat-view-servlet:
-        enabled: false                            # 禁用Druid监控页面
+        enabled: true                             # 开启监控页面
+        url-pattern: /druid/*                     # 监控页面URL
+        reset-enable: false                       # 禁用重置按钮
+        login-username: admin                     # 监控页面用户名
+        login-password: admin123                  # 监控页面密码
+        allow: 127.0.0.1                        # 允许访问的IP (本地)
+
+      # 过滤器配置
+      web-stat-filter:
+        enabled: true                             # 开启Web监控
+        url-pattern: /*                           # 监控所有URL
+        exclusions: "*.js,*.gif,*.jpg,*.png,*.css,*.ico,/druid/*"  # 排除静态资源
+
+      # SQL监控配置
+      filter:
+        stat:
+          enabled: true                           # 开启SQL监控
+          log-slow-sql: true                      # 记录慢SQL
+          slow-sql-millis: 2000                   # 慢SQL阈值 (2秒)
+          merge-sql: true                         # 合并SQL统计
+        wall:
+          enabled: true                           # 开启防火墙
+          config:
+            multi-statement-allow: true           # 允许多语句执行
+            none-base-statement-allow: true       # 允许非基础语句
 
   # Jackson配置
   jackson:
@@ -104,6 +122,26 @@ spring:
     multipart:
       max-file-size: 10MB
       max-request-size: 10MB
+
+# 性能监控配置
+performance:
+  monitor:
+    # 监控间隔配置
+    interval:
+      basic: 300000      # 基础监控间隔（毫秒），默认5分钟
+      detailed: 3600000  # 详细报告间隔（毫秒），默认1小时
+    # 告警阈值配置
+    threshold:
+      cpu-usage: 80.0              # CPU使用率告警阈值（百分比）
+      heap-memory-usage: 85.0      # 堆内存使用率告警阈值（百分比）
+      thread-count: 500            # 线程数告警阈值
+      connection-pool-usage: 90.0  # 数据库连接池使用率告警阈值（百分比）
+    # 服务器信息配置
+    server:
+      description: ""      # 服务器描述信息，为空时自动检测
+      auto-detect: true    # 是否启用自动检测服务器信息
+
+
 
 # MyBatis-Plus配置
 mybatis-plus:

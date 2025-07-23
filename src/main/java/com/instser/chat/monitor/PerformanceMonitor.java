@@ -1,7 +1,6 @@
 package com.instser.chat.monitor;
 
 import com.alibaba.druid.pool.DruidDataSource;
-import com.instser.chat.common.util.LogUtils;
 import com.sun.management.OperatingSystemMXBean;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -26,11 +25,12 @@ import java.lang.management.ThreadMXBean;
 public class PerformanceMonitor {
 
     private final DataSource dataSource;
+    private final PerformanceMonitorConfig config;
 
     /**
-     * 每5分钟监控一次系统性能
+     * 定期监控系统性能（间隔可配置）
      */
-    @Scheduled(fixedRate = 300000) // 5分钟
+    @Scheduled(fixedRateString = "${performance.monitor.interval.basic:300000}")
     public void monitorSystemPerformance() {
         try {
             logSystemInfo();
@@ -43,13 +43,14 @@ public class PerformanceMonitor {
     }
 
     /**
-     * 每小时输出详细性能报告
+     * 定期输出详细性能报告（间隔可配置）
      */
-    @Scheduled(fixedRate = 3600000) // 1小时
+    @Scheduled(fixedRateString = "${performance.monitor.interval.detailed:3600000}")
     public void generatePerformanceReport() {
         try {
+            String serverDesc = getServerDescription();
             log.info("【性能报告】========================================");
-            log.info("【性能报告】📊 系统性能报告 (8核8G服务器)");
+            log.info("【性能报告】📊 系统性能报告 {}", serverDesc);
             log.info("【性能报告】========================================");
 
             logDetailedSystemInfo();
@@ -73,12 +74,10 @@ public class PerformanceMonitor {
 
         // 尝试获取CPU使用率 (仅在支持的JVM上可用)
         double cpuUsage = -1;
-        double systemCpuUsage = -1;
 
         if (osBean instanceof OperatingSystemMXBean) {
             OperatingSystemMXBean sunOsBean = (OperatingSystemMXBean) osBean;
             cpuUsage = sunOsBean.getProcessCpuLoad() * 100;
-            systemCpuUsage = sunOsBean.getCpuLoad() * 100; // 使用getCpuLoad()替代已废弃的getSystemCpuLoad()
         }
 
         if (cpuUsage >= 0) {
@@ -86,8 +85,9 @@ public class PerformanceMonitor {
                     String.format("%.1f", cpuUsage));
 
             // CPU使用率告警
-            if (cpuUsage > 80) {
-                log.warn("【资源预警】类型：CPU，使用率：{}%，阈值：80%", String.format("%.1f", cpuUsage));
+            if (cpuUsage > config.getThreshold().getCpuUsage()) {
+                log.warn("【资源预警】类型：CPU，使用率：{}%，阈值：{}%",
+                        String.format("%.1f", cpuUsage), config.getThreshold().getCpuUsage());
             }
         } else {
             log.info("【性能报告】CPU：N/A，内存：计算中，线程：计算中，连接池：计算中");
@@ -110,8 +110,9 @@ public class PerformanceMonitor {
                 heapUsed, heapMax, nonHeapUsed);
 
         // 内存使用率告警
-        if (heapUsagePercent > 85) {
-            log.warn("【资源预警】类型：堆内存，使用率：{}%，阈值：85%", String.format("%.1f", heapUsagePercent));
+        if (heapUsagePercent > config.getThreshold().getHeapMemoryUsage()) {
+            log.warn("【资源预警】类型：堆内存，使用率：{}%，阈值：{}%",
+                    String.format("%.1f", heapUsagePercent), config.getThreshold().getHeapMemoryUsage());
         }
     }
 
@@ -129,8 +130,9 @@ public class PerformanceMonitor {
                 threadCount, peakThreadCount, daemonThreadCount);
 
         // 线程数告警
-        if (threadCount > 500) {
-            log.warn("【资源预警】类型：线程数，使用率：{}个，阈值：500个", threadCount);
+        if (threadCount > config.getThreshold().getThreadCount()) {
+            log.warn("【资源预警】类型：线程数，使用率：{}个，阈值：{}个",
+                    threadCount, config.getThreshold().getThreadCount());
         }
     }
 
@@ -151,8 +153,9 @@ public class PerformanceMonitor {
                     activeCount, maxActive, String.format("%.1f", activePercent), poolingCount);
 
             // 连接池使用率告警
-            if (activePercent > 90) {
-                log.warn("【资源预警】类型：数据库连接池，使用率：{}%，阈值：90%", String.format("%.1f", activePercent));
+            if (activePercent > config.getThreshold().getConnectionPoolUsage()) {
+                log.warn("【资源预警】类型：数据库连接池，使用率：{}%，阈值：{}%",
+                        String.format("%.1f", activePercent), config.getThreshold().getConnectionPoolUsage());
             }
         }
     }
@@ -264,5 +267,31 @@ public class PerformanceMonitor {
         } catch (Exception e) {
             return "性能信息获取失败: " + e.getMessage();
         }
+    }
+
+    /**
+     * 获取服务器描述信息
+     */
+    private String getServerDescription() {
+        if (!config.getServer().getDescription().isEmpty()) {
+            return "(" + config.getServer().getDescription() + ")";
+        }
+
+        if (config.getServer().isAutoDetect()) {
+            try {
+                java.lang.management.OperatingSystemMXBean osBean = ManagementFactory.getOperatingSystemMXBean();
+                Runtime runtime = Runtime.getRuntime();
+
+                int processors = osBean.getAvailableProcessors();
+                long maxMemoryMB = runtime.maxMemory() / 1024 / 1024;
+
+                return String.format("(%d核%dMB服务器)", processors, maxMemoryMB);
+            } catch (Exception e) {
+                log.debug("自动检测服务器信息失败: {}", e.getMessage());
+                return "";
+            }
+        }
+
+        return "";
     }
 }

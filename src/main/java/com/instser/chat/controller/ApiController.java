@@ -1,7 +1,9 @@
 package com.instser.chat.controller;
 
+import com.instser.chat.common.exception.WebSearchException;
 import com.instser.chat.common.result.Result;
 import com.instser.chat.common.util.ErrorResponseUtil;
+import com.instser.chat.dto.UpdateWebSearchContentRequest;
 import com.instser.chat.entity.AiModel;
 import com.instser.chat.entity.ChatMessage;
 import com.instser.chat.entity.ChatSession;
@@ -22,6 +24,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.Valid;
 import java.util.*;
 
 /**
@@ -445,5 +448,50 @@ public class ApiController {
         }
         AiModelVO aiModelVO = VOConverter.toAiModelVO(aiModel);
         return Result.success(aiModelVO, "获取模型信息成功");
+    }
+
+    // ==================== 网络搜索内容修改接口 ====================
+
+    /**
+     * 更新网络搜索内容
+     */
+    @PutMapping("/chat/messages/{messageId}/web-search-content")
+    public Result<?> updateWebSearchContent(
+            @PathVariable String messageId,
+            @RequestBody @Valid UpdateWebSearchContentRequest request,
+            Authentication authentication) {
+
+        try {
+            Long userId = getCurrentUserId(authentication);
+            log.info("【API调用】更新网络搜索内容接口，用户ID：{}，消息ID：{}，内容项数：{}",
+                    userId, messageId, request.getContent().size());
+
+            boolean success = webSearchContentService.updateContentByMessageId(
+                    messageId, request.getContent(), userId);
+
+            if (success) {
+                Map<String, Object> data = new HashMap<>();
+                data.put("messageId", messageId);
+                data.put("resultCount", request.getContent().size());
+                data.put("updateTime", java.time.LocalDateTime.now().toString());
+
+                return Result.success(data, "网络搜索内容更新成功");
+            } else {
+                return Result.failed("网络搜索内容更新失败");
+            }
+
+        } catch (WebSearchException e) {
+            log.warn("【API异常】更新网络搜索内容业务异常，消息ID：{}，错误码：{}，错误信息：{}",
+                    messageId, e.getCode(), e.getMessage());
+
+            Map<String, Object> errorData = new HashMap<>();
+            errorData.put("errorCode", e.getErrorCode().name());
+            errorData.put("timestamp", java.time.LocalDateTime.now().toString());
+
+            return new Result<>(e.getCode(), e.getMessage(), errorData);
+        } catch (Exception e) {
+            log.error("【API异常】更新网络搜索内容系统异常，消息ID：{}", messageId, e);
+            return Result.failed("系统异常，请稍后重试");
+        }
     }
 }

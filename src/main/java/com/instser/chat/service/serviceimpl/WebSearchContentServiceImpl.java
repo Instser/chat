@@ -2,23 +2,31 @@ package com.instser.chat.service.serviceimpl;
 
 import com.alibaba.fastjson.JSON;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.instser.chat.annotation.WebSearchMonitoring;
+import com.instser.chat.common.exception.WebSearchErrorCode;
+import com.instser.chat.common.exception.WebSearchException;
 import com.instser.chat.dao.WebSearchContentDao;
 import com.instser.chat.entity.SearchResponse;
 import com.instser.chat.entity.WebSearchContent;
 import com.instser.chat.entity.WebSearchResult;
-
+import com.instser.chat.metrics.WebSearchMetrics;
+import com.instser.chat.service.WebSearchCacheService;
 import com.instser.chat.service.WebSearchContentService;
+import com.instser.chat.service.WebSearchRateLimitService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 联网查询内容服务实现类
@@ -32,6 +40,18 @@ public class WebSearchContentServiceImpl extends ServiceImpl<WebSearchContentDao
 
     @Autowired
     private WebSearchContentDao webSearchContentDao;
+
+    @Autowired
+    private WebSearchRateLimitService webSearchRateLimitService;
+
+    @Autowired
+    private WebSearchCacheService webSearchCacheService;
+
+    @Autowired
+    private WebSearchMetrics webSearchMetrics;
+
+    @Autowired
+    private RedisTemplate<String, Object> redisTemplate;
 
 
 
@@ -258,5 +278,111 @@ public class WebSearchContentServiceImpl extends ServiceImpl<WebSearchContentDao
 
         log.error("【数据库重试】联网内容保存失败，已达到最大重试次数，搜索ID：{}", webSearchContent.getWebSearchId());
         return false;
+    }
+
+    @Override
+    @WebSearchMonitoring("updateContentByMessageId")
+    @Transactional(rollbackFor = Exception.class)
+    public boolean updateContentByMessageId(String messageId, List<Map<String, Object>> content, Long userId) {
+        try {
+            log.info("【网络搜索修改】开始更新网络搜索内容，用户ID：{}，消息ID：{}", userId, messageId);
+
+            // 1. 预检查阶段 - 快速失败
+            validateBasicParameters(messageId, content);
+
+            // 2. 权限验证 - 使用缓存优化
+            if (!webSearchCacheService.hasPermission(userId, messageId)) {
+                throw new WebSearchException(WebSearchErrorCode.NO_MESSAGE_PERMISSION);
+            }
+
+            // 3. 频率限制检查 - 高性能Redis计数
+            if (!webSearchRateLimitService.checkUserUpdateRateLimit(userId)) {
+                webSearchMetrics.recordRateLimit();
+                throw new WebSearchException(WebSearchErrorCode.RATE_LIMIT_EXCEEDED);
+            }
+
+            // 4. 并发控制 - 分布式锁
+            String lockKey = "web_search_update_lock:" + messageId;
+            boolean lockAcquired = redisTemplate.opsForValue()
+                    .setIfAbsent(lockKey, "1", 30, TimeUnit.SECONDS);
+
+            if (!lockAcquired) {
+                webSearchMetrics.recordConcurrentConflict();
+                throw new WebSearchException(WebSearchErrorCode.CONCURRENT_MODIFICATION);
+            }
+
+            try {
+                // 5. 数据库更新 - 批量操作
+                String newContentJson = JSON.toJSONString(content);
+                int updatedRows = webSearchContentDao.updateContentByMessageId(
+                        messageId, newContentJson, content.size());
+
+                if (updatedRows == 0) {
+                    throw new WebSearchException(WebSearchErrorCode.WEB_SEARCH_CONTENT_NOT_FOUND);
+                }
+
+                // 6. 清除权限缓存
+                webSearchCacheService.clearPermissionCache(userId, messageId);
+
+                log.info("【网络搜索修改】网络搜索内容更新成功，用户ID：{}，消息ID：{}，结果数量：{}",
+                        userId, messageId, content.size());
+                return true;
+
+            } finally {
+                // 7. 确保锁被释放
+                redisTemplate.delete(lockKey);
+            }
+
+        } catch (WebSearchException e) {
+            log.warn("【网络搜索修改】业务异常，用户ID：{}，消息ID：{}，错误：{}", userId, messageId, e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            log.error("【网络搜索修改】系统异常，用户ID：{}，消息ID：{}", userId, messageId, e);
+            throw new WebSearchException(WebSearchErrorCode.DATABASE_ERROR, e);
+        }
+    }
+
+    /**
+     * 基础参数验证 - 快速失败
+     */
+    private void validateBasicParameters(String messageId, List<Map<String, Object>> content) {
+        // UUID格式验证
+        try {
+            UUID.fromString(messageId);
+        } catch (IllegalArgumentException e) {
+            throw new WebSearchException(WebSearchErrorCode.MESSAGE_ID_INVALID);
+        }
+
+        // 内容基础验证
+        if (content == null || content.isEmpty()) {
+            throw new WebSearchException(WebSearchErrorCode.CONTENT_NULL);
+        }
+
+        if (content.size() > 50) {
+            throw new WebSearchException(WebSearchErrorCode.CONTENT_TOO_MANY_ITEMS);
+        }
+
+        // 结构验证
+        for (Map<String, Object> item : content) {
+            if (item == null || !isValidContentFields(item)) {
+                throw new WebSearchException(WebSearchErrorCode.CONTENT_INVALID_STRUCTURE);
+            }
+        }
+
+        // 大小验证
+        String jsonString = JSON.toJSONString(content);
+        if (jsonString.getBytes(StandardCharsets.UTF_8).length > 100 * 1024) {
+            throw new WebSearchException(WebSearchErrorCode.CONTENT_TOO_LARGE);
+        }
+    }
+
+    /**
+     * 内容字段验证
+     */
+    private boolean isValidContentFields(Map<String, Object> item) {
+        return item.containsKey("url") &&
+               item.containsKey("title") &&
+               item.containsKey("content") &&
+               item.containsKey("favicon");
     }
 }

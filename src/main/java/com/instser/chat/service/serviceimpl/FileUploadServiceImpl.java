@@ -74,7 +74,7 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
             }
 
             // 生成文件ID
-            String fileId = UUID.randomUUID().toString();
+            String fileId = UUID.randomUUID().toString().replace("-", "");
 
             log.debug("【文件处理】生成文件ID：{}，开始创建临时文件", fileId);
 

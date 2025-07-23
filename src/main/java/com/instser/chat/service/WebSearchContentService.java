@@ -5,6 +5,7 @@ import com.instser.chat.entity.SearchResponse;
 import com.instser.chat.entity.WebSearchContent;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 联网查询内容服务接口
@@ -70,4 +71,14 @@ public interface WebSearchContentService extends IService<WebSearchContent> {
      * @return 联网内容列表
      */
     List<WebSearchContent> getSessionWebSearchContent(String sessionId);
+
+    /**
+     * 更新网络搜索内容（用户修改）
+     *
+     * @param messageId 消息ID
+     * @param content   新的内容数组
+     * @param userId    用户ID
+     * @return 是否更新成功
+     */
+    boolean updateContentByMessageId(String messageId, List<Map<String, Object>> content, Long userId);
 }

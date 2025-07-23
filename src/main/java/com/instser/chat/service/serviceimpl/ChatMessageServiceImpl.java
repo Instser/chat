@@ -57,7 +57,7 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
                 userId, sessionId, role, modelId);
 
         ChatMessage message = new ChatMessage();
-        message.setMessageId(java.util.UUID.randomUUID().toString());
+        message.setMessageId(java.util.UUID.randomUUID().toString().replace("-", ""));
         message.setSessionId(sessionId);
         message.setRole(role); // 使用传入的角色信息
         message.setContent(content);
@@ -376,7 +376,7 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
 
             // 创建消息对象
             ChatMessage message = new ChatMessage();
-            String messageId = java.util.UUID.randomUUID().toString();
+            String messageId = java.util.UUID.randomUUID().toString().replace("-", "");
             message.setMessageId(messageId);
             message.setSessionId(sessionId);
             message.setRole(role);

@@ -32,9 +32,9 @@ public class ContinuationThreadPoolMonitor {
     private static final double QUEUE_USAGE_WARNING_RATIO = 0.8; // 队列使用率80%告警
 
     /**
-     * 每30秒监控一次线程池状态
+     * 每60秒监控一次线程池状态
      */
-    @Scheduled(fixedRate = 30000)
+    @Scheduled(fixedRate = 60000)
     public void monitorThreadPool() {
         try {
             if (!(continuationExecutor instanceof ThreadPoolTaskExecutor)) {
