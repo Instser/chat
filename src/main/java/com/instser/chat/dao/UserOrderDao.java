@@ -196,6 +196,17 @@ public interface UserOrderDao extends BaseMapper<UserOrder> {
     LocalDateTime getFirstPaymentTimeByUserId(Long userId);
 
     /**
+     * 查询用户在指定时间窗口内的支付次数
+     * 用于支付频率限制的数据库回退策略
+     *
+     * @param userId 用户ID
+     * @param startTime 开始时间
+     * @return 支付次数
+     */
+    @Select("SELECT COUNT(*) FROM t_user_order WHERE user_id = #{userId} AND create_time >= #{startTime} AND deleted = 0")
+    Integer countRecentPayments(@Param("userId") Long userId, @Param("startTime") String startTime);
+
+    /**
      * 获取用户总支付金额
      *
      * @param userId 用户ID

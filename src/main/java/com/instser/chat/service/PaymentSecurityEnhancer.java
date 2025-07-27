@@ -23,6 +23,9 @@ public class PaymentSecurityEnhancer {
     @Autowired
     private RedisPaymentSecurityService redisPaymentSecurityService;
 
+    @Autowired
+    private EnhancedPaymentSecurityService enhancedPaymentSecurityService;
+
     // 支付宝回调IP白名单（示例IP，实际使用时需要从支付宝官方获取最新IP列表）
     private static final Set<String> ALIPAY_CALLBACK_IPS = Set.of(
         "110.75.143.0/24",   // 支付宝回调IP段1
@@ -77,13 +80,20 @@ public class PaymentSecurityEnhancer {
 
     /**
      * 检查支付频率限制
-     * 使用Redis实现分布式频率限制
+     * 使用增强版混合缓存策略实现分布式频率限制
      *
      * @param userId 用户ID
      * @return 是否通过频率检查
      */
     public boolean checkPaymentFrequency(Long userId) {
-        return redisPaymentSecurityService.checkPaymentFrequency(userId);
+        // 优先使用增强版服务（支持混合缓存和熔断器）
+        try {
+            return enhancedPaymentSecurityService.checkPaymentFrequency(userId);
+        } catch (Exception e) {
+            log.error("增强版支付频率检查异常，回退到原始服务，用户ID: {}", userId, e);
+            // 回退到原始Redis服务
+            return redisPaymentSecurityService.checkPaymentFrequency(userId);
+        }
     }
 
     /**
@@ -162,10 +172,16 @@ public class PaymentSecurityEnhancer {
 
     /**
      * 记录可疑行为
-     * 使用Redis实现分布式可疑行为记录
+     * 使用增强版混合缓存策略记录可疑行为
      */
     public void recordSuspiciousBehavior(Long userId, String reason) {
-        redisPaymentSecurityService.recordSuspiciousBehavior(userId, reason);
+        try {
+            enhancedPaymentSecurityService.recordSuspiciousBehavior(userId, reason);
+        } catch (Exception e) {
+            log.error("增强版可疑行为记录异常，回退到原始服务，用户ID: {}", userId, e);
+            // 回退到原始Redis服务
+            redisPaymentSecurityService.recordSuspiciousBehavior(userId, reason);
+        }
     }
 
     /**

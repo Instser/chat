@@ -359,23 +359,6 @@ exchange:
     CNY_AUD: ${EXCHANGE_DEFAULT_CNY_AUD:0.208}
     CNY_CAD: ${EXCHANGE_DEFAULT_CNY_CAD:0.190}
 
-# 支付安全配置
-payment:
-  security:
-    # 频率限制
-    frequency:
-      max-count: 5
-      time-window: 10  # 分钟
-
-    # 防重放攻击
-    callback:
-      expire-time: 60  # 分钟
-
-    # 可疑行为
-    suspicious:
-      threshold: 3
-      expire-days: 7
-
 # 应用配置
 app:
   # CORS配置 - 允许localhost、局域网和生产域名访问
@@ -427,6 +410,28 @@ async:
   # 线程存活时间 (秒)
   keep-alive-seconds: 60
 
+# 支付安全配置
+payment:
+  security:
+    # 支付频率限制
+    frequency:
+      max-count: ${PAYMENT_FREQUENCY_MAX_COUNT:5}      # 时间窗口内最大支付次数
+      time-window: ${PAYMENT_FREQUENCY_TIME_WINDOW:10} # 时间窗口（分钟）
+    # 回调安全配置
+    callback:
+      expire-time: ${PAYMENT_CALLBACK_EXPIRE_TIME:60}  # 回调过期时间（分钟）
+    # 可疑行为配置
+    suspicious:
+      threshold: ${PAYMENT_SUSPICIOUS_THRESHOLD:3}     # 可疑行为阈值
+      expire-days: ${PAYMENT_SUSPICIOUS_EXPIRE_DAYS:7} # 记录保存天数
+  # 缓存熔断器配置
+  cache:
+    circuit-breaker:
+      failure-threshold: ${PAYMENT_CACHE_FAILURE_THRESHOLD:3}        # 失败阈值
+      recovery-timeout: ${PAYMENT_CACHE_RECOVERY_TIMEOUT:30000}      # 恢复超时时间（毫秒）
+      success-threshold: ${PAYMENT_CACHE_SUCCESS_THRESHOLD:2}        # 成功阈值
+      health-check-interval: ${PAYMENT_CACHE_HEALTH_CHECK_INTERVAL:10000} # 健康检查间隔（毫秒）
+
 # Google Gemini API配置
 gemini:
   api:
@@ -441,4 +446,13 @@ gemini:
 
     # 重试次数
     retry-count: ${GEMINI_RETRY_COUNT:3}
+
+# 缓存管理配置 - 整合到现有的management端口8081
+cache:
+  management:
+    enabled: true          # 启用缓存管理功能
+    # 使用现有的management端口8081，不需要额外端口配置
+    api-key:
+      enabled: true        # 启用API密钥认证
+      master: ${CACHE_API_KEY:}  # 主API密钥，建议通过环境变量设置
 
