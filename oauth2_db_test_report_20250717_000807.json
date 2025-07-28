@@ -1,7 +1,0 @@
-{
-  "test_time": "2025-07-17T00:08:07.764082",
-  "duration_seconds": 8.08225393295288,
-  "success": false,
-  "python_version": "3.13.2 | packaged by Anaconda, Inc. | (main, Feb  6 2025, 12:55:35) [Clang 14.0.6 ]",
-  "test_type": "OAuth2数据库功能测试"
-}

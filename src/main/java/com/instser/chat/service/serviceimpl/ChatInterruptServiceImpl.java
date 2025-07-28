@@ -93,7 +93,11 @@ public class ChatInterruptServiceImpl implements ChatInterruptService {
         // 设置中断标志
         interruptFlags.put(sessionId, true);
 
-        log.info("【会话中断】中断成功，用户ID：{}，会话ID：{}", userId, sessionId);
+        // 立即从活跃会话中移除，允许用户立即发起新对话
+        activeSessions.remove(sessionId);
+
+        log.info("【会话中断】中断成功并立即清理会话状态，用户ID：{}，会话ID：{}，剩余活跃会话数：{}",
+                userId, sessionId, activeSessions.size());
         return true;
     }
     
@@ -111,16 +115,25 @@ public class ChatInterruptServiceImpl implements ChatInterruptService {
             return;
         }
 
-        SessionInfo sessionInfo = activeSessions.remove(sessionId);
-        interruptFlags.remove(sessionId);
-
+        // 检查会话是否还存在，避免重复清理
+        SessionInfo sessionInfo = activeSessions.get(sessionId);
         if (sessionInfo != null) {
+            // 会话仍然存在，进行正常清理
+            activeSessions.remove(sessionId);
+            interruptFlags.remove(sessionId);
+
             log.info("【会话管理】会话完成并清理，用户ID：{}，会话ID：{}，剩余活跃会话数：{}",
                     sessionInfo.getUserId(), sessionId, activeSessions.size());
             log.debug("【会话管理】会话持续时间：{}分钟",
                     java.time.Duration.between(sessionInfo.getStartTime(), LocalDateTime.now()).toMinutes());
         } else {
-            log.debug("【会话管理】会话已不存在，会话ID：{}", sessionId);
+            // 会话已不存在，只清理中断标志（可能是被中断清理的）
+            boolean hadInterruptFlag = interruptFlags.remove(sessionId) != null;
+            if (hadInterruptFlag) {
+                log.debug("【会话管理】会话已被中断清理，仅清理中断标志，会话ID：{}", sessionId);
+            } else {
+                log.debug("【会话管理】会话已不存在且无中断标志，会话ID：{}", sessionId);
+            }
         }
     }
 
@@ -164,13 +177,15 @@ public class ChatInterruptServiceImpl implements ChatInterruptService {
             if (sessionInfo != null && userId.equals(sessionInfo.getUserId())) {
                 // 检查会话是否超时，如果超时则不算活跃
                 if (!sessionInfo.isTimeout()) {
-                    log.debug("用户{}已有活跃会话", userId);
+                    log.debug("【会话检查】用户{}存在活跃会话（未超时）", userId);
                     return true;
+                } else {
+                    log.debug("【会话检查】用户{}的会话已超时，不算作活跃会话", userId);
                 }
             }
         }
 
-        log.debug("用户{}没有活跃会话", userId);
+        log.debug("【会话检查】用户{}无活跃会话", userId);
         return false;
     }
 }

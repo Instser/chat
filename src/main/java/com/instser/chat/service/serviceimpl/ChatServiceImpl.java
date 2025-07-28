@@ -2323,7 +2323,40 @@ public class ChatServiceImpl implements ChatService {
 
         // 基础清理：移除无效字符
         String cleaned = content.replaceAll("[\uFFFD\u0000]", "");
-        cleaned = cleaned.replaceAll(" {2,}", " ");
+
+        // 🔧 修复缩进问题：逐行处理，只清理行内的多余空格，完全保留行首的缩进空格
+        String[] lines = cleaned.split("\n", -1);
+        StringBuilder result = new StringBuilder();
+
+        for (int i = 0; i < lines.length; i++) {
+            String line = lines[i];
+            if (!line.trim().isEmpty()) {
+                // 非空行：找到第一个非空格字符的位置
+                int leadingSpaces = 0;
+                while (leadingSpaces < line.length() && line.charAt(leadingSpaces) == ' ') {
+                    leadingSpaces++;
+                }
+
+                // 分离缩进和内容
+                String indent = line.substring(0, leadingSpaces);
+                String content_part = line.substring(leadingSpaces);
+
+                // 只对内容部分清理多余空格
+                String cleanedContent = content_part.replaceAll(" {2,}", " ");
+
+                result.append(indent).append(cleanedContent);
+            } else {
+                // 空行：保持原样
+                result.append(line);
+            }
+
+            // 添加换行符（除了最后一行）
+            if (i < lines.length - 1) {
+                result.append("\n");
+            }
+        }
+
+        cleaned = result.toString();
 
         return new ContentDetectionResult(cleaned, false, false);
     }

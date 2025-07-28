@@ -2,7 +2,7 @@ package com.instser.chat.controller;
 
 import com.instser.chat.common.result.Result;
 import com.instser.chat.service.EnhancedPaymentSecurityService;
-import com.instser.chat.service.cache.CacheApiKeyService;
+import com.instser.chat.service.ManagementApiKeyService;
 import com.instser.chat.service.cache.CacheMonitoringService;
 import com.instser.chat.service.cache.CacheRegistryService;
 import com.instser.chat.service.cache.GlobalCacheManager;
@@ -31,8 +31,8 @@ import java.util.stream.Collectors;
  *
  * 安全配置:
  * - 运行端口: 8081 (集成到现有management端口)
- * - 访问限制: 仅允许 127.0.0.1 本地访问
- * - 访问地址: http://127.0.0.1:8081/api/admin/cache/*
+ * - 访问限制: API密钥验证（支持远程访问）
+ * - 访问地址: http://127.0.0.1:8081/admin/cache/*
  * - 监控端点: http://127.0.0.1:8081/actuator/*
  *
  * @author instser
@@ -63,7 +63,7 @@ public class CacheManagementController {
     private CacheRegistryService cacheRegistryService;
 
     @Autowired(required = false)
-    private CacheApiKeyService apiKeyService;
+    private ManagementApiKeyService managementApiKeyService;
 
     // 操作历史记录（最多保留100条）
     private final Queue<Map<String, Object>> operationHistory = new ConcurrentLinkedQueue<>();
@@ -72,42 +72,18 @@ public class CacheManagementController {
     @PostConstruct
     public void init() {
         log.info("=== CacheManagementController 初始化完成 ===");
-        log.info("控制器映射路径: /admin/cache (完整路径: /api/admin/cache)");
-        log.info("测试端点: GET /api/admin/cache/test");
-        log.info("统计端点: GET /api/admin/cache/stats");
-        log.info("安全控制: 仅允许本地访问 (127.0.0.1, localhost, ::1)");
+        log.info("控制器映射路径: /admin/cache");
+        log.info("测试端点: GET /admin/cache/test");
+        log.info("统计端点: GET /admin/cache/stats");
+        log.info("安全控制: API密钥验证（支持远程访问）");
         log.info("==========================================");
     }
 
     /**
-     * 检查是否为本地访问或有效API密钥
+     * 检查是否有有效API密钥
      */
     private boolean isAuthorizedAccess(HttpServletRequest request) {
-        String remoteAddr = getClientIpAddress(request);
-        log.debug("缓存管理API访问 - 客户端IP: {}", remoteAddr);
-
-        // 首先检查是否为本地访问
-        boolean isLocal = "127.0.0.1".equals(remoteAddr) ||
-                         "localhost".equals(remoteAddr) ||
-                         "::1".equals(remoteAddr) ||
-                         "0:0:0:0:0:0:0:1".equals(remoteAddr);
-
-        if (isLocal) {
-            return true;
-        }
-
-        // 如果不是本地访问，检查API密钥
-        if (apiKeyService != null && apiKeyService.isApiKeyEnabled()) {
-            String apiKey = request.getHeader("X-API-Key");
-            if (apiKey == null) {
-                apiKey = request.getParameter("apiKey");
-            }
-
-            return apiKeyService.validateApiKey(apiKey, remoteAddr);
-        }
-
-        // 如果API密钥服务未启用，只允许本地访问
-        return false;
+        return managementApiKeyService.validateRequest(request);
     }
 
     /**
@@ -152,7 +128,7 @@ public class CacheManagementController {
     public ResponseEntity<Result<String>> test(HttpServletRequest request) {
         if (!isAuthorizedAccess(request)) {
             log.warn("缓存管理API非法访问尝试 - IP: {}", getClientIpAddress(request));
-            Result<String> forbiddenResult = new Result<>(403, "访问被拒绝：仅允许本地访问或有效API密钥");
+            Result<String> forbiddenResult = new Result<>(403, "访问被拒绝：需要有效的API密钥");
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(forbiddenResult);
         }
         return ResponseEntity.ok(Result.success("缓存管理控制器工作正常"));
@@ -170,7 +146,7 @@ public class CacheManagementController {
 
         if (!isAuthorizedAccess(request)) {
             log.warn("缓存统计API非法访问尝试 - IP: {}", getClientIpAddress(request));
-            Result<Map<String, Object>> forbiddenResult = new Result<>(403, "访问被拒绝：仅允许本地访问或有效API密钥");
+            Result<Map<String, Object>> forbiddenResult = new Result<>(403, "访问被拒绝：需要有效的API密钥");
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(forbiddenResult);
         }
 
@@ -292,7 +268,7 @@ public class CacheManagementController {
     public ResponseEntity<Result<Map<String, Object>>> getCachePerformance(HttpServletRequest request) {
         if (!isAuthorizedAccess(request)) {
             log.warn("缓存性能监控API非法访问尝试 - IP: {}", getClientIpAddress(request));
-            Result<Map<String, Object>> forbiddenResult = new Result<>(403, "访问被拒绝：仅允许本地访问或有效API密钥");
+            Result<Map<String, Object>> forbiddenResult = new Result<>(403, "访问被拒绝：需要有效的API密钥");
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(forbiddenResult);
         }
 
@@ -356,7 +332,7 @@ public class CacheManagementController {
 
         if (!isAuthorizedAccess(request)) {
             log.warn("操作历史API非法访问尝试 - IP: {}", getClientIpAddress(request));
-            Result<Map<String, Object>> forbiddenResult = new Result<>(403, "访问被拒绝：仅允许本地访问或有效API密钥");
+            Result<Map<String, Object>> forbiddenResult = new Result<>(403, "访问被拒绝：需要有效的API密钥");
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(forbiddenResult);
         }
 
@@ -499,7 +475,7 @@ public class CacheManagementController {
     public ResponseEntity<Result<String>> clearCache(HttpServletRequest request) {
         if (!isAuthorizedAccess(request)) {
             log.warn("清空缓存API非法访问尝试 - IP: {}", getClientIpAddress(request));
-            Result<String> forbiddenResult = new Result<>(403, "访问被拒绝：仅允许本地访问或有效API密钥");
+            Result<String> forbiddenResult = new Result<>(403, "访问被拒绝：需要有效的API密钥");
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(forbiddenResult);
         }
 
@@ -530,7 +506,7 @@ public class CacheManagementController {
 
         if (!isAuthorizedAccess(request)) {
             log.warn("缓存预热API非法访问尝试 - IP: {}", getClientIpAddress(request));
-            Result<Map<String, Object>> forbiddenResult = new Result<>(403, "访问被拒绝：仅允许本地访问或有效API密钥");
+            Result<Map<String, Object>> forbiddenResult = new Result<>(403, "访问被拒绝：需要有效的API密钥");
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(forbiddenResult);
         }
 
@@ -594,21 +570,19 @@ public class CacheManagementController {
     public ResponseEntity<Result<Map<String, Object>>> getApiKeyStats(HttpServletRequest request) {
         if (!isAuthorizedAccess(request)) {
             log.warn("API密钥统计API非法访问尝试 - IP: {}", getClientIpAddress(request));
-            Result<Map<String, Object>> forbiddenResult = new Result<>(403, "访问被拒绝：仅允许本地访问或有效API密钥");
+            Result<Map<String, Object>> forbiddenResult = new Result<>(403, "访问被拒绝：需要有效的API密钥");
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(forbiddenResult);
         }
 
         try {
             Map<String, Object> result = new HashMap<>();
 
-            if (apiKeyService != null) {
-                result.putAll(apiKeyService.getApiKeyStats());
+            if (managementApiKeyService != null) {
+                result.putAll(managementApiKeyService.getApiKeyStats());
 
-                // 如果是本地访问，显示主密钥
-                String remoteAddr = getClientIpAddress(request);
-                boolean isLocal = "127.0.0.1".equals(remoteAddr) || "localhost".equals(remoteAddr);
-                if (isLocal && apiKeyService.isApiKeyEnabled()) {
-                    result.put("masterApiKey", apiKeyService.getMasterApiKey());
+                // 显示主密钥（现在不再限制本地访问）
+                if (managementApiKeyService.isApiKeyEnabled()) {
+                    result.put("masterApiKey", managementApiKeyService.getMasterApiKey());
                 }
             } else {
                 result.put("enabled", false);
