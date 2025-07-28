@@ -112,4 +112,48 @@ public class MoneyUtil {
         }
         return amount.setScale(2, DEFAULT_ROUNDING_MODE).toPlainString();
     }
+
+    /**
+     * 检查是否为易支付方式
+     *
+     * @param paymentMethod 支付方式
+     * @return 是否为易支付
+     */
+    public static boolean isYiPayMethod(String paymentMethod) {
+        if (paymentMethod == null) {
+            return false;
+        }
+        String method = paymentMethod.toLowerCase();
+        return "alipay".equals(method) || "wechatpay".equals(method);
+    }
+
+    /**
+     * 检查是否需要汇率转换
+     * 易支付方式或目标货币为CNY时需要转换
+     *
+     * @param paymentMethod 支付方式
+     * @param targetCurrency 目标货币
+     * @return 是否需要转换
+     */
+    public static boolean needsCurrencyConversion(String paymentMethod, String targetCurrency) {
+        // 如果目标货币为CNY，则需要转换
+        if ("CNY".equalsIgnoreCase(targetCurrency)) {
+            return true;
+        }
+        // 如果是易支付方式，也需要转换为CNY
+        return isYiPayMethod(paymentMethod);
+    }
+
+    /**
+     * 获取支付方式对应的默认货币
+     *
+     * @param paymentMethod 支付方式
+     * @return 默认货币
+     */
+    public static String getDefaultCurrencyForPaymentMethod(String paymentMethod) {
+        if (isYiPayMethod(paymentMethod)) {
+            return "CNY"; // 易支付使用人民币
+        }
+        return "USD"; // 其他支付方式使用美元
+    }
 }

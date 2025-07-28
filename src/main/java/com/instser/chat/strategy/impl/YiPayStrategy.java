@@ -56,7 +56,7 @@ public class YiPayStrategy implements PaymentStrategy {
                 throw new PaymentException("易支付配置未完成，请联系管理员");
             }
 
-            // 创建订单
+            // 创建订单（易支付会自动转换为CNY）
             UserOrder order = orderService.createOrder(
                 paymentRequest.getUserId(),
                 paymentRequest.getPackageId(),

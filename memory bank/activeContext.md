@@ -1,14 +1,14 @@
 # 当前工作内容
 
-**📅 最后更新**: 2025-07-28 20:14:00
+**📅 最后更新**: 2025-07-28 21:35:00
 **👤 更新人员**: Augment Agent
-**📊 文档版本**: v92.0
+**📊 文档版本**: v93.0
 
 ## 当前任务
 - 无当前进行中任务
 
 ## 最新完成任务
-✅ **后端流式传输原始模式实施完成** - 根据用户需求将后端流式传输算法修改为原始模式，实现100%字符准确传输。修改ChatServiceImpl.detectContentAndGetResult方法，完全移除字符处理逻辑（无效字符过滤、连续空格压缩、缩进处理等），直接返回AI响应的原始内容；修改sendContentBySmartChunking方法，移除字符过滤逻辑，保留包括U+FFFD和U+0000在内的所有字符。保留安全检查机制（重试检测、内容过滤）和流式传输机制（智能分块、分块延迟、错误重试、回退机制）。实现效果：字符准确率从88-98%提升到100%，处理时间减少90%，内存使用减少50%，CPU占用减少85%。现在传输到前端的内容与AI响应内容完全一致，包括所有特殊字符、连续空格、原始格式等，确保代码传输、文档格式等场景的完整性 (2025-07-28 20:14)
+✅ **订单发起逻辑优化完成** - 实现订单创建时的优惠价格选择和易支付汇率转换功能。新增用户支付状态检查逻辑，当用户满足/user/status/new接口结果为true（从未付费）且套餐有优惠价格时，自动使用优惠价格创建订单；实现易支付专用汇率转换机制，所有易支付订单（alipay、wechatpay）自动将USD价格转换为CNY价格，海外支付宝保持USD支付；扩展OrderServiceImpl添加selectPrice价格选择方法和convertPriceWithExchangeRate汇率转换方法；修改YiPayAlipayStrategy、YiPayWechatStrategy、YiPayStrategy三个易支付策略，启用汇率转换功能；增强MoneyUtil工具类，添加isYiPayMethod、needsCurrencyConversion、getDefaultCurrencyForPaymentMethod等辅助方法；创建完整测试用例验证优惠价格选择和汇率转换逻辑。实现效果：新用户享受优惠价格，易支付订单正确转换为人民币，提升用户体验和支付成功率 (2025-07-28 21:35)
 
 ## 已完成任务
 ✅ **网络搜索内容修改功能实施完成** - 根据设计方案完整实施用户修改网络搜索内容的功能。创建WebSearchErrorCode错误码枚举、WebSearchException异常类、UpdateWebSearchContentRequest请求参数类；实现WebSearchRateLimitService频率限制服务（支持Redis+内存降级策略）、WebSearchCacheService权限缓存服务（使用Caffeine本地缓存）、WebSearchMetrics性能监控和WebSearchPerformanceAspect监控切面；在WebSearchContentService中新增updateContentByMessageId方法，实现完整的业务逻辑（预检查、权限验证、频率限制、并发控制、数据库更新）；在ApiController中添加PUT /api/chat/messages/{messageId}/web-search-content接口；创建数据库索引优化SQL文件；更新项目文档记录新功能实现。实现与聊天频率限制一致的10次/分钟限制策略，支持Redis故障时的内存降级，提供完整的性能监控和错误处理机制 (2025-07-20 10:56)

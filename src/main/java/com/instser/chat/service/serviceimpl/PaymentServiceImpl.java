@@ -325,19 +325,19 @@ public class PaymentServiceImpl implements PaymentService {
             throw ResourceNotFoundException.packageNotFound(paymentRequest.getPackageId());
         }
 
-        // 直接使用CNY价格
+        // 获取原始USD价格
         BigDecimal packagePrice = packageInfo.getPrice();
 
-        // 验证最小金额（0.01 CNY）
+        // 验证最小金额（0.01 USD）
         BigDecimal minAmount = new BigDecimal("0.01");
         if (packagePrice.compareTo(minAmount) < 0) {
-            throw new PaymentException("支付金额不能小于 " + minAmount + " CNY");
+            throw new PaymentException("支付金额不能小于 " + minAmount + " USD");
         }
 
-        // 验证最大金额（人民币最大5万）
-        BigDecimal maxAmount = new BigDecimal("50000.00");
+        // 验证最大金额（美元最大1万）
+        BigDecimal maxAmount = new BigDecimal("10000.00");
         if (packagePrice.compareTo(maxAmount) > 0) {
-            throw new PaymentException("支付金额不能超过 " + maxAmount + " CNY");
+            throw new PaymentException("支付金额不能超过 " + maxAmount + " USD");
         }
 
         // 验证免费套餐价格
@@ -347,7 +347,7 @@ public class PaymentServiceImpl implements PaymentService {
             throw new PaymentException("免费套餐无需支付，请使用 /api/payment/activate-free 接口直接激活");
         }
 
-        log.debug("支付金额验证通过，套餐ID: {}, 金额: {} CNY",
+        log.debug("支付金额验证通过，套餐ID: {}, 金额: {} USD",
                  paymentRequest.getPackageId(), packagePrice);
     }
 
@@ -373,16 +373,16 @@ public class PaymentServiceImpl implements PaymentService {
             throw new PaymentException("今日支付次数已达上限，请明日再试");
         }
 
-        // 检查用户支付总金额限制（每天最多支付1万元人民币等值）
-        BigDecimal dailyAmountLimit = new BigDecimal("10000.00");
+        // 检查用户支付总金额限制（每天最多支付1400美元等值）
+        BigDecimal dailyAmountLimit = new BigDecimal("1400.00");
         String dailyAmountKey = "payment:daily_amount:user:" + userId;
 
-        // 获取套餐价格（直接使用CNY价格）
+        // 获取套餐价格（USD价格）
         Package packageInfo = packageService.getPackageById(paymentRequest.getPackageId());
         BigDecimal packagePrice = packageInfo.getPrice();
 
         if (!paymentSecurityUtil.checkDailyAmountLimit(dailyAmountKey, packagePrice, dailyAmountLimit)) {
-            log.warn("用户今日支付金额超限，用户ID: {}, 当前金额: {}", userId, packagePrice);
+            log.warn("用户今日支付金额超限，用户ID: {}, 当前金额: {} USD", userId, packagePrice);
             throw new PaymentException("今日支付金额已达上限，请明日再试");
         }
 

@@ -5,10 +5,12 @@ import com.instser.chat.common.exception.BusinessException;
 import com.instser.chat.dao.UserOrderDao;
 import com.instser.chat.entity.Package;
 import com.instser.chat.entity.UserOrder;
+import com.instser.chat.service.ExchangeRateService;
 import com.instser.chat.service.OrderService;
 
 import com.instser.chat.service.PackageService;
 import com.instser.chat.service.RedisDistributedLockService;
+import com.instser.chat.service.UserPaymentStatusService;
 import com.instser.chat.util.MoneyUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -34,6 +36,8 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
 
     private final PackageService packageService;
     private final RedisDistributedLockService distributedLockService;
+    private final UserPaymentStatusService userPaymentStatusService;
+    private final ExchangeRateService exchangeRateService;
 
     @Override
     public UserOrder createOrder(Long userId, Long packageId, String currency, String paymentMethod) {
@@ -47,11 +51,16 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
             throw new BusinessException("套餐已下架");
         }
 
-        // 直接使用数据库中的价格（USD）
-        BigDecimal amount = packageInfo.getPrice();
+        // 选择价格：检查用户是否为新用户且套餐有优惠价格
+        BigDecimal amount = selectPrice(userId, packageInfo);
 
         if (!MoneyUtil.isZeroOrPositive(amount)) {
             throw new BusinessException("套餐价格配置错误");
+        }
+
+        // 汇率转换：如果是易支付方式或前端请求CNY货币，则转换为人民币
+        if (MoneyUtil.needsCurrencyConversion(paymentMethod, currency)) {
+            amount = convertPriceWithExchangeRate(amount, "USD", "CNY", paymentMethod);
         }
 
         // 格式化金额精度
@@ -85,6 +94,62 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
                 order.getOrderNo(), userId, packageId, amount, currency);
 
         return order;
+    }
+
+    /**
+     * 选择订单价格
+     * 如果用户从未付费且套餐有优惠价格，则使用优惠价格；否则使用原价
+     *
+     * @param userId 用户ID
+     * @param packageInfo 套餐信息
+     * @return 选择的价格
+     */
+    private BigDecimal selectPrice(Long userId, Package packageInfo) {
+        try {
+            // 检查用户是否从未付费
+            boolean isNewUser = userPaymentStatusService.hasNeverPaid(userId);
+
+            // 检查套餐是否有优惠价格
+            BigDecimal discountPrice = packageInfo.getDiscountPrice();
+            boolean hasDiscountPrice = discountPrice != null && discountPrice.compareTo(BigDecimal.ZERO) > 0;
+
+            if (isNewUser && hasDiscountPrice) {
+                log.info("用户{}为新用户且套餐{}有优惠价格，使用优惠价格: {} USD",
+                        userId, packageInfo.getId(), discountPrice);
+                return discountPrice;
+            } else {
+                log.debug("用户{}使用套餐{}原价: {} USD (新用户: {}, 有优惠价格: {})",
+                        userId, packageInfo.getId(), packageInfo.getPrice(), isNewUser, hasDiscountPrice);
+                return packageInfo.getPrice();
+            }
+        } catch (Exception e) {
+            log.error("选择价格时发生异常，用户ID: {}, 套餐ID: {}, 使用原价",
+                    userId, packageInfo.getId(), e);
+            return packageInfo.getPrice();
+        }
+    }
+
+    /**
+     * 汇率转换价格
+     *
+     * @param amount 原始金额
+     * @param fromCurrency 源货币
+     * @param toCurrency 目标货币
+     * @param paymentMethod 支付方式（用于日志）
+     * @return 转换后的金额
+     */
+    private BigDecimal convertPriceWithExchangeRate(BigDecimal amount, String fromCurrency, String toCurrency, String paymentMethod) {
+        try {
+            BigDecimal convertedAmount = exchangeRateService.convertPrice(amount, fromCurrency, toCurrency);
+            log.info("支付方式{}汇率转换: {} {} -> {} {} (汇率: {})",
+                    paymentMethod, amount, fromCurrency, convertedAmount, toCurrency,
+                    exchangeRateService.getExchangeRate(fromCurrency, toCurrency));
+            return convertedAmount;
+        } catch (Exception e) {
+            log.error("汇率转换失败，支付方式: {}, 金额: {} {}, 使用原始金额",
+                    paymentMethod, amount, fromCurrency, e);
+            return amount;
+        }
     }
 
     @Override
