@@ -1,0 +1,229 @@
+{
+  "test_summary": {
+    "total_tests": 105,
+    "total_success": 28,
+    "total_cache_hits": 97,
+    "total_cache_misses": 2,
+    "total_fallbacks": 0,
+    "test_duration": 57.51298
+  },
+  "module_statistics": {
+    "user_auth": {
+      "total_requests": 4,
+      "success_rate": 0.5,
+      "cache_hit_rate": 0.25,
+      "cache_miss_rate": 0.0,
+      "fallback_rate": 0.0,
+      "avg_response_time": 0.10797768831253052,
+      "median_response_time": 0.11613690853118896
+    },
+    "chat": {
+      "total_requests": 7,
+      "success_rate": 1.0,
+      "cache_hit_rate": 0.8571428571428571,
+      "cache_miss_rate": 0.0,
+      "fallback_rate": 0.0,
+      "avg_response_time": 0.03323442595345633,
+      "median_response_time": 0.01348567008972168
+    },
+    "payment": {
+      "total_requests": 6,
+      "success_rate": 1.0,
+      "cache_hit_rate": 1.0,
+      "cache_miss_rate": 0.0,
+      "fallback_rate": 0.0,
+      "avg_response_time": 0.018134474754333496,
+      "median_response_time": 0.015390634536743164
+    },
+    "oauth2": {
+      "total_requests": 3,
+      "success_rate": 0.6666666666666666,
+      "cache_hit_rate": 0.0,
+      "cache_miss_rate": 0.6666666666666666,
+      "fallback_rate": 0.0,
+      "avg_response_time": 14.536231835683187,
+      "median_response_time": 21.680925607681274
+    },
+    "exchange": {
+      "total_requests": 2,
+      "success_rate": 0.0,
+      "cache_hit_rate": 1.0,
+      "cache_miss_rate": 0.0,
+      "fallback_rate": 0.0,
+      "avg_response_time": 0.012849211692810059,
+      "median_response_time": 0.012849211692810059
+    },
+    "websearch": {
+      "total_requests": 1,
+      "success_rate": 0.0,
+      "cache_hit_rate": 1.0,
+      "cache_miss_rate": 0.0,
+      "fallback_rate": 0.0,
+      "avg_response_time": 0.011102676391601562,
+      "median_response_time": 0.011102676391601562
+    },
+    "degradation": {
+      "total_requests": 51,
+      "success_rate": 0.0196078431372549,
+      "cache_hit_rate": 1.0,
+      "cache_miss_rate": 0.0,
+      "fallback_rate": 0.0,
+      "avg_response_time": 0.011697689692179361,
+      "median_response_time": 0.011360645294189453
+    },
+    "circuit_breaker": {
+      "total_requests": 12,
+      "success_rate": 0.8333333333333334,
+      "cache_hit_rate": 1.0,
+      "cache_miss_rate": 0.0,
+      "fallback_rate": 0.0,
+      "avg_response_time": 0.005751669406890869,
+      "median_response_time": 0.00468289852142334
+    },
+    "performance": {
+      "total_requests": 19,
+      "success_rate": 0.0,
+      "cache_hit_rate": 0.9473684210526315,
+      "cache_miss_rate": 0.0,
+      "fallback_rate": 0.0,
+      "avg_response_time": 0.008981365906564813,
+      "median_response_time": 0.004820108413696289
+    }
+  },
+  "cache_type_statistics": {
+    "user_session": {
+      "total_requests": 2,
+      "cache_hit_rate": 0.0,
+      "cache_miss_rate": 0.0,
+      "avg_response_time": 0.1841907501220703
+    },
+    "user_info": {
+      "total_requests": 1,
+      "cache_hit_rate": 1.0,
+      "cache_miss_rate": 0.0,
+      "avg_response_time": 0.0029914379119873047
+    },
+    "user_permission": {
+      "total_requests": 1,
+      "cache_hit_rate": 0.0,
+      "cache_miss_rate": 0.0,
+      "avg_response_time": 0.06053781509399414
+    },
+    "chat_session": {
+      "total_requests": 2,
+      "cache_hit_rate": 1.0,
+      "cache_miss_rate": 0.0,
+      "avg_response_time": 0.005192756652832031
+    },
+    "chat_message": {
+      "total_requests": 2,
+      "cache_hit_rate": 0.5,
+      "cache_miss_rate": 0.0,
+      "avg_response_time": 0.08834207057952881
+    },
+    "chat_rate_limit": {
+      "total_requests": 3,
+      "cache_hit_rate": 1.0,
+      "cache_miss_rate": 0.0,
+      "avg_response_time": 0.015190442403157553
+    },
+    "payment_frequency": {
+      "total_requests": 3,
+      "cache_hit_rate": 1.0,
+      "cache_miss_rate": 0.0,
+      "avg_response_time": 0.02087855339050293
+    },
+    "payment_session": {
+      "total_requests": 1,
+      "cache_hit_rate": 1.0,
+      "cache_miss_rate": 0.0,
+      "avg_response_time": 0.0186154842376709
+    },
+    "payment_callback": {
+      "total_requests": 2,
+      "cache_hit_rate": 1.0,
+      "cache_miss_rate": 0.0,
+      "avg_response_time": 0.013777852058410645
+    },
+    "oauth2_user_info": {
+      "total_requests": 2,
+      "cache_hit_rate": 0.0,
+      "cache_miss_rate": 1.0,
+      "avg_response_time": 21.765684604644775
+    },
+    "oauth2_provider_config": {
+      "total_requests": 1,
+      "cache_hit_rate": 0.0,
+      "cache_miss_rate": 0.0,
+      "avg_response_time": 0.07732629776000977
+    },
+    "exchange_rates": {
+      "total_requests": 2,
+      "cache_hit_rate": 1.0,
+      "cache_miss_rate": 0.0,
+      "avg_response_time": 0.012849211692810059
+    },
+    "websearch_permission": {
+      "total_requests": 1,
+      "cache_hit_rate": 1.0,
+      "cache_miss_rate": 0.0,
+      "avg_response_time": 0.011102676391601562
+    },
+    "redis_degradation": {
+      "total_requests": 50,
+      "cache_hit_rate": 1.0,
+      "cache_miss_rate": 0.0,
+      "avg_response_time": 0.011816105842590331
+    },
+    "timeout_degradation": {
+      "total_requests": 1,
+      "cache_hit_rate": 1.0,
+      "cache_miss_rate": 0.0,
+      "avg_response_time": 0.005776882171630859
+    },
+    "circuit_breaker_closed": {
+      "total_requests": 1,
+      "cache_hit_rate": 1.0,
+      "cache_miss_rate": 0.0,
+      "avg_response_time": 0.002675294876098633
+    },
+    "circuit_breaker_trigger": {
+      "total_requests": 10,
+      "cache_hit_rate": 1.0,
+      "cache_miss_rate": 0.0,
+      "avg_response_time": 0.0062217235565185545
+    },
+    "circuit_breaker_recovery": {
+      "total_requests": 1,
+      "cache_hit_rate": 1.0,
+      "cache_miss_rate": 0.0,
+      "avg_response_time": 0.00412750244140625
+    },
+    "cache_setup": {
+      "total_requests": 1,
+      "cache_hit_rate": 1.0,
+      "cache_miss_rate": 0.0,
+      "avg_response_time": 0.002982616424560547
+    },
+    "cache_hit_performance": {
+      "total_requests": 5,
+      "cache_hit_rate": 1.0,
+      "cache_miss_rate": 0.0,
+      "avg_response_time": 0.00551447868347168
+    },
+    "cache_miss_performance": {
+      "total_requests": 3,
+      "cache_hit_rate": 0.6666666666666666,
+      "cache_miss_rate": 0.0,
+      "avg_response_time": 0.03039240837097168
+    },
+    "concurrent_cache_performance": {
+      "total_requests": 10,
+      "cache_hit_rate": 1.0,
+      "cache_miss_rate": 0.0,
+      "avg_response_time": 0.0048913717269897464
+    }
+  },
+  "performance_analysis": {},
+  "timestamp": "2025-07-28T17:21:45.044759"
+}

@@ -1,0 +1,124 @@
+{
+  "test_configuration": {
+    "base_url": "http://127.0.0.1:8080",
+    "management_url": "http://127.0.0.1:8081",
+    "api_key": "rV70ML_EAX6csqxm3IYRWQcUa-0lW6Pac-HQIn-7StU",
+    "timeout": 30,
+    "enable_functional_tests": true,
+    "enable_performance_tests": false,
+    "enable_security_tests": false,
+    "enable_stability_tests": false,
+    "concurrent_users": 5,
+    "test_duration": 30,
+    "requests_per_user": 50,
+    "output_dir": "./comprehensive_test_results",
+    "detailed_logging": false
+  },
+  "test_execution_time": "2025-07-28T16:07:57.812048",
+  "test_results_by_type": {
+    "CONNECTIVITY": {
+      "statistics": {
+        "total_tests": 1,
+        "successful_tests": 1,
+        "failed_tests": 0,
+        "success_rate": 1.0
+      },
+      "performance": {
+        "avg_response_time": 0.004119396209716797,
+        "median_response_time": 0.004119396209716797,
+        "min_response_time": 0.004119396209716797,
+        "max_response_time": 0.004119396209716797
+      },
+      "errors": []
+    },
+    "STATISTICS": {
+      "statistics": {
+        "total_tests": 13,
+        "successful_tests": 13,
+        "failed_tests": 0,
+        "success_rate": 1.0
+      },
+      "performance": {
+        "avg_response_time": 0.007352700600257287,
+        "median_response_time": 0.002561807632446289,
+        "min_response_time": 0.0016694068908691406,
+        "max_response_time": 0.03362774848937988
+      },
+      "errors": []
+    },
+    "MANAGEMENT": {
+      "statistics": {
+        "total_tests": 5,
+        "successful_tests": 5,
+        "failed_tests": 0,
+        "success_rate": 1.0
+      },
+      "performance": {
+        "avg_response_time": 0.01738123893737793,
+        "median_response_time": 0.0024394989013671875,
+        "min_response_time": 0.0018916130065917969,
+        "max_response_time": 0.07763957977294922
+      },
+      "errors": []
+    },
+    "CACHE_OPERATION": {
+      "statistics": {
+        "total_tests": 2,
+        "successful_tests": 1,
+        "failed_tests": 1,
+        "success_rate": 0.5
+      },
+      "performance": {
+        "avg_response_time": 0.13020634651184082,
+        "median_response_time": 0.13020634651184082,
+        "min_response_time": 0.00792551040649414,
+        "max_response_time": 0.2524871826171875
+      },
+      "errors": [
+        {
+          "test_name": "大数据缓存测试",
+          "status_code": 400,
+          "error_message": "<!doctype html><html lang=\"en\"><head><title>HTTP Status 400 – Bad Request</title><style type=\"text/css\">body {font-family:Tahoma,Arial,sans-serif;} h1, h2, h3, b {color:white;background-color:#525D76;"
+        }
+      ]
+    },
+    "MONITORING": {
+      "statistics": {
+        "total_tests": 4,
+        "successful_tests": 4,
+        "failed_tests": 0,
+        "success_rate": 1.0
+      },
+      "performance": {
+        "avg_response_time": 0.0020164847373962402,
+        "median_response_time": 0.001979231834411621,
+        "min_response_time": 0.001744985580444336,
+        "max_response_time": 0.002362489700317383
+      },
+      "errors": []
+    },
+    "SECURITY": {
+      "statistics": {
+        "total_tests": 2,
+        "successful_tests": 2,
+        "failed_tests": 0,
+        "success_rate": 1.0
+      },
+      "performance": {
+        "avg_response_time": 0.0014847517013549805,
+        "median_response_time": 0.0014847517013549805,
+        "min_response_time": 0.0012183189392089844,
+        "max_response_time": 0.0017511844635009766
+      },
+      "errors": []
+    }
+  },
+  "failed_tests": [
+    {
+      "test_name": "大数据缓存测试",
+      "status_code": 400,
+      "error_message": "<!doctype html><html lang=\"en\"><head><title>HTTP Status 400 – Bad Request</title><style type=\"text/css\">body {font-family:Tahoma,Arial,sans-serif;} h1, h2, h3, b {color:white;background-color:#525D76;"
+    }
+  ],
+  "performance_analysis": {}
+}

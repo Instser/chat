@@ -1,0 +1,96 @@
+{
+  "summary": {
+    "total_tests": 9,
+    "successful_tests": 3,
+    "cache_hits": 4,
+    "avg_response_time": 2.4046067661709256,
+    "status_codes": {
+      "200": 3,
+      "401": 6
+    }
+  },
+  "detailed_results": [
+    {
+      "name": "用户登录",
+      "endpoint": "/api/auth/login",
+      "success": true,
+      "status_code": 200,
+      "response_time": 0.2747669219970703,
+      "cache_hit": false,
+      "timestamp": "2025-07-28T16:19:01.857181"
+    },
+    {
+      "name": "获取用户信息",
+      "endpoint": "/api/auth/me",
+      "success": false,
+      "status_code": 401,
+      "response_time": 0.0018491744995117188,
+      "cache_hit": true,
+      "timestamp": "2025-07-28T16:19:01.859234"
+    },
+    {
+      "name": "获取聊天会话",
+      "endpoint": "/api/chat/sessions",
+      "success": false,
+      "status_code": 401,
+      "response_time": 0.0014910697937011719,
+      "cache_hit": true,
+      "timestamp": "2025-07-28T16:19:01.860941"
+    },
+    {
+      "name": "发送聊天消息",
+      "endpoint": "/api/chat",
+      "success": true,
+      "status_code": 200,
+      "response_time": 0.00202178955078125,
+      "cache_hit": false,
+      "timestamp": "2025-07-28T16:19:01.863076"
+    },
+    {
+      "name": "创建支付订单",
+      "endpoint": "/api/payment/create",
+      "success": false,
+      "status_code": 401,
+      "response_time": 0.0012471675872802734,
+      "cache_hit": false,
+      "timestamp": "2025-07-28T16:19:01.864487"
+    },
+    {
+      "name": "查询支付状态",
+      "endpoint": "/api/payment/status/test_order",
+      "success": false,
+      "status_code": 401,
+      "response_time": 0.0011620521545410156,
+      "cache_hit": true,
+      "timestamp": "2025-07-28T16:19:01.865758"
+    },
+    {
+      "name": "OAuth2登录",
+      "endpoint": "/api/oauth2/login/google",
+      "success": true,
+      "status_code": 200,
+      "response_time": 21.345946788787842,
+      "cache_hit": false,
+      "timestamp": "2025-07-28T16:19:23.212007"
+    },
+    {
+      "name": "汇率查询",
+      "endpoint": "/api/exchange/rates",
+      "success": false,
+      "status_code": 401,
+      "response_time": 0.0073969364166259766,
+      "cache_hit": true,
+      "timestamp": "2025-07-28T16:19:23.220839"
+    },
+    {
+      "name": "网络搜索",
+      "endpoint": "/api/websearch/search",
+      "success": false,
+      "status_code": 401,
+      "response_time": 0.0055789947509765625,
+      "cache_hit": false,
+      "timestamp": "2025-07-28T16:19:23.227189"
+    }
+  ],
+  "timestamp": "2025-07-28T16:19:23.234380"
+}

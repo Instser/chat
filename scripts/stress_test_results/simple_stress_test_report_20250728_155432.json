@@ -1,0 +1,19 @@
+{
+  "test_summary": {
+    "total_requests": 472,
+    "successful_requests": 472,
+    "failed_requests": 0,
+    "success_rate": 1.0,
+    "throughput_rps": 7.6540068474496605,
+    "test_duration": 61.667047,
+    "concurrent_users": 10
+  },
+  "response_times": {
+    "avg": 0.051494452407804585,
+    "median": 0.005106210708618164,
+    "max": 1.1248295307159424,
+    "min": 0.0015649795532226562
+  },
+  "error_types": {},
+  "timestamp": "2025-07-28T15:54:32.414851"
+}

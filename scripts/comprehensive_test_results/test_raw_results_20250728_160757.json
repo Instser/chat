@@ -1,0 +1,1488 @@
+[
+  {
+    "test_name": "基础连接测试",
+    "test_type": "CONNECTIVITY",
+    "success": true,
+    "response_time": 0.004119396209716797,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": "缓存管理控制器工作正常",
+      "timestamp": 1753690077351
+    },
+    "timestamp": "2025-07-28 16:07:57.353069"
+  },
+  {
+    "test_name": "全局缓存统计",
+    "test_type": "STATISTICS",
+    "success": true,
+    "response_time": 0.0018301010131835938,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": {
+        "discovered": {
+          "totalDiscovered": 25,
+          "moduleDistribution": {
+            "payment": 2,
+            "websearch": 3,
+            "unknown": 20
+          },
+          "typeDistribution": {
+            "LOCAL": 2,
+            "REDIS": 19,
+            "HYBRID": 4
+          }
+        },
+        "paymentSecurity": {
+          "fallbackCacheSize": 0
+        },
+        "circuitBreaker": {
+          "lastSuccessTime": 1753689522731,
+          "successCount": 0,
+          "state": "CLOSED",
+          "failureThreshold": 3,
+          "recoveryTimeoutMs": 30000,
+          "lastFailureTime": 0,
+          "failureCount": 0,
+          "successThreshold": 2
+        },
+        "global": {
+          "totalCaches": 17,
+          "typeDistribution": {
+            "SPRING_CACHE": 1,
+            "LOCAL": 3,
+            "HYBRID": 4,
+            "POTENTIAL": 9
+          },
+          "moduleDistribution": {
+            "package": 2,
+            "chat": 3,
+            "ai": 2,
+            "exchange": 1,
+            "payment": 4,
+            "user": 2,
+            "unknown": 1,
+            "websearch": 2
+          },
+          "redisAvailable": true,
+          "circuitBreakerState": "CLOSED"
+        },
+        "monitoring": {
+          "cacheHits": 0,
+          "cacheMisses": 0,
+          "totalRequests": 0,
+          "redisFailures": 0,
+          "fallbackUsages": 0,
+          "moduleStats": {},
+          "typeStats": {}
+        },
+        "hybridCache": {
+          "l1Size": 0,
+          "circuitBreakerState": "CLOSED",
+          "l1MissCount": 0,
+          "l1EvictionCount": 0,
+          "redisAvailable": true,
+          "l1HitCount": 628,
+          "l1HitRate": "100.00%"
+        }
+      },
+      "timestamp": 1753690077354
+    },
+    "timestamp": "2025-07-28 16:07:57.355135"
+  },
+  {
+    "test_name": "详细缓存统计",
+    "test_type": "STATISTICS",
+    "success": true,
+    "response_time": 0.005190610885620117,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": {
+        "discovered": {
+          "caches": [
+            {
+              "module": "unknown",
+              "name": "RedisHealthContributorAutoConfiguration.redis",
+              "description": "Redis缓存使用: RedisHealthContributorAutoConfiguration",
+              "type": "REDIS",
+              "discoveredAt": 1753687199113
+            },
+            {
+              "module": "unknown",
+              "name": "CacheMonitoringService.redis",
+              "description": "Redis缓存使用: CacheMonitoringService",
+              "type": "REDIS",
+              "discoveredAt": 1753687199109
+            },
+            {
+              "module": "unknown",
+              "name": "RedisAutoConfiguration.redis",
+              "description": "Redis缓存使用: RedisAutoConfiguration",
+              "type": "REDIS",
+              "discoveredAt": 1753687199112
+            },
+            {
+              "module": "unknown",
+              "name": "RedisReactiveAutoConfiguration.redis",
+              "description": "Redis缓存使用: RedisReactiveAutoConfiguration",
+              "type": "REDIS",
+              "discoveredAt": 1753687199112
+            },
+            {
+              "module": "unknown",
+              "name": "RedisTemplate.redis",
+              "description": "Redis缓存使用: RedisTemplate",
+              "type": "REDIS",
+              "discoveredAt": 1753687199111
+            },
+            {
+              "module": "unknown",
+              "name": "RedisCacheManager.redis",
+              "description": "Redis缓存使用: RedisCacheManager",
+              "type": "REDIS",
+              "discoveredAt": 1753687199111
+            },
+            {
+              "module": "unknown",
+              "name": "Redisson.redis",
+              "description": "Redis缓存使用: Redisson",
+              "type": "REDIS",
+              "discoveredAt": 1753687199111
+            },
+            {
+              "module": "unknown",
+              "name": "GlobalCacheManager.hybrid",
+              "description": "混合缓存使用: GlobalCacheManager",
+              "type": "HYBRID",
+              "discoveredAt": 1753687199116
+            },
+            {
+              "module": "payment",
+              "name": "EnhancedPaymentSecurityService.hybrid",
+              "description": "混合缓存使用: EnhancedPaymentSecurityService",
+              "type": "HYBRID",
+              "discoveredAt": 1753687199116
+            },
+            {
+              "module": "unknown",
+              "name": "RedissonConfig$$SpringCGLIB$$0.redis",
+              "description": "Redis缓存使用: RedissonConfig$$SpringCGLIB$$0",
+              "type": "REDIS",
+              "discoveredAt": 1753687199109
+            }
+          ],
+          "totalPages": 3,
+          "page": 0,
+          "totalDiscovered": 25,
+          "size": 10
+        },
+        "paymentSecurity": {
+          "fallbackCacheSize": 0
+        },
+        "circuitBreaker": {
+          "lastSuccessTime": 1753689522731,
+          "successCount": 0,
+          "state": "CLOSED",
+          "failureThreshold": 3,
+          "recoveryTimeoutMs": 30000,
+          "lastFailureTime": 0,
+          "failureCount": 0,
+          "successThreshold": 2
+        },
+        "global": {
+          "totalCaches": 17,
+          "typeDistribution": {
+            "SPRING_CACHE": 1,
+            "LOCAL": 3,
+            "HYBRID": 4,
+            "POTENTIAL": 9
+          },
+          "moduleDistribution": {
+            "package": 2,
+            "chat": 3,
+            "ai": 2,
+            "exchange": 1,
+            "payment": 4,
+            "user": 2,
+            "unknown": 1,
+            "websearch": 2
+          },
+          "redisAvailable": true,
+          "circuitBreakerState": "CLOSED"
+        },
+        "monitoring": {
+          "cacheHits": 0,
+          "cacheMisses": 0,
+          "totalRequests": 0,
+          "redisFailures": 0,
+          "fallbackUsages": 0,
+          "moduleStats": {},
+          "typeStats": {}
+        },
+        "hybridCache": {
+          "l1Size": 0,
+          "circuitBreakerState": "CLOSED",
+          "l1MissCount": 0,
+          "l1EvictionCount": 0,
+          "redisAvailable": true,
+          "l1HitCount": 628,
+          "l1HitRate": "100.00%"
+        }
+      },
+      "timestamp": 1753690077358
+    },
+    "timestamp": "2025-07-28 16:07:57.360379"
+  },
+  {
+    "test_name": "分页缓存统计",
+    "test_type": "STATISTICS",
+    "success": true,
+    "response_time": 0.001972675323486328,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": {
+        "discovered": {
+          "totalDiscovered": 25,
+          "moduleDistribution": {
+            "payment": 2,
+            "websearch": 3,
+            "unknown": 20
+          },
+          "typeDistribution": {
+            "LOCAL": 2,
+            "REDIS": 19,
+            "HYBRID": 4
+          }
+        },
+        "paymentSecurity": {
+          "fallbackCacheSize": 0
+        },
+        "circuitBreaker": {
+          "lastSuccessTime": 1753689522731,
+          "successCount": 0,
+          "state": "CLOSED",
+          "failureThreshold": 3,
+          "recoveryTimeoutMs": 30000,
+          "lastFailureTime": 0,
+          "failureCount": 0,
+          "successThreshold": 2
+        },
+        "global": {
+          "totalCaches": 17,
+          "typeDistribution": {
+            "SPRING_CACHE": 1,
+            "LOCAL": 3,
+            "HYBRID": 4,
+            "POTENTIAL": 9
+          },
+          "moduleDistribution": {
+            "package": 2,
+            "chat": 3,
+            "ai": 2,
+            "exchange": 1,
+            "payment": 4,
+            "user": 2,
+            "unknown": 1,
+            "websearch": 2
+          },
+          "redisAvailable": true,
+          "circuitBreakerState": "CLOSED"
+        },
+        "monitoring": {
+          "cacheHits": 0,
+          "cacheMisses": 0,
+          "totalRequests": 0,
+          "redisFailures": 0,
+          "fallbackUsages": 0,
+          "moduleStats": {},
+          "typeStats": {}
+        },
+        "hybridCache": {
+          "l1Size": 0,
+          "circuitBreakerState": "CLOSED",
+          "l1MissCount": 0,
+          "l1EvictionCount": 0,
+          "redisAvailable": true,
+          "l1HitCount": 628,
+          "l1HitRate": "100.00%"
+        }
+      },
+      "timestamp": 1753690077361
+    },
+    "timestamp": "2025-07-28 16:07:57.362400"
+  },
+  {
+    "test_name": "缓存列表查询",
+    "test_type": "STATISTICS",
+    "success": true,
+    "response_time": 0.002561807632446289,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": {
+        "pagination": {
+          "page": 0,
+          "totalPages": 2,
+          "size": 20,
+          "total": 25
+        },
+        "caches": [
+          {
+            "module": "unknown",
+            "name": "RedisHealthContributorAutoConfiguration.redis",
+            "description": "Redis缓存使用: RedisHealthContributorAutoConfiguration",
+            "type": "REDIS",
+            "discoveredAt": 1753687199113
+          },
+          {
+            "module": "unknown",
+            "name": "CacheMonitoringService.redis",
+            "description": "Redis缓存使用: CacheMonitoringService",
+            "type": "REDIS",
+            "discoveredAt": 1753687199109
+          },
+          {
+            "module": "unknown",
+            "name": "RedisAutoConfiguration.redis",
+            "description": "Redis缓存使用: RedisAutoConfiguration",
+            "type": "REDIS",
+            "discoveredAt": 1753687199112
+          },
+          {
+            "module": "unknown",
+            "name": "RedisReactiveAutoConfiguration.redis",
+            "description": "Redis缓存使用: RedisReactiveAutoConfiguration",
+            "type": "REDIS",
+            "discoveredAt": 1753687199112
+          },
+          {
+            "module": "unknown",
+            "name": "RedisTemplate.redis",
+            "description": "Redis缓存使用: RedisTemplate",
+            "type": "REDIS",
+            "discoveredAt": 1753687199111
+          },
+          {
+            "module": "unknown",
+            "name": "RedisCacheManager.redis",
+            "description": "Redis缓存使用: RedisCacheManager",
+            "type": "REDIS",
+            "discoveredAt": 1753687199111
+          },
+          {
+            "module": "unknown",
+            "name": "Redisson.redis",
+            "description": "Redis缓存使用: Redisson",
+            "type": "REDIS",
+            "discoveredAt": 1753687199111
+          },
+          {
+            "module": "unknown",
+            "name": "GlobalCacheManager.hybrid",
+            "description": "混合缓存使用: GlobalCacheManager",
+            "type": "HYBRID",
+            "discoveredAt": 1753687199116
+          },
+          {
+            "module": "payment",
+            "name": "EnhancedPaymentSecurityService.hybrid",
+            "description": "混合缓存使用: EnhancedPaymentSecurityService",
+            "type": "HYBRID",
+            "discoveredAt": 1753687199116
+          },
+          {
+            "module": "unknown",
+            "name": "RedissonConfig$$SpringCGLIB$$0.redis",
+            "description": "Redis缓存使用: RedissonConfig$$SpringCGLIB$$0",
+            "type": "REDIS",
+            "discoveredAt": 1753687199109
+          },
+          {
+            "module": "unknown",
+            "name": "RedisReactiveHealthContributorAutoConfiguration.redis",
+            "description": "Redis缓存使用: RedisReactiveHealthContributorAutoConfiguration",
+            "type": "REDIS",
+            "discoveredAt": 1753687199113
+          },
+          {
+            "module": "websearch",
+            "name": "WebSearchRateLimitServiceImpl.redis",
+            "description": "Redis缓存使用: WebSearchRateLimitServiceImpl",
+            "type": "REDIS",
+            "discoveredAt": 1753687199110
+          },
+          {
+            "module": "websearch",
+            "name": "WebSearchMetrics.redis",
+            "description": "Redis缓存使用: WebSearchMetrics",
+            "type": "REDIS",
+            "discoveredAt": 1753687199109
+          },
+          {
+            "module": "unknown",
+            "name": "ReactiveRedisTemplate.redis",
+            "description": "Redis缓存使用: ReactiveRedisTemplate",
+            "type": "REDIS",
+            "discoveredAt": 1753687199113
+          },
+          {
+            "module": "unknown",
+            "name": "HybridCacheManager.l1Cache",
+            "description": "Caffeine本地缓存: HybridCacheManager.l1Cache",
+            "type": "LOCAL",
+            "discoveredAt": 1753687198296
+          },
+          {
+            "module": "unknown",
+            "name": "GlobalCacheManager.redis",
+            "description": "Redis缓存使用: GlobalCacheManager",
+            "type": "REDIS",
+            "discoveredAt": 1753687199109
+          },
+          {
+            "module": "websearch",
+            "name": "WebSearchCacheServiceImpl.permissionCache",
+            "description": "Caffeine本地缓存: WebSearchCacheServiceImpl.permissionCache",
+            "type": "LOCAL",
+            "discoveredAt": 1753687198305
+          },
+          {
+            "module": "unknown",
+            "name": "LettuceConnectionConfiguration.redis",
+            "description": "Redis缓存使用: LettuceConnectionConfiguration",
+            "type": "REDIS",
+            "discoveredAt": 1753687199112
+          },
+          {
+            "module": "unknown",
+            "name": "CacheManagementController.hybrid",
+            "description": "混合缓存使用: CacheManagementController",
+            "type": "HYBRID",
+            "discoveredAt": 1753687199115
+          },
+          {
+            "module": "unknown",
+            "name": "RedisConfig$$SpringCGLIB$$0.redis",
+            "description": "Redis缓存使用: RedisConfig$$SpringCGLIB$$0",
+            "type": "REDIS",
+            "discoveredAt": 1753687199108
+          }
+        ]
+      },
+      "timestamp": 1753690077363
+    },
+    "timestamp": "2025-07-28 16:07:57.365023"
+  },
+  {
+    "test_name": "模块缓存查询-payment",
+    "test_type": "STATISTICS",
+    "success": true,
+    "response_time": 0.007052421569824219,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": {
+        "discoveredCaches": {
+          "EnhancedPaymentSecurityService.hybrid": {
+            "name": "EnhancedPaymentSecurityService.hybrid",
+            "type": "HYBRID",
+            "module": "payment",
+            "description": "混合缓存使用: EnhancedPaymentSecurityService",
+            "nativeCache": {
+              "stats": {
+                "hybridCacheStats": {
+                  "l1HitCount": 628,
+                  "l1MissCount": 0,
+                  "l1HitRate": 1.0,
+                  "l1EvictionCount": 0,
+                  "l1Size": 0,
+                  "redisAvailable": true,
+                  "circuitBreakerState": "CLOSED"
+                },
+                "circuitBreakerStats": {
+                  "state": "CLOSED",
+                  "failureCount": 0,
+                  "successCount": 0,
+                  "lastFailureTime": 0,
+                  "lastSuccessTime": 1753689522731,
+                  "failureThreshold": 3,
+                  "successThreshold": 2,
+                  "recoveryTimeoutMs": 30000
+                },
+                "fallbackCacheSize": 0
+              }
+            },
+            "discoveredAt": 1753687199116
+          },
+          "RedisPaymentSecurityService.redis": {
+            "name": "RedisPaymentSecurityService.redis",
+            "type": "REDIS",
+            "module": "payment",
+            "description": "Redis缓存使用: RedisPaymentSecurityService",
+            "nativeCache": {},
+            "discoveredAt": 1753687199110
+          }
+        },
+        "globalCaches": {
+          "payment:suspicious": {
+            "module": "payment",
+            "name": "payment:suspicious",
+            "type": "HYBRID",
+            "description": "可疑行为记录缓存",
+            "ttl": "PT168H",
+            "registeredAt": 1753687197907
+          },
+          "payment:callback": {
+            "module": "payment",
+            "name": "payment:callback",
+            "type": "HYBRID",
+            "description": "支付回调防重放缓存",
+            "ttl": "PT1H",
+            "registeredAt": 1753687197907
+          },
+          "payment:session": {
+            "module": "payment",
+            "name": "payment:session",
+            "type": "HYBRID",
+            "description": "支付会话管理缓存",
+            "ttl": "PT5M",
+            "registeredAt": 1753687197907
+          },
+          "payment:freq": {
+            "module": "payment",
+            "name": "payment:freq",
+            "type": "HYBRID",
+            "description": "支付频率限制缓存",
+            "ttl": "PT10M",
+            "registeredAt": 1753687197907
+          }
+        },
+        "moduleStats": null
+      },
+      "timestamp": 1753690077366
+    },
+    "timestamp": "2025-07-28 16:07:57.372129"
+  },
+  {
+    "test_name": "模块缓存查询-user",
+    "test_type": "STATISTICS",
+    "success": true,
+    "response_time": 0.002498626708984375,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": {
+        "discoveredCaches": {},
+        "globalCaches": {
+          "user:account": {
+            "module": "user",
+            "name": "user:account",
+            "type": "POTENTIAL",
+            "description": "用户账户信息缓存",
+            "ttl": "PT15M",
+            "registeredAt": 1753687197908
+          },
+          "user:package": {
+            "module": "user",
+            "name": "user:package",
+            "type": "POTENTIAL",
+            "description": "用户套餐信息缓存",
+            "ttl": "PT30M",
+            "registeredAt": 1753687197908
+          }
+        },
+        "moduleStats": null
+      },
+      "timestamp": 1753690077373
+    },
+    "timestamp": "2025-07-28 16:07:57.374676"
+  },
+  {
+    "test_name": "模块缓存查询-chat",
+    "test_type": "STATISTICS",
+    "success": true,
+    "response_time": 0.0019593238830566406,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": {
+        "discoveredCaches": {},
+        "globalCaches": {
+          "chat:session": {
+            "module": "chat",
+            "name": "chat:session",
+            "type": "POTENTIAL",
+            "description": "聊天会话缓存",
+            "ttl": "PT30M",
+            "registeredAt": 1753687197908
+          },
+          "chat:messages": {
+            "module": "chat",
+            "name": "chat:messages",
+            "type": "POTENTIAL",
+            "description": "聊天消息缓存",
+            "ttl": "PT15M",
+            "registeredAt": 1753687197908
+          },
+          "chat:ratelimit": {
+            "module": "chat",
+            "name": "chat:ratelimit",
+            "type": "POTENTIAL",
+            "description": "聊天频率限制缓存",
+            "ttl": "PT1M",
+            "registeredAt": 1753687197909
+          }
+        },
+        "moduleStats": null
+      },
+      "timestamp": 1753690077375
+    },
+    "timestamp": "2025-07-28 16:07:57.376683"
+  },
+  {
+    "test_name": "模块缓存查询-ai",
+    "test_type": "STATISTICS",
+    "success": true,
+    "response_time": 0.0016694068908691406,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": {
+        "discoveredCaches": {},
+        "globalCaches": {
+          "ai:models": {
+            "module": "ai",
+            "name": "ai:models",
+            "type": "POTENTIAL",
+            "description": "AI模型配置缓存",
+            "ttl": "PT1H",
+            "registeredAt": 1753687197909
+          },
+          "ai:permissions": {
+            "module": "ai",
+            "name": "ai:permissions",
+            "type": "POTENTIAL",
+            "description": "AI模型权限缓存",
+            "ttl": "PT30M",
+            "registeredAt": 1753687197909
+          }
+        },
+        "moduleStats": null
+      },
+      "timestamp": 1753690077377
+    },
+    "timestamp": "2025-07-28 16:07:57.378396"
+  },
+  {
+    "test_name": "模块缓存查询-websearch",
+    "test_type": "STATISTICS",
+    "success": true,
+    "response_time": 0.019959211349487305,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": "{\"code\":200,\"message\":\"操作成功\",\"data\":{\"discoveredCaches\":{\"WebSearchRateLimitServiceImpl.redis\":{\"name\":\"WebSearchRateLimitServiceImpl.redis\",\"type\":\"REDIS\",\"module\":\"websearch\",\"description\":\"Redis缓存使",
+    "timestamp": "2025-07-28 16:07:57.398428"
+  },
+  {
+    "test_name": "类型缓存查询-REDIS",
+    "test_type": "STATISTICS",
+    "success": true,
+    "response_time": 0.03362774848937988,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": "{\"code\":200,\"message\":\"操作成功\",\"data\":{\"discoveredCaches\":{\"RedisHealthContributorAutoConfiguration.redis\":{\"name\":\"RedisHealthContributorAutoConfiguration.redis\",\"type\":\"REDIS\",\"module\":\"unknown\",\"desc",
+    "timestamp": "2025-07-28 16:07:57.432138"
+  },
+  {
+    "test_name": "类型缓存查询-LOCAL",
+    "test_type": "STATISTICS",
+    "success": true,
+    "response_time": 0.009720325469970703,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": "{\"code\":200,\"message\":\"操作成功\",\"data\":{\"discoveredCaches\":{\"WebSearchCacheServiceImpl.permissionCache\":{\"name\":\"WebSearchCacheServiceImpl.permissionCache\",\"type\":\"LOCAL\",\"module\":\"websearch\",\"descriptio",
+    "timestamp": "2025-07-28 16:07:57.441914"
+  },
+  {
+    "test_name": "类型缓存查询-HYBRID",
+    "test_type": "STATISTICS",
+    "success": true,
+    "response_time": 0.0057332515716552734,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": {
+        "discoveredCaches": {
+          "GlobalCacheManager.hybrid": {
+            "name": "GlobalCacheManager.hybrid",
+            "type": "HYBRID",
+            "module": "unknown",
+            "description": "混合缓存使用: GlobalCacheManager",
+            "nativeCache": {
+              "circuitBreaker": {
+                "state": "CLOSED",
+                "failureCount": 0,
+                "successCount": 0,
+                "lastFailureTime": 0,
+                "lastSuccessTime": 1753689522731,
+                "available": true,
+                "stats": {
+                  "state": "CLOSED",
+                  "failureCount": 0,
+                  "successCount": 0,
+                  "lastFailureTime": 0,
+                  "lastSuccessTime": 1753689522731,
+                  "failureThreshold": 3,
+                  "successThreshold": 2,
+                  "recoveryTimeoutMs": 30000
+                }
+              },
+              "hybridCacheManager": {
+                "stats": {
+                  "l1HitCount": 628,
+                  "l1MissCount": 0,
+                  "l1HitRate": 1.0,
+                  "l1EvictionCount": 0,
+                  "l1Size": 0,
+                  "redisAvailable": true,
+                  "circuitBreakerState": "CLOSED"
+                }
+              },
+              "globalStats": {
+                "totalCaches": 17,
+                "typeDistribution": {
+                  "SPRING_CACHE": 1,
+                  "LOCAL": 3,
+                  "HYBRID": 4,
+                  "POTENTIAL": 9
+                },
+                "moduleDistribution": {
+                  "package": 2,
+                  "chat": 3,
+                  "ai": 2,
+                  "exchange": 1,
+                  "payment": 4,
+                  "user": 2,
+                  "unknown": 1,
+                  "websearch": 2
+                },
+                "redisAvailable": true,
+                "circuitBreakerState": "CLOSED"
+              },
+              "allCaches": {
+                "ai:models": {
+                  "module": "ai",
+                  "name": "ai:models",
+                  "type": "POTENTIAL",
+                  "description": "AI模型配置缓存",
+                  "ttl": "PT1H",
+                  "registeredAt": 1753687197909
+                },
+                "package:config": {
+                  "module": "package",
+                  "name": "package:config",
+                  "type": "POTENTIAL",
+                  "description": "套餐配置缓存",
+                  "ttl": "PT1H",
+                  "registeredAt": 1753687197909
+                },
+                "payment:callback": {
+                  "module": "payment",
+                  "name": "payment:callback",
+                  "type": "HYBRID",
+                  "description": "支付回调防重放缓存",
+                  "ttl": "PT1H",
+                  "registeredAt": 1753687197907
+                },
+                "user:account": {
+                  "module": "user",
+                  "name": "user:account",
+                  "type": "POTENTIAL",
+                  "description": "用户账户信息缓存",
+                  "ttl": "PT15M",
+                  "registeredAt": 1753687197908
+                },
+                "WebSearchCacheServiceImpl.permissionCache": {
+                  "module": "websearch",
+                  "name": "WebSearchCacheServiceImpl.permissionCache",
+                  "type": "LOCAL",
+                  "description": "Caffeine本地缓存: WebSearchCacheServiceImpl.permissionCache",
+                  "ttl": "PT5M",
+                  "registeredAt": 1753687198305
+                },
+                "exchangeRates": {
+                  "module": "exchange",
+                  "name": "exchangeRates",
+                  "type": "SPRING_CACHE",
+                  "description": "汇率数据缓存",
+                  "ttl": "PT30M",
+                  "registeredAt": 1753687197908
+                },
+                "ai:permissions": {
+                  "module": "ai",
+                  "name": "ai:permissions",
+                  "type": "POTENTIAL",
+                  "description": "AI模型权限缓存",
+                  "ttl": "PT30M",
+                  "registeredAt": 1753687197909
+                },
+                "package:permissions": {
+                  "module": "package",
+                  "name": "package:permissions",
+                  "type": "POTENTIAL",
+                  "description": "套餐权限缓存",
+                  "ttl": "PT30M",
+                  "registeredAt": 1753687197909
+                },
+                "payment:suspicious": {
+                  "module": "payment",
+                  "name": "payment:suspicious",
+                  "type": "HYBRID",
+                  "description": "可疑行为记录缓存",
+                  "ttl": "PT168H",
+                  "registeredAt": 1753687197907
+                },
+                "chat:session": {
+                  "module": "chat",
+                  "name": "chat:session",
+                  "type": "POTENTIAL",
+                  "description": "聊天会话缓存",
+                  "ttl": "PT30M",
+                  "registeredAt": 1753687197908
+                },
+                "chat:messages": {
+                  "module": "chat",
+                  "name": "chat:messages",
+                  "type": "POTENTIAL",
+                  "description": "聊天消息缓存",
+                  "ttl": "PT15M",
+                  "registeredAt": 1753687197908
+                },
+                "websearch:permission": {
+                  "module": "websearch",
+                  "name": "websearch:permission",
+                  "type": "LOCAL",
+                  "description": "网络搜索权限缓存",
+                  "ttl": "PT5M",
+                  "registeredAt": 1753687197908
+                },
+                "chat:ratelimit": {
+                  "module": "chat",
+                  "name": "chat:ratelimit",
+                  "type": "POTENTIAL",
+                  "description": "聊天频率限制缓存",
+                  "ttl": "PT1M",
+                  "registeredAt": 1753687197909
+                },
+                "payment:session": {
+                  "module": "payment",
+                  "name": "payment:session",
+                  "type": "HYBRID",
+                  "description": "支付会话管理缓存",
+                  "ttl": "PT5M",
+                  "registeredAt": 1753687197907
+                },
+                "HybridCacheManager.l1Cache": {
+                  "module": "unknown",
+                  "name": "HybridCacheManager.l1Cache",
+                  "type": "LOCAL",
+                  "description": "Caffeine本地缓存: HybridCacheManager.l1Cache",
+                  "ttl": "PT5M",
+                  "registeredAt": 1753687198296
+                },
+                "payment:freq": {
+                  "module": "payment",
+                  "name": "payment:freq",
+                  "type": "HYBRID",
+                  "description": "支付频率限制缓存",
+                  "ttl": "PT10M",
+                  "registeredAt": 1753687197907
+                },
+                "user:package": {
+                  "module": "user",
+                  "name": "user:package",
+                  "type": "POTENTIAL",
+                  "description": "用户套餐信息缓存",
+                  "ttl": "PT30M",
+                  "registeredAt": 1753687197908
+                }
+              }
+            },
+            "discoveredAt": 1753687199116
+          },
+          "EnhancedPaymentSecurityService.hybrid": {
+            "name": "EnhancedPaymentSecurityService.hybrid",
+            "type": "HYBRID",
+            "module": "payment",
+            "description": "混合缓存使用: EnhancedPaymentSecurityService",
+            "nativeCache": {
+              "stats": {
+                "hybridCacheStats": {
+                  "l1HitCount": 628,
+                  "l1MissCount": 0,
+                  "l1HitRate": 1.0,
+                  "l1EvictionCount": 0,
+                  "l1Size": 0,
+                  "redisAvailable": true,
+                  "circuitBreakerState": "CLOSED"
+                },
+                "circuitBreakerStats": {
+                  "state": "CLOSED",
+                  "failureCount": 0,
+                  "successCount": 0,
+                  "lastFailureTime": 0,
+                  "lastSuccessTime": 1753689522731,
+                  "failureThreshold": 3,
+                  "successThreshold": 2,
+                  "recoveryTimeoutMs": 30000
+                },
+                "fallbackCacheSize": 0
+              }
+            },
+            "discoveredAt": 1753687199116
+          },
+          "CacheManagementController.hybrid": {
+            "name": "CacheManagementController.hybrid",
+            "type": "HYBRID",
+            "module": "unknown",
+            "description": "混合缓存使用: CacheManagementController",
+            "nativeCache": {
+              "cacheHealth": {
+                "code": 200,
+                "message": "操作成功",
+                "data": {
+                  "l1HitRate": 1.0,
+                  "l1Size": 0,
+                  "redisAvailable": true,
+                  "recommendation": "缓存系统运行正常",
+                  "circuitBreakerState": "CLOSED",
+                  "overallStatus": "HEALTHY"
+                },
+                "timestamp": 1753690077446
+              },
+              "cacheConfig": {
+                "code": 200,
+                "message": "操作成功",
+                "data": {
+                  "l1Cache": {
+                    "expireMinutes": 5,
+                    "maxSize": 1000
+                  },
+                  "cacheTypes": {
+                    "POTENTIAL": "可优化为缓存的场景",
+                    "LOCAL": "Caffeine本地内存缓存",
+                    "REDIS": "纯Redis分布式缓存",
+                    "SPRING_CACHE": "基于Spring Cache注解",
+                    "HYBRID": "L1(内存)+L2(Redis)+L3(数据库)"
+                  },
+                  "circuitBreaker": {
+                    "successThreshold": 2,
+                    "failureThreshold": 3,
+                    "recoveryTimeoutMs": 30000
+                  },
+                  "global": {
+                    "totalCaches": 17,
+                    "typeDistribution": {
+                      "SPRING_CACHE": 1,
+                      "LOCAL": 3,
+                      "HYBRID": 4,
+                      "POTENTIAL": 9
+                    },
+                    "moduleDistribution": {
+                      "package": 2,
+                      "chat": 3,
+                      "ai": 2,
+                      "exchange": 1,
+                      "payment": 4,
+                      "user": 2,
+                      "unknown": 1,
+                      "websearch": 2
+                    },
+                    "redisAvailable": true,
+                    "circuitBreakerState": "CLOSED"
+                  },
+                  "l2Cache": {
+                    "expireMinutes": 30
+                  }
+                },
+                "timestamp": 1753690077447
+              }
+            },
+            "discoveredAt": 1753687199115
+          },
+          "CacheMonitoringService.hybrid": {
+            "name": "CacheMonitoringService.hybrid",
+            "type": "HYBRID",
+            "module": "unknown",
+            "description": "混合缓存使用: CacheMonitoringService",
+            "nativeCache": {
+              "moduleStats": {},
+              "typeStats": {},
+              "globalMonitoringStats": {
+                "globalStats": {
+                  "totalCaches": 17,
+                  "typeDistribution": {
+                    "SPRING_CACHE": 1,
+                    "LOCAL": 3,
+                    "HYBRID": 4,
+                    "POTENTIAL": 9
+                  },
+                  "moduleDistribution": {
+                    "package": 2,
+                    "chat": 3,
+                    "ai": 2,
+                    "exchange": 1,
+                    "payment": 4,
+                    "user": 2,
+                    "unknown": 1,
+                    "websearch": 2
+                  },
+                  "redisAvailable": true,
+                  "circuitBreakerState": "CLOSED"
+                },
+                "moduleStats": {},
+                "typeStats": {},
+                "totalRequests": 0,
+                "cacheHits": 0,
+                "cacheMisses": 0,
+                "redisFailures": 0,
+                "fallbackUsages": 0,
+                "redisAvailable": true,
+                "circuitBreakerState": "CLOSED",
+                "lastRedisFailureTime": null,
+                "lastRedisRecoveryTime": null,
+                "redisAlertSent": false
+              },
+              "monitoringStats": {
+                "l1HitRate": 1.0,
+                "cacheMisses": 0,
+                "redisFailures": 0,
+                "l1Size": 0,
+                "lastRedisFailureTime": null,
+                "l1MissCount": 0,
+                "totalRequests": 0,
+                "fallbackUsages": 0,
+                "hitRate": 0.0,
+                "lastRedisRecoveryTime": null,
+                "l1HitCount": 628,
+                "redisAlertSent": false,
+                "fallbackRate": 0.0,
+                "redisAvailable": true,
+                "redisFailureRate": 0.0,
+                "cacheHits": 0,
+                "circuitBreakerState": "CLOSED"
+              }
+            },
+            "discoveredAt": 1753687199115
+          }
+        },
+        "globalCaches": {
+          "payment:suspicious": {
+            "module": "payment",
+            "name": "payment:suspicious",
+            "type": "HYBRID",
+            "description": "可疑行为记录缓存",
+            "ttl": "PT168H",
+            "registeredAt": 1753687197907
+          },
+          "payment:callback": {
+            "module": "payment",
+            "name": "payment:callback",
+            "type": "HYBRID",
+            "description": "支付回调防重放缓存",
+            "ttl": "PT1H",
+            "registeredAt": 1753687197907
+          },
+          "payment:session": {
+            "module": "payment",
+            "name": "payment:session",
+            "type": "HYBRID",
+            "description": "支付会话管理缓存",
+            "ttl": "PT5M",
+            "registeredAt": 1753687197907
+          },
+          "payment:freq": {
+            "module": "payment",
+            "name": "payment:freq",
+            "type": "HYBRID",
+            "description": "支付频率限制缓存",
+            "ttl": "PT10M",
+            "registeredAt": 1753687197907
+          }
+        },
+        "typeStats": null
+      },
+      "timestamp": 1753690077443
+    },
+    "timestamp": "2025-07-28 16:07:57.447764"
+  },
+  {
+    "test_name": "类型缓存查询-SPRING_CACHE",
+    "test_type": "STATISTICS",
+    "success": true,
+    "response_time": 0.0018095970153808594,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": {
+        "discoveredCaches": {},
+        "globalCaches": {
+          "exchangeRates": {
+            "module": "exchange",
+            "name": "exchangeRates",
+            "type": "SPRING_CACHE",
+            "description": "汇率数据缓存",
+            "ttl": "PT30M",
+            "registeredAt": 1753687197908
+          }
+        },
+        "typeStats": null
+      },
+      "timestamp": 1753690077449
+    },
+    "timestamp": "2025-07-28 16:07:57.449602"
+  },
+  {
+    "test_name": "缓存预热",
+    "test_type": "MANAGEMENT",
+    "success": true,
+    "response_time": 0.0021185874938964844,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": {
+        "warmedCaches": 25,
+        "module": null,
+        "type": null
+      },
+      "timestamp": 1753690077451
+    },
+    "timestamp": "2025-07-28 16:07:57.451968"
+  },
+  {
+    "test_name": "模块缓存预热",
+    "test_type": "MANAGEMENT",
+    "success": true,
+    "response_time": 0.0024394989013671875,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": {
+        "warmedCaches": 2,
+        "module": "payment",
+        "type": null
+      },
+      "timestamp": 1753690077453
+    },
+    "timestamp": "2025-07-28 16:07:57.454433"
+  },
+  {
+    "test_name": "清空模块缓存",
+    "test_type": "MANAGEMENT",
+    "success": true,
+    "response_time": 0.0018916130065917969,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": "模块缓存已清空",
+      "timestamp": 1753690077455
+    },
+    "timestamp": "2025-07-28 16:07:57.456351"
+  },
+  {
+    "test_name": "清空类型缓存",
+    "test_type": "MANAGEMENT",
+    "success": true,
+    "response_time": 0.002816915512084961,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": "类型缓存已清空",
+      "timestamp": 1753690077458
+    },
+    "timestamp": "2025-07-28 16:07:57.459194"
+  },
+  {
+    "test_name": "删除缓存项",
+    "test_type": "MANAGEMENT",
+    "success": true,
+    "response_time": 0.07763957977294922,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": "缓存已删除",
+      "timestamp": 1753690077536
+    },
+    "timestamp": "2025-07-28 16:07:57.536888"
+  },
+  {
+    "test_name": "缓存功能测试",
+    "test_type": "CACHE_OPERATION",
+    "success": true,
+    "response_time": 0.2524871826171875,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": {
+        "existsTimeMs": 0,
+        "writeTimeMs": 141,
+        "cachedValue": "test_value_329439aa",
+        "redisAvailable": true,
+        "exists": true,
+        "circuitBreakerState": "CLOSED",
+        "readTimeMs": 1
+      },
+      "timestamp": 1753690077786
+    },
+    "timestamp": "2025-07-28 16:07:57.789695"
+  },
+  {
+    "test_name": "大数据缓存测试",
+    "test_type": "CACHE_OPERATION",
+    "success": false,
+    "response_time": 0.00792551040649414,
+    "status_code": 400,
+    "error_message": "<!doctype html><html lang=\"en\"><head><title>HTTP Status 400 – Bad Request</title><style type=\"text/css\">body {font-family:Tahoma,Arial,sans-serif;} h1, h2, h3, b {color:white;background-color:#525D76;",
+    "response_data": "<!doctype html><html lang=\"en\"><head><title>HTTP Status 400 – Bad Request</title><style type=\"text/css\">body {font-family:Tahoma,Arial,sans-serif;} h1, h2, h3, b {color:white;background-color:#525D76;",
+    "timestamp": "2025-07-28 16:07:57.799485"
+  },
+  {
+    "test_name": "缓存健康检查",
+    "test_type": "MONITORING",
+    "success": true,
+    "response_time": 0.0018210411071777344,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": {
+        "l1HitRate": 1.0,
+        "l1Size": 0,
+        "redisAvailable": true,
+        "recommendation": "缓存系统运行正常",
+        "circuitBreakerState": "CLOSED",
+        "overallStatus": "HEALTHY"
+      },
+      "timestamp": 1753690077800
+    },
+    "timestamp": "2025-07-28 16:07:57.801725"
+  },
+  {
+    "test_name": "缓存性能监控",
+    "test_type": "MONITORING",
+    "success": true,
+    "response_time": 0.002362489700317383,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": {
+        "circuitBreaker": {
+          "totalOperations": 0,
+          "state": "CLOSED",
+          "failureRate": "0.00%",
+          "uptime": 16
+        },
+        "monitoring": {
+          "totalRequests": 0,
+          "fallbackUsages": 0,
+          "cacheHits": 0,
+          "globalHitRate": "0.00%",
+          "cacheMisses": 0,
+          "redisFailures": 0
+        },
+        "hybridCache": {
+          "l1Size": 0,
+          "circuitBreakerState": "CLOSED",
+          "l1MissCount": 0,
+          "l1EvictionCount": 0,
+          "redisAvailable": true,
+          "l1HitCount": 630,
+          "l1HitRate": "100.00%"
+        }
+      },
+      "timestamp": 1753690077802
+    },
+    "timestamp": "2025-07-28 16:07:57.804157"
+  },
+  {
+    "test_name": "操作历史查询",
+    "test_type": "MONITORING",
+    "success": true,
+    "response_time": 0.002137422561645508,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": {
+        "totalRecords": 2,
+        "limit": 20,
+        "history": [
+          {
+            "clientIp": "127.0.0.1",
+            "details": "预热缓存 - 模块: payment, 类型: 全部, 成功: 2个",
+            "operation": "WARMUP_CACHE",
+            "timestamp": "2025-07-28 16:07:57"
+          },
+          {
+            "clientIp": "127.0.0.1",
+            "details": "预热缓存 - 模块: 全部, 类型: 全部, 成功: 25个",
+            "operation": "WARMUP_CACHE",
+            "timestamp": "2025-07-28 16:07:57"
+          }
+        ]
+      },
+      "timestamp": 1753690077804
+    },
+    "timestamp": "2025-07-28 16:07:57.806335"
+  },
+  {
+    "test_name": "限制操作历史查询",
+    "test_type": "MONITORING",
+    "success": true,
+    "response_time": 0.001744985580444336,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": {
+        "totalRecords": 2,
+        "limit": 5,
+        "history": [
+          {
+            "clientIp": "127.0.0.1",
+            "details": "预热缓存 - 模块: payment, 类型: 全部, 成功: 2个",
+            "operation": "WARMUP_CACHE",
+            "timestamp": "2025-07-28 16:07:57"
+          },
+          {
+            "clientIp": "127.0.0.1",
+            "details": "预热缓存 - 模块: 全部, 类型: 全部, 成功: 25个",
+            "operation": "WARMUP_CACHE",
+            "timestamp": "2025-07-28 16:07:57"
+          }
+        ]
+      },
+      "timestamp": 1753690077806
+    },
+    "timestamp": "2025-07-28 16:07:57.808108"
+  },
+  {
+    "test_name": "缓存配置查询",
+    "test_type": "SECURITY",
+    "success": true,
+    "response_time": 0.0012183189392089844,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": {
+        "l1Cache": {
+          "expireMinutes": 5,
+          "maxSize": 1000
+        },
+        "cacheTypes": {
+          "POTENTIAL": "可优化为缓存的场景",
+          "LOCAL": "Caffeine本地内存缓存",
+          "REDIS": "纯Redis分布式缓存",
+          "SPRING_CACHE": "基于Spring Cache注解",
+          "HYBRID": "L1(内存)+L2(Redis)+L3(数据库)"
+        },
+        "circuitBreaker": {
+          "successThreshold": 2,
+          "failureThreshold": 3,
+          "recoveryTimeoutMs": 30000
+        },
+        "global": {
+          "totalCaches": 17,
+          "typeDistribution": {
+            "SPRING_CACHE": 1,
+            "LOCAL": 3,
+            "HYBRID": 4,
+            "POTENTIAL": 9
+          },
+          "moduleDistribution": {
+            "package": 2,
+            "chat": 3,
+            "ai": 2,
+            "exchange": 1,
+            "payment": 4,
+            "user": 2,
+            "unknown": 1,
+            "websearch": 2
+          },
+          "redisAvailable": true,
+          "circuitBreakerState": "CLOSED"
+        },
+        "l2Cache": {
+          "expireMinutes": 30
+        }
+      },
+      "timestamp": 1753690077808
+    },
+    "timestamp": "2025-07-28 16:07:57.809543"
+  },
+  {
+    "test_name": "API密钥统计",
+    "test_type": "SECURITY",
+    "success": true,
+    "response_time": 0.0017511844635009766,
+    "status_code": 200,
+    "error_message": "",
+    "response_data": {
+      "code": 200,
+      "message": "操作成功",
+      "data": {
+        "masterApiKey": "rV70ML_EAX6csqxm3IYRWQcUa-0lW6Pac-HQIn-7StU",
+        "recentAccesses": 100,
+        "totalKeys": 1,
+        "enabledKeys": 1,
+        "enabled": true
+      },
+      "timestamp": 1753690077809
+    },
+    "timestamp": "2025-07-28 16:07:57.811317"
+  }
+]

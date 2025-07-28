@@ -1,0 +1,67 @@
+{
+  "test_overview": {
+    "total_tests": 27,
+    "total_success": 26,
+    "total_failed": 1,
+    "success_rate": 0.9629629629629629,
+    "test_types": 6
+  },
+  "performance_metrics": {
+    "avg_response_time": 0.01696514200281214,
+    "median_response_time": 0.0024394989013671875,
+    "min_response_time": 0.0012183189392089844,
+    "max_response_time": 0.2524871826171875,
+    "p95_response_time": 0.1825481414794922,
+    "p99_response_time": 0.2524871826171875
+  },
+  "test_types_summary": {
+    "CONNECTIVITY": {
+      "total": 1,
+      "success": 1,
+      "failed": 0,
+      "success_rate": 1.0,
+      "avg_response_time": 0.004119396209716797,
+      "error_count": 0
+    },
+    "STATISTICS": {
+      "total": 13,
+      "success": 13,
+      "failed": 0,
+      "success_rate": 1.0,
+      "avg_response_time": 0.007352700600257287,
+      "error_count": 0
+    },
+    "MANAGEMENT": {
+      "total": 5,
+      "success": 5,
+      "failed": 0,
+      "success_rate": 1.0,
+      "avg_response_time": 0.01738123893737793,
+      "error_count": 0
+    },
+    "CACHE_OPERATION": {
+      "total": 2,
+      "success": 1,
+      "failed": 1,
+      "success_rate": 0.5,
+      "avg_response_time": 0.13020634651184082,
+      "error_count": 1
+    },
+    "MONITORING": {
+      "total": 4,
+      "success": 4,
+      "failed": 0,
+      "success_rate": 1.0,
+      "avg_response_time": 0.0020164847373962402,
+      "error_count": 0
+    },
+    "SECURITY": {
+      "total": 2,
+      "success": 2,
+      "failed": 0,
+      "success_rate": 1.0,
+      "avg_response_time": 0.0014847517013549805,
+      "error_count": 0
+    }
+  }
+}

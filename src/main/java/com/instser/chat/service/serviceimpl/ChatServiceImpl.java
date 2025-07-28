@@ -2301,7 +2301,7 @@ public class ChatServiceImpl implements ChatService {
 
 
     /**
-     * 检测内容并返回处理结果
+     * 检测内容并返回处理结果 - 原始模式：不过滤任何字符
      * 包括过滤检测和重试检测
      */
     private ContentDetectionResult detectContentAndGetResult(String content) {
@@ -2321,44 +2321,9 @@ public class ChatServiceImpl implements ChatService {
             return new ContentDetectionResult("", true, false);
         }
 
-        // 基础清理：移除无效字符
-        String cleaned = content.replaceAll("[\uFFFD\u0000]", "");
-
-        // 🔧 修复缩进问题：逐行处理，只清理行内的多余空格，完全保留行首的缩进空格
-        String[] lines = cleaned.split("\n", -1);
-        StringBuilder result = new StringBuilder();
-
-        for (int i = 0; i < lines.length; i++) {
-            String line = lines[i];
-            if (!line.trim().isEmpty()) {
-                // 非空行：找到第一个非空格字符的位置
-                int leadingSpaces = 0;
-                while (leadingSpaces < line.length() && line.charAt(leadingSpaces) == ' ') {
-                    leadingSpaces++;
-                }
-
-                // 分离缩进和内容
-                String indent = line.substring(0, leadingSpaces);
-                String content_part = line.substring(leadingSpaces);
-
-                // 只对内容部分清理多余空格
-                String cleanedContent = content_part.replaceAll(" {2,}", " ");
-
-                result.append(indent).append(cleanedContent);
-            } else {
-                // 空行：保持原样
-                result.append(line);
-            }
-
-            // 添加换行符（除了最后一行）
-            if (i < lines.length - 1) {
-                result.append("\n");
-            }
-        }
-
-        cleaned = result.toString();
-
-        return new ContentDetectionResult(cleaned, false, false);
+        // 原始模式：完全不处理内容，保持100%字符准确性
+        log.debug("原始模式：保持内容完全不变，长度: {}", content.length());
+        return new ContentDetectionResult(content, false, false);
     }
 
     /**
@@ -2375,9 +2340,8 @@ public class ChatServiceImpl implements ChatService {
                 int codePoint = codePoints[i];
                 String character = new String(Character.toChars(codePoint));
 
-                if (codePoint != 0xFFFD && codePoint != 0x0000) {
-                    chunk.append(character);
-                }
+                // 原始模式：不过滤任何字符，包括无效字符
+                chunk.append(character);
 
                 if (chunk.length() >= optimalChunkSize || i == codePoints.length - 1) {
                     try {
