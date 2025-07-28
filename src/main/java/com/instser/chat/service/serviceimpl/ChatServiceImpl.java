@@ -4371,7 +4371,7 @@ public class ChatServiceImpl implements ChatService {
             // 检查用户聊天频率限制（每分钟限制）
             if (!chatRateLimitService.checkUserChatRateLimit(userId)) {
                 log.warn("用户聊天频率超限，用户ID: {}", userId);
-                String errorContent = "Request failed. Please try again later.";
+                String errorContent = "The request frequency is too high. Please try again later.";
                 return handleErrorResponse(response, errorContent, sessionId, userId, modelId);
             }
 
@@ -4379,14 +4379,14 @@ public class ChatServiceImpl implements ChatService {
             String clientIp = chatRateLimitService.getClientIpAddress();
             if (!chatRateLimitService.checkIpChatRateLimit(clientIp)) {
                 log.warn("IP聊天频率超限，IP: {}, 用户ID: {}", clientIp, userId);
-                String errorContent = "Request failed. Please try again later.";
+                String errorContent = "The request frequency is too high. Please try again later.";
                 return handleErrorResponse(response, errorContent, sessionId, userId, modelId);
             }
 
             // 检查用户每日聊天限制
             if (!chatRateLimitService.checkDailyChatLimit(userId)) {
                 log.warn("用户每日聊天次数超限，用户ID: {}", userId);
-                String errorContent = "Request failed. Please try again later.";
+                String errorContent = "The request frequency is too high. Please try again later.";
                 return handleErrorResponse(response, errorContent, sessionId, userId, modelId);
             }
 

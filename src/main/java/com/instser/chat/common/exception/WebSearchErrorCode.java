@@ -30,7 +30,7 @@ public enum WebSearchErrorCode {
     WEB_SEARCH_CONTENT_NOT_FOUND(40402, "网络搜索内容不存在"),
 
     // 频率限制 (409xx)
-    RATE_LIMIT_EXCEEDED(40901, "请求过于频繁"),
+    RATE_LIMIT_EXCEEDED(40901, "The request frequency is too high. Please try again later."),
     CONCURRENT_MODIFICATION(40902, "并发修改冲突"),
 
     // 服务器错误 (500xx)

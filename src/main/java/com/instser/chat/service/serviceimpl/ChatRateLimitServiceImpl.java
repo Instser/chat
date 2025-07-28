@@ -36,7 +36,7 @@ public class ChatRateLimitServiceImpl implements ChatRateLimitService {
     private final ConcurrentHashMap<String, ConcurrentHashMap<Long, Boolean>> rateLimitCache = new ConcurrentHashMap<>();
 
     // 频率限制配置
-    private static final int USER_RATE_LIMIT_PER_MINUTE = 10; // 用户每分钟最多10次聊天
+    private static final int USER_RATE_LIMIT_PER_MINUTE = 20; // 用户每分钟最多20次聊天
     private static final int IP_RATE_LIMIT_PER_MINUTE = 30;   // IP每分钟最多30次聊天
 
     @Override

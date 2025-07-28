@@ -37,7 +37,8 @@ public class PaymentSecurityEnhancer {
     // 易支付回调IP白名单（需要根据实际易支付平台配置）
     private static final Set<String> YIPAY_CALLBACK_IPS = Set.of(
         "127.0.0.1",         // 本地测试IP
-        "localhost"          // 本地测试域名
+        "localhost",
+        "https://your-pay-gateway.example.com"          // 本地测试域名
     );
 
     /**

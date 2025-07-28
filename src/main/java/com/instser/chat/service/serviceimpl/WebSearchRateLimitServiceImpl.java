@@ -28,7 +28,7 @@ public class WebSearchRateLimitServiceImpl implements WebSearchRateLimitService 
     private final ConcurrentHashMap<String, ConcurrentHashMap<Long, Boolean>> fallbackCache = new ConcurrentHashMap<>();
 
     // 频率限制配置（与聊天请求保持一致）
-    private static final int USER_RATE_LIMIT_PER_MINUTE = 10;
+    private static final int USER_RATE_LIMIT_PER_MINUTE = 20;
 
     // Redis可用性状态管理
     private volatile boolean redisAvailable = true;
