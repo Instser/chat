@@ -113,9 +113,9 @@ public class CacheMonitoringService {
     }
 
     /**
-     * 定时健康检查（每5分钟执行一次）
+     * 缓存健康检查
+     * 由 OptimizedScheduledTaskService 统一调用
      */
-    @Scheduled(fixedRate = 300000) // 5分钟
     public void performHealthCheck() {
         try {
             log.debug("开始执行缓存健康检查");

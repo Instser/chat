@@ -1261,4 +1261,68 @@ public class PaymentServiceImpl implements PaymentService {
             return null;
         }
     }
+
+    @Override
+    public void processPaymentCallbackAsync(Map<String, String> notifyParams) {
+        // 使用CompletableFuture异步处理，避免阻塞回调响应
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            processPaymentCallbackInternal(notifyParams);
+        }, getPaymentCallbackExecutor());
+    }
+
+    /**
+     * 内部异步处理支付回调逻辑
+     */
+    private void processPaymentCallbackInternal(Map<String, String> notifyParams) {
+        String outTradeNo = notifyParams.get("out_trade_no");
+        String tradeNo = notifyParams.get("trade_no");
+        String paymentType = notifyParams.get("type");
+
+        try {
+            log.info("开始异步处理易支付回调，订单号: {}, 交易号: {}, 支付类型: {}",
+                    outTradeNo, tradeNo, paymentType);
+
+            // 生成回调ID用于幂等性检查
+            String callbackId = outTradeNo + "_" + tradeNo + "_" + paymentType;
+
+            // 检查是否已处理过（使用现有的Redis方法）
+            if (redisPaymentSecurityService.isCallbackProcessed(callbackId)) {
+                log.info("回调已处理过，跳过处理: {}", outTradeNo);
+                return;
+            }
+
+            // 根据支付类型调用相应的处理方法
+            boolean success = false;
+            if ("wxpay".equals(paymentType)) {
+                success = handleWechatPayNotify(notifyParams);
+            } else if ("alipay".equals(paymentType)) {
+                success = handleAlipayNotify(notifyParams);
+            } else {
+                log.error("未知的支付类型: {}", paymentType);
+                return;
+            }
+
+            if (success) {
+                log.info("异步处理易支付回调成功，订单号: {}", outTradeNo);
+            } else {
+                log.error("异步处理易支付回调失败，订单号: {}", outTradeNo);
+            }
+
+        } catch (Exception e) {
+            log.error("异步处理易支付回调异常，订单号: {}", outTradeNo, e);
+        }
+    }
+
+    /**
+     * 获取支付回调处理线程池
+     */
+    private java.util.concurrent.Executor getPaymentCallbackExecutor() {
+        try {
+            return (java.util.concurrent.Executor)
+                com.instser.chat.util.ApplicationContextProvider.getBean("paymentCallbackExecutor");
+        } catch (Exception e) {
+            log.warn("获取支付回调线程池失败，使用默认线程池: {}", e.getMessage());
+            return java.util.concurrent.ForkJoinPool.commonPool();
+        }
+    }
 }

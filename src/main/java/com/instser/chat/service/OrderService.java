@@ -68,6 +68,17 @@ public interface OrderService extends IService<UserOrder> {
     boolean updatePaymentStatus(String orderNo, Integer paymentStatus, String transactionId);
 
     /**
+     * 更新订单支付状态（指定是否设置支付时间）
+     *
+     * @param orderNo 订单号
+     * @param paymentStatus 支付状态
+     * @param transactionId 交易流水号
+     * @param setPaymentTime 是否设置支付时间（仅当支付成功时应该为true）
+     * @return 是否更新成功
+     */
+    boolean updatePaymentStatus(String orderNo, Integer paymentStatus, String transactionId, boolean setPaymentTime);
+
+    /**
      * 取消订单
      *
      * @param orderNo 订单号
@@ -150,4 +161,23 @@ public interface OrderService extends IService<UserOrder> {
      * @return 订单列表
      */
     List<UserOrder> getOrdersNeedingStatusSync(int maxCount);
+
+    /**
+     * 获取用户在指定时间范围内的待支付订单
+     *
+     * @param userId 用户ID
+     * @param packageId 套餐ID
+     * @param minutesAgo 多少分钟前
+     * @return 待支付订单列表
+     */
+    List<UserOrder> getRecentPendingOrders(Long userId, Long packageId, int minutesAgo);
+
+    /**
+     * 获取指定时间范围内的待支付订单（用于状态同步）
+     *
+     * @param startMinutesAgo 开始时间（多少分钟前）
+     * @param endMinutesAgo 结束时间（多少分钟前）
+     * @return 待支付订单列表
+     */
+    List<UserOrder> getPendingOrdersInTimeRange(int startMinutesAgo, int endMinutesAgo);
 }

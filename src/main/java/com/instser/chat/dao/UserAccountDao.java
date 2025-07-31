@@ -32,30 +32,36 @@ public interface UserAccountDao extends BaseMapper<UserAccount> {
      * @param packageId        套餐ID
      * @param packageExpireTime 套餐过期时间
      * @param chatCountRemaining 剩余聊天次数
+     * @param membershipLevel  会员等级
+     * @param updateTime       更新时间
      * @return 影响行数
      */
     int updatePackageInfo(@Param("userId") Long userId,
                          @Param("packageId") Long packageId,
                          @Param("packageExpireTime") LocalDateTime packageExpireTime,
-                         @Param("chatCountRemaining") Integer chatCountRemaining);
+                         @Param("chatCountRemaining") Integer chatCountRemaining,
+                         @Param("membershipLevel") String membershipLevel,
+                         @Param("updateTime") LocalDateTime updateTime);
 
     /**
      * 原子性减少剩余聊天次数（用于总次数限制模式）
      *
      * @param userId 用户ID
      * @param count  减少的次数
+     * @param updateTime 更新时间
      * @return 影响行数
      */
-    int decrementChatCount(@Param("userId") Long userId, @Param("count") Integer count);
+    int decrementChatCount(@Param("userId") Long userId, @Param("count") Integer count, @Param("updateTime") LocalDateTime updateTime);
 
     /**
      * 增加总聊天次数统计
      *
      * @param userId 用户ID
      * @param count  增加的次数
+     * @param updateTime 更新时间
      * @return 影响行数
      */
-    int incrementTotalChatCount(@Param("userId") Long userId, @Param("count") Integer count);
+    int incrementTotalChatCount(@Param("userId") Long userId, @Param("count") Integer count, @Param("updateTime") LocalDateTime updateTime);
 
     /**
      * 获取过期的用户账户列表
@@ -71,9 +77,10 @@ public interface UserAccountDao extends BaseMapper<UserAccount> {
      * 批量清理过期套餐信息
      *
      * @param beforeTime 过期时间点
+     * @param updateTime 更新时间
      * @return 清理的记录数
      */
-    int cleanExpiredPackages(@Param("beforeTime") LocalDateTime beforeTime);
+    int cleanExpiredPackages(@Param("beforeTime") LocalDateTime beforeTime, @Param("updateTime") LocalDateTime updateTime);
 
     /**
      * 检查用户是否存在账户记录
@@ -90,37 +97,44 @@ public interface UserAccountDao extends BaseMapper<UserAccount> {
      * @param packageId        套餐ID
      * @param packageExpireTime 套餐过期时间
      * @param chatCountRemaining 剩余聊天次数
+     * @param membershipLevel  会员等级
+     * @param currentTime      当前时间
      * @return 影响行数
      */
     int insertOrUpdateAccount(@Param("userId") Long userId,
                              @Param("packageId") Long packageId,
                              @Param("packageExpireTime") LocalDateTime packageExpireTime,
-                             @Param("chatCountRemaining") Integer chatCountRemaining);
+                             @Param("chatCountRemaining") Integer chatCountRemaining,
+                             @Param("membershipLevel") String membershipLevel,
+                             @Param("currentTime") LocalDateTime currentTime);
 
     /**
      * 原子性减少Token余额
      *
      * @param userId     用户ID
      * @param tokenCount 减少的Token数量
+     * @param updateTime 更新时间
      * @return 影响行数
      */
-    int decrementTokenBalance(@Param("userId") Long userId, @Param("tokenCount") Long tokenCount);
+    int decrementTokenBalance(@Param("userId") Long userId, @Param("tokenCount") Long tokenCount, @Param("updateTime") LocalDateTime updateTime);
 
     /**
      * 增加已使用Token统计
      *
      * @param userId     用户ID
      * @param tokenCount 增加的Token数量
+     * @param updateTime 更新时间
      * @return 影响行数
      */
-    int incrementTokenUsed(@Param("userId") Long userId, @Param("tokenCount") Long tokenCount);
+    int incrementTokenUsed(@Param("userId") Long userId, @Param("tokenCount") Long tokenCount, @Param("updateTime") LocalDateTime updateTime);
 
     /**
      * 增加Token余额
      *
      * @param userId     用户ID
      * @param tokenCount 增加的Token数量
+     * @param updateTime 更新时间
      * @return 影响行数
      */
-    int incrementTokenBalance(@Param("userId") Long userId, @Param("tokenCount") Long tokenCount);
+    int incrementTokenBalance(@Param("userId") Long userId, @Param("tokenCount") Long tokenCount, @Param("updateTime") LocalDateTime updateTime);
 }

@@ -97,6 +97,8 @@ public class LogLevelManager {
             "com.instser.chat.dao",
             "org.springframework",
             "com.alibaba.druid",
+            "org.redisson",
+            "org.redisson.connection",
             "root"
         };
         

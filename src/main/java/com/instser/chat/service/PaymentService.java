@@ -99,6 +99,14 @@ public interface PaymentService {
     boolean handleAlipayNotify(Map<String, String> notifyParams);
 
     /**
+     * 异步处理支付回调通知
+     * 立即返回，避免易支付重试，后台异步处理回调逻辑
+     *
+     * @param notifyParams 回调参数
+     */
+    void processPaymentCallbackAsync(Map<String, String> notifyParams);
+
+    /**
      * 获取可用的支付方式列表
      *
      * @return 支付方式列表

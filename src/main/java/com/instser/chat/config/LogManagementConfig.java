@@ -62,9 +62,9 @@ public class LogManagementConfig {
     }
 
     /**
-     * 每小时检查日志文件状态
+     * 检查日志文件状态
+     * 由 OptimizedScheduledTaskService 统一调用
      */
-    @Scheduled(fixedRate = 3600000) // 1小时
     public void monitorLogFiles() {
         try {
             checkDiskSpace();
@@ -76,9 +76,9 @@ public class LogManagementConfig {
     }
 
     /**
-     * 每天凌晨2点自动清理过期日志文件（保留最新5个文件）
+     * 自动清理过期日志文件（保留最新5个文件）
+     * 由 OptimizedScheduledTaskService 统一调用
      */
-    @Scheduled(cron = "0 0 2 * * ?")
     public void cleanupOldLogFiles() {
         try {
             log.info("【自动日志清理】开始自动清理过期日志文件");

@@ -86,8 +86,18 @@ public class PaymentSecurityUtil {
      * @return 唯一标识
      */
     public String generateCallbackRequestId(String orderNo, String timestamp, String signature) {
-        return String.format("%s_%s_%s", orderNo, timestamp, 
-                signature != null ? signature.substring(0, Math.min(8, signature.length())) : "");
+        // 安全处理signature参数，避免StringIndexOutOfBoundsException
+        String signaturePart = "";
+        if (signature != null && !signature.trim().isEmpty()) {
+            int length = signature.length();
+            if (length > 0) {
+                signaturePart = signature.substring(0, Math.min(8, length));
+            }
+        }
+        return String.format("%s_%s_%s",
+                orderNo != null ? orderNo : "unknown",
+                timestamp != null ? timestamp : "0",
+                signaturePart);
     }
 
     /**

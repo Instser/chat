@@ -57,7 +57,7 @@ public interface UserOrderDao extends BaseMapper<UserOrder> {
     UserOrder selectByPaymentRequestId(String paymentRequestId);
 
     /**
-     * 更新订单支付状态
+     * 更新订单支付状态（总是设置支付时间）
      *
      * @param orderNo 订单号
      * @param paymentStatus 支付状态
@@ -70,6 +70,20 @@ public interface UserOrderDao extends BaseMapper<UserOrder> {
             "payment_time = #{paymentTime}, update_time = #{updateTime} WHERE order_no = #{orderNo} AND deleted = 0")
     int updatePaymentStatus(String orderNo, Integer paymentStatus, String transactionId,
                            LocalDateTime paymentTime, LocalDateTime updateTime);
+
+    /**
+     * 更新订单支付状态（不设置支付时间）
+     *
+     * @param orderNo 订单号
+     * @param paymentStatus 支付状态
+     * @param transactionId 交易流水号
+     * @param updateTime 更新时间
+     * @return 更新行数
+     */
+    @Update("UPDATE t_user_order SET payment_status = #{paymentStatus}, transaction_id = #{transactionId}, " +
+            "update_time = #{updateTime} WHERE order_no = #{orderNo} AND deleted = 0")
+    int updatePaymentStatusWithoutTime(String orderNo, Integer paymentStatus, String transactionId,
+                                      LocalDateTime updateTime);
 
     /**
      * 查询用户的有效订单数量
@@ -101,11 +115,17 @@ public interface UserOrderDao extends BaseMapper<UserOrder> {
 
     /**
      * 查询过期的未支付订单
+     * 优化：添加expire_time非空检查，限制查询数量，按过期时间排序
+     * 修复：使用参数化查询解决时区问题
      *
+     * @param currentTime 当前时间
      * @return 过期订单列表
      */
-    @Select("SELECT * FROM t_user_order WHERE payment_status = 0 AND expire_time < NOW() AND deleted = 0")
-    List<UserOrder> selectExpiredOrders();
+    @Select("SELECT * FROM t_user_order WHERE payment_status = 0 AND expire_time IS NOT NULL AND expire_time < #{currentTime} AND deleted = 0 " +
+            "ORDER BY expire_time ASC LIMIT 200")
+    List<UserOrder> selectExpiredOrders(@Param("currentTime") LocalDateTime currentTime);
+
+
 
     /**
      * 查询指定时间之后的待支付订单
@@ -132,18 +152,23 @@ public interface UserOrderDao extends BaseMapper<UserOrder> {
     /**
      * 查询需要批量处理的订单（包括过期订单和需要状态同步的订单）
      * 限制数量以避免一次处理过多订单
+     * 优化：确保正确识别过期订单，添加更详细的条件
+     * 修复：使用参数化查询解决时区问题
      *
+     * @param currentTime 当前时间
+     * @param syncThresholdTime 同步阈值时间
      * @return 订单列表
      */
     @Select("(" +
-            "SELECT * FROM t_user_order WHERE payment_status = 0 AND expire_time < NOW() AND deleted = 0 " +
-            "ORDER BY expire_time ASC LIMIT 50" +
+            "SELECT * FROM t_user_order WHERE payment_status = 0 AND expire_time IS NOT NULL AND expire_time < #{currentTime} AND deleted = 0 " +
+            "ORDER BY expire_time ASC LIMIT 100" +
             ") UNION ALL (" +
-            "SELECT * FROM t_user_order WHERE payment_status = 0 AND expire_time > NOW() " +
-            "AND update_time < DATE_SUB(NOW(), INTERVAL 1 HOUR) AND deleted = 0 " +
-            "ORDER BY update_time ASC LIMIT 30" +
+            "SELECT * FROM t_user_order WHERE payment_status = 0 AND expire_time IS NOT NULL AND expire_time > #{currentTime} " +
+            "AND update_time < #{syncThresholdTime} AND deleted = 0 " +
+            "ORDER BY update_time ASC LIMIT 50" +
             ") ORDER BY expire_time ASC, update_time ASC")
-    List<UserOrder> selectOrdersForBatchProcessing();
+    List<UserOrder> selectOrdersForBatchProcessing(@Param("currentTime") LocalDateTime currentTime,
+                                                   @Param("syncThresholdTime") LocalDateTime syncThresholdTime);
 
     /**
      * 查询需要状态同步的订单（长时间未更新的待支付订单）
@@ -214,4 +239,32 @@ public interface UserOrderDao extends BaseMapper<UserOrder> {
      */
     @Select("SELECT COALESCE(SUM(amount), 0) FROM t_user_order WHERE user_id = #{userId} AND payment_status = 1 AND deleted = 0")
     BigDecimal getTotalPaidAmountByUserId(Long userId);
+
+    /**
+     * 获取用户在指定时间范围内的待支付订单
+     *
+     * @param userId 用户ID
+     * @param packageId 套餐ID
+     * @param timeThreshold 时间阈值
+     * @return 待支付订单列表
+     */
+    @Select("SELECT * FROM t_user_order WHERE user_id = #{userId} AND package_id = #{packageId} " +
+            "AND payment_status = 0 AND create_time >= #{timeThreshold} AND deleted = 0 " +
+            "ORDER BY create_time DESC")
+    List<UserOrder> selectRecentPendingOrders(@Param("userId") Long userId,
+                                              @Param("packageId") Long packageId,
+                                              @Param("timeThreshold") LocalDateTime timeThreshold);
+
+    /**
+     * 获取指定时间范围内的待支付订单（用于状态同步）
+     *
+     * @param startTime 开始时间
+     * @param endTime 结束时间
+     * @return 待支付订单列表
+     */
+    @Select("SELECT * FROM t_user_order WHERE payment_status = 0 " +
+            "AND create_time BETWEEN #{endTime} AND #{startTime} " +
+            "AND deleted = 0 ORDER BY create_time ASC LIMIT 100")
+    List<UserOrder> selectPendingOrdersInTimeRange(@Param("startTime") LocalDateTime startTime,
+                                                   @Param("endTime") LocalDateTime endTime);
 }

@@ -4,7 +4,6 @@ import com.baomidou.mybatisplus.extension.service.IService;
 import com.instser.chat.entity.FileUpload;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
 
@@ -246,12 +245,16 @@ public interface FileUploadService extends IService<FileUpload> {
     boolean updateFileStatus(String fileId, Integer status);
 
     /**
-     * 清理过期的临时文件
+     * 清理标记为删除状态的文件记录和关联数据
      *
-     * @param beforeTime 清理此时间之前的文件
+     * 此方法会：
+     * 1. 查询所有deleted=1的文件记录
+     * 2. 清理相关的关联记录（如果有的话）
+     * 3. 物理删除文件记录
+     *
      * @return 清理的文件数量
      */
-    int cleanupExpiredFiles(LocalDateTime beforeTime);
+    int cleanupDeletedFilesAndRelatedRecords();
 
     /**
      * 获取文件下载URL

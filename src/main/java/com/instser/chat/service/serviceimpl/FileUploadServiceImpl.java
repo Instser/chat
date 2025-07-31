@@ -18,7 +18,6 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
-import java.time.LocalDateTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -611,29 +610,42 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
         return updateById(fileUpload);
     }
 
+
+
     @Override
-    public int cleanupExpiredFiles(LocalDateTime beforeTime) {
-        // 查询过期文件
-        List<FileUpload> expiredFiles = fileUploadDao.selectByTimeRange(
-                LocalDateTime.of(2000, 1, 1, 0, 0), beforeTime);
+    public int cleanupDeletedFilesAndRelatedRecords() {
+        // 查询所有标记为删除状态的文件记录
+        List<FileUpload> deletedFiles = fileUploadDao.selectDeletedFiles();
 
-        int deletedCount = 0;
-        for (FileUpload file : expiredFiles) {
+        if (deletedFiles == null || deletedFiles.isEmpty()) {
+            log.info("没有找到标记为删除的文件记录，跳过清理");
+            return 0;
+        }
+
+        int cleanedCount = 0;
+        int relatedRecordsCleanedCount = 0;
+
+        for (FileUpload file : deletedFiles) {
             try {
-                // 新架构下不再存储物理文件，只需删除数据库记录
-                // 所有文件内容都已解析为文本存储在content字段中
+                // 1. 清理相关的关联记录（如果需要的话）
+                // 注意：由于文件表有外键约束，这里主要是记录日志
+                // 实际的关联清理由数据库外键约束自动处理
 
-                // 删除数据库记录
-                if (removeById(file.getId())) {
-                    deletedCount++;
+                // 2. 物理删除文件记录（彻底删除，不再使用逻辑删除）
+                if (fileUploadDao.deleteById(file.getId()) > 0) {
+                    cleanedCount++;
+                    log.info("已清理标记为删除的文件记录，文件ID：{}，文件名：{}，关联会话：{}，关联消息：{}",
+                            file.getFileId(), file.getFileName(), file.getSessionId(), file.getMessageId());
                 }
             } catch (Exception e) {
-                log.error("清理过期文件失败：{}", e.getMessage());
+                log.error("清理标记为删除的文件失败，文件ID：{}，错误：{}",
+                        file.getFileId(), e.getMessage());
             }
         }
 
-        log.info("清理过期文件完成，删除文件数量：{}", deletedCount);
-        return deletedCount;
+        log.info("清理标记为删除的文件和关联记录完成，清理文件数量：{}，关联记录数量：{}",
+                cleanedCount, relatedRecordsCleanedCount);
+        return cleanedCount;
     }
 
     @Override

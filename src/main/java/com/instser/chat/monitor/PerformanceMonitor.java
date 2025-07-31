@@ -28,9 +28,9 @@ public class PerformanceMonitor {
     private final PerformanceMonitorConfig config;
 
     /**
-     * 定期监控系统性能（间隔可配置）
+     * 监控系统性能
+     * 由 OptimizedScheduledTaskService 统一调用
      */
-    @Scheduled(fixedRateString = "${performance.monitor.interval.basic:300000}")
     public void monitorSystemPerformance() {
         try {
             logSystemInfo();
@@ -43,9 +43,9 @@ public class PerformanceMonitor {
     }
 
     /**
-     * 定期输出详细性能报告（间隔可配置）
+     * 生成详细性能报告
+     * 由 OptimizedScheduledTaskService 统一调用
      */
-    @Scheduled(fixedRateString = "${performance.monitor.interval.detailed:3600000}")
     public void generatePerformanceReport() {
         try {
             String serverDesc = getServerDescription();

@@ -159,10 +159,13 @@ public class OAuth2SecurityUtil {
                 hexString.append(hex);
             }
             
-            return hexString.toString().substring(0, 16); // 返回前16位
+            String hex = hexString.toString();
+            // 安全截取，避免StringIndexOutOfBoundsException
+            return hex.length() >= 16 ? hex.substring(0, 16) : hex; // 返回前16位或全部
         } catch (Exception e) {
             log.error("字符串哈希失败: {}", e.getMessage());
-            return UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+            String uuid = UUID.randomUUID().toString().replace("-", "");
+            return uuid.length() >= 16 ? uuid.substring(0, 16) : uuid;
         }
     }
     

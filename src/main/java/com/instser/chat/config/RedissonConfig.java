@@ -87,7 +87,12 @@ public class RedissonConfig {
                 .setConnectionPoolSize(20)
                 .setIdleConnectionTimeout(10000)
                 .setPingConnectionInterval(30000)
-                .setKeepAlive(true);
+                .setKeepAlive(true)
+                // 设置DNS监控间隔
+                .setDnsMonitoringInterval(5000);
+
+        // 设置编解码器
+        config.setCodec(new org.redisson.codec.JsonJacksonCodec());
 
         try {
             RedissonClient redissonClient = Redisson.create(config);

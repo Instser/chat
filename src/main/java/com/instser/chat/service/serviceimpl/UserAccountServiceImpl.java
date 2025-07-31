@@ -89,8 +89,10 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
                 chatCount = totalChatCount != null ? totalChatCount : packageInfo.getChatCount();
             }
 
-            // 使用原子性操作创建或更新账户信息
-            int updated = baseMapper.insertOrUpdateAccount(userId, packageId, expireTime, chatCount);
+            // 使用原子性操作创建或更新账户信息，同时更新会员等级
+            LocalDateTime currentTime = getBusinessDateTime();
+            String membershipLevel = getMembershipLevelFromPackage(packageInfo);
+            int updated = baseMapper.insertOrUpdateAccount(userId, packageId, expireTime, chatCount, membershipLevel, currentTime);
 
             if (updated > 0) {
                 log.info("用户{}套餐激活成功，套餐ID：{}，有效期：{}天，总次数：{}，限制类型：{}",
@@ -115,12 +117,13 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
         }
 
         try {
+            LocalDateTime updateTime = getBusinessDateTime();
             // 原子性减少剩余次数
-            int updated = baseMapper.decrementChatCount(userId, usedCount);
-            
+            int updated = baseMapper.decrementChatCount(userId, usedCount, updateTime);
+
             if (updated > 0) {
                 // 增加总使用次数统计
-                baseMapper.incrementTotalChatCount(userId, usedCount);
+                baseMapper.incrementTotalChatCount(userId, usedCount, updateTime);
                 log.debug("用户{}使用次数更新成功，使用了{}次", userId, usedCount);
                 return true;
             }
@@ -186,7 +189,11 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
             Integer currentRemaining = account.getChatCountRemaining() != null ? account.getChatCountRemaining() : 0;
             Integer newRemaining = currentRemaining + (additionalChatCount != null ? additionalChatCount : 0);
 
-            int updated = baseMapper.updatePackageInfo(userId, packageId, newExpireTime, newRemaining);
+            // 获取新套餐信息以确定会员等级
+            Package newPackageInfo = packageService.getPackageById(packageId);
+            String membershipLevel = getMembershipLevelFromPackage(newPackageInfo);
+
+            int updated = baseMapper.updatePackageInfo(userId, packageId, newExpireTime, newRemaining, membershipLevel, getBusinessDateTime());
             
             if (updated > 0) {
                 log.info("用户{}套餐续费成功，延长{}天，增加{}次聊天", 
@@ -214,7 +221,8 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
     public int cleanExpiredPackages() {
         try {
             LocalDateTime expiredTime = getBusinessDateTime().minusDays(7); // 清理7天前过期的记录
-            int cleaned = baseMapper.cleanExpiredPackages(expiredTime);
+            LocalDateTime updateTime = getBusinessDateTime();
+            int cleaned = baseMapper.cleanExpiredPackages(expiredTime, updateTime);
             log.info("清理过期套餐完成，共清理{}条记录", cleaned);
             return cleaned;
         } catch (Exception e) {
@@ -249,8 +257,9 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
             account.setTokenUsed(0L);
             account.setMembershipLevel("free");
             account.setMembershipExpireTime(null);
-            account.setCreateTime(getBusinessDateTime());
-            account.setUpdateTime(getBusinessDateTime());
+            // 移除手动设置时间，使用MyBatis-Plus自动填充
+            // account.setCreateTime(getBusinessDateTime());
+            // account.setUpdateTime(getBusinessDateTime());
             account.setDeleted(0);
 
             boolean saved = this.save(account);
@@ -295,12 +304,13 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
         }
 
         try {
+            LocalDateTime updateTime = getBusinessDateTime();
             // 原子性扣减Token余额
-            int updated = baseMapper.decrementTokenBalance(userId, tokenCount.longValue());
+            int updated = baseMapper.decrementTokenBalance(userId, tokenCount.longValue(), updateTime);
 
             if (updated > 0) {
                 // 增加已使用Token统计
-                baseMapper.incrementTokenUsed(userId, tokenCount.longValue());
+                baseMapper.incrementTokenUsed(userId, tokenCount.longValue(), updateTime);
                 log.debug("用户{}Token使用量更新成功，使用了{}个Token", userId, tokenCount);
                 return true;
             }
@@ -322,8 +332,9 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
         }
 
         try {
+            LocalDateTime updateTime = getBusinessDateTime();
             // 只增加已使用Token统计，不扣减余额
-            int updated = baseMapper.incrementTokenUsed(userId, tokenCount.longValue());
+            int updated = baseMapper.incrementTokenUsed(userId, tokenCount.longValue(), updateTime);
 
             if (updated > 0) {
                 log.debug("用户{}Token使用统计记录成功，使用了{}个Token（仅统计）", userId, tokenCount);
@@ -364,7 +375,8 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
         }
 
         try {
-            int updated = baseMapper.incrementTokenBalance(userId, tokenCount);
+            LocalDateTime updateTime = getBusinessDateTime();
+            int updated = baseMapper.incrementTokenBalance(userId, tokenCount, updateTime);
 
             if (updated > 0) {
                 log.info("用户{}Token余额增加成功，增加了{}个Token", userId, tokenCount);
@@ -378,4 +390,36 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
             return false;
         }
     }
+
+    /**
+     * 根据套餐信息获取对应的会员等级
+     *
+     * @param packageInfo 套餐信息
+     * @return 会员等级
+     */
+    private String getMembershipLevelFromPackage(Package packageInfo) {
+        if (packageInfo == null || packageInfo.getPackageType() == null) {
+            return "free";
+        }
+
+        // 根据套餐类型映射会员等级
+        switch (packageInfo.getPackageType().toLowerCase()) {
+            case "basic":
+                return "basic";
+            case "medium":
+                return "premium";
+            case "high":
+                return "enterprise";
+            case "premium":
+                return "premium";
+            case "enterprise":
+                return "enterprise";
+            case "vip":
+                return "vip";
+            default:
+                return "free";
+        }
+    }
+
+
 }

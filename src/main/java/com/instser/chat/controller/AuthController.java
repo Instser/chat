@@ -197,17 +197,20 @@ public class AuthController {
      * 用户登出
      */
     @PostMapping("/logout")
-    public ResponseEntity<Result<Void>> logout(HttpServletResponse response) {
+    public ResponseEntity<Result<Void>> logout(HttpServletResponse response, Authentication authentication) {
         try {
+            // 获取用户ID（在清除Security上下文之前）
+            Long userId = getCurrentUserId(authentication);
+
             // 清除Cookie
             response.addHeader(HttpHeaders.SET_COOKIE, jwtUtil.clearAuthCookie().toString());
-            
+
             // 清除Security上下文
             SecurityContextHolder.clearContext();
-            
-            log.info("用户登出成功");
+
+            log.info("用户登出成功，用户ID：{}", userId);
             return ResponseEntity.ok(Result.success(null, "登出成功"));
-            
+
         } catch (Exception e) {
             log.error("用户登出异常", e);
             return ResponseEntity.status(500).body(Result.failed("登出失败"));
@@ -273,6 +276,30 @@ public class AuthController {
         } catch (Exception e) {
             log.error("更新用户资料失败", e);
             return ResponseEntity.status(500).body(Result.failed("用户信息更新失败"));
+        }
+    }
+
+    /**
+     * 获取当前认证用户ID
+     */
+    private Long getCurrentUserId(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return null;
+        }
+        try {
+            // 检查是否是CustomUserDetails类型
+            Object principal = authentication.getPrincipal();
+            if (principal instanceof UserDetailsServiceImpl.CustomUserDetails) {
+                UserDetailsServiceImpl.CustomUserDetails userDetails =
+                    (UserDetailsServiceImpl.CustomUserDetails) principal;
+                return userDetails.getUserId();
+            }
+            // 如果不是CustomUserDetails，返回null表示认证失败
+            log.warn("认证主体不是CustomUserDetails类型：{}", principal.getClass().getName());
+            return null;
+        } catch (Exception e) {
+            log.warn("获取用户ID失败", e);
+            return null;
         }
     }
 }

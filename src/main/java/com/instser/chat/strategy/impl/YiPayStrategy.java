@@ -27,13 +27,15 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 易支付策略实现
+ * 易支付策略实现 - 已废弃
+ * 现在使用 YiPayWechatStrategy 和 YiPayAlipayStrategy 替代
  *
  * @author instser
  * @since 2024-01-01
+ * @deprecated 使用 YiPayWechatStrategy 和 YiPayAlipayStrategy 替代
  */
 @Slf4j
-@Component
+// @Component  // 禁用此策略，使用具体的微信和支付宝策略
 @RequiredArgsConstructor
 public class YiPayStrategy implements PaymentStrategy {
 

@@ -5,6 +5,7 @@ import com.instser.chat.config.YiPayConfig;
 import com.instser.chat.entity.Package;
 import com.instser.chat.entity.UserOrder;
 import com.instser.chat.service.OrderService;
+import com.instser.chat.service.PackageActivationService;
 import com.instser.chat.service.PackageService;
 import com.instser.chat.strategy.PaymentStrategy;
 import com.instser.chat.util.MoneyUtil;
@@ -41,6 +42,7 @@ public class YiPayWechatStrategy implements PaymentStrategy {
     private final YiPayConfig yiPayConfig;
     private final OrderService orderService;
     private final PackageService packageService;
+    private final PackageActivationService packageActivationService;
     private final RestTemplate restTemplate = new RestTemplate();
 
     @Override
@@ -165,6 +167,21 @@ public class YiPayWechatStrategy implements PaymentStrategy {
             if (updated) {
                 log.info("易支付微信支付回调处理成功，订单号: {}, 状态: {} -> {}",
                         order.getOrderNo(), order.getPaymentStatus(), newStatus);
+
+                // 如果支付成功，激活套餐
+                if (newStatus == 1) {
+                    try {
+                        boolean activationSuccess = packageActivationService.activatePackageAfterPayment(order.getOrderNo());
+                        if (activationSuccess) {
+                            log.info("易支付微信支付成功后套餐激活成功，订单号: {}", order.getOrderNo());
+                        } else {
+                            log.error("易支付微信支付成功后套餐激活失败，订单号: {}", order.getOrderNo());
+                        }
+                    } catch (Exception e) {
+                        log.error("易支付微信支付成功后套餐激活异常，订单号: {}", order.getOrderNo(), e);
+                    }
+                }
+
                 return true;
             } else {
                 log.error("订单状态更新失败，订单号: {}", order.getOrderNo());

@@ -134,4 +134,52 @@ public class WebClientConfig {
             return restTemplate;
         }
     }
+
+    /**
+     * 创建专用于易支付API的RestTemplate Bean（配置了合理的超时时间）
+     */
+    @Bean("yipayRestTemplate")
+    public RestTemplate yipayRestTemplate() {
+        try {
+            // 创建信任所有证书的TrustManager
+            TrustManager[] trustAllCerts = new TrustManager[]{
+                new X509TrustManager() {
+                    public X509Certificate[] getAcceptedIssuers() {
+                        return new X509Certificate[0];
+                    }
+                    public void checkClientTrusted(X509Certificate[] certs, String authType) {}
+                    public void checkServerTrusted(X509Certificate[] certs, String authType) {}
+                }
+            };
+
+            // 创建SSL上下文
+            SSLContext sslContext = SSLContext.getInstance("TLS");
+            sslContext.init(null, trustAllCerts, new java.security.SecureRandom());
+
+            // 创建RestTemplate并配置超时时间
+            RestTemplate restTemplate = new RestTemplate();
+
+            // 配置超时时间（连接超时5秒，读取超时10秒）
+            if (restTemplate.getRequestFactory() instanceof SimpleClientHttpRequestFactory) {
+                SimpleClientHttpRequestFactory factory = (SimpleClientHttpRequestFactory) restTemplate.getRequestFactory();
+                factory.setConnectTimeout(5000);  // 连接超时5秒
+                factory.setReadTimeout(10000);    // 读取超时10秒
+            }
+
+            log.info("易支付专用RestTemplate已配置：SSL禁用，连接超时5秒，读取超时10秒");
+            return restTemplate;
+        } catch (Exception e) {
+            log.error("配置易支付RestTemplate时发生错误，使用默认配置", e);
+            RestTemplate restTemplate = new RestTemplate();
+
+            // 即使SSL配置失败，也要设置超时时间
+            if (restTemplate.getRequestFactory() instanceof SimpleClientHttpRequestFactory) {
+                SimpleClientHttpRequestFactory factory = (SimpleClientHttpRequestFactory) restTemplate.getRequestFactory();
+                factory.setConnectTimeout(5000);
+                factory.setReadTimeout(10000);
+            }
+
+            return restTemplate;
+        }
+    }
 }

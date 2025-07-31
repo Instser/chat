@@ -138,4 +138,12 @@ public interface FileUploadDao extends BaseMapper<FileUpload> {
      */
     @Select("SELECT * FROM t_file_upload WHERE user_id = #{userId} AND file_name LIKE CONCAT('%', #{fileName}, '%') AND deleted = 0 ORDER BY create_time DESC")
     List<FileUpload> selectByFileNameLike(@Param("userId") Long userId, @Param("fileName") String fileName);
+
+    /**
+     * 查询所有标记为删除状态的文件记录
+     *
+     * @return 标记为删除的文件列表
+     */
+    @Select("SELECT * FROM t_file_upload WHERE deleted = 1 ORDER BY update_time ASC")
+    List<FileUpload> selectDeletedFiles();
 }

@@ -11,7 +11,9 @@ import com.instser.chat.service.PackageService;
 import com.instser.chat.service.PackageActivationService;
 import com.instser.chat.service.PaymentService;
 import com.instser.chat.service.PaymentSecurityEnhancer;
+import com.instser.chat.service.PaymentStatusSyncService;
 import com.instser.chat.service.PaymentSyncService;
+import com.instser.chat.service.PackageActivationService;
 import com.instser.chat.service.UserPaymentStatusService;
 
 import com.instser.chat.vo.*;
@@ -59,6 +61,7 @@ public class PaymentController {
     private final PaymentSecurityEnhancer paymentSecurityEnhancer;
     private final ExchangeRateService exchangeRateService;
     private final UserPaymentStatusService userPaymentStatusService;
+    private final PaymentStatusSyncService paymentStatusSyncService;
 
     /**
      * 获取当前认证用户ID
@@ -107,7 +110,7 @@ public class PaymentController {
             // 转换为前端格式（使用汇率服务进行价格转换）
             List<FrontendPackageVO> packageVOs = VOConverter.toFrontendPackageVOList(packages, currency, exchangeRateService, showDiscountPrice);
 
-            log.info("获取套餐列表成功，货币: {}, 套餐数量: {}, 显示优惠价格: {}", currency, packageVOs.size(), showDiscountPrice);
+
             return Result.success(packageVOs);
         } catch (Exception e) {
             log.error("获取套餐列表失败，货币: {}", currency, e);
@@ -361,93 +364,14 @@ public class PaymentController {
     }
 
     /**
-     * 支付宝支付回调（通过易支付）
+     * 易支付统一回调 - 支持GET和POST请求
+     * 处理易支付微信和支付宝的回调通知
+     * 采用快速响应 + 异步处理策略，避免重试风暴
      */
-    @PostMapping("/alipay/notify")
-    public ResponseEntity<String> alipayNotify(HttpServletRequest request) {
-        try {
-            log.info("收到支付宝回调通知");
-
-            // 验证回调IP
-            if (!paymentSecurityEnhancer.validateCallbackIP(request, "yipay")) {
-                log.error("支付宝回调IP验证失败");
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("IP not allowed");
-            }
-
-            // 获取所有参数
-            Map<String, String> notifyParams = new HashMap<>();
-            request.getParameterMap().forEach((key, values) -> {
-                if (values != null && values.length > 0) {
-                    notifyParams.put(key, values[0]);
-                }
-            });
-
-            log.info("支付宝回调参数: {}", notifyParams);
-
-            // 处理支付宝回调
-            boolean success = paymentService.handleAlipayNotify(notifyParams);
-
-            if (success) {
-                log.info("支付宝回调处理成功");
-                return ResponseEntity.ok("success");
-            } else {
-                log.error("支付宝回调处理失败");
-                return ResponseEntity.ok("fail");
-            }
-        } catch (Exception e) {
-            log.error("处理支付宝回调异常", e);
-            return ResponseEntity.ok("fail");
-        }
-    }
-
-    /**
-     * 微信支付回调（通过易支付）
-     */
-    @PostMapping("/wechatpay/notify")
-    public ResponseEntity<String> wechatpayNotify(HttpServletRequest request) {
-        try {
-            log.info("收到微信支付回调通知");
-
-            // 验证回调IP
-            if (!paymentSecurityEnhancer.validateCallbackIP(request, "yipay")) {
-                log.error("微信支付回调IP验证失败");
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("IP not allowed");
-            }
-
-            // 获取所有参数
-            Map<String, String> notifyParams = new HashMap<>();
-            request.getParameterMap().forEach((key, values) -> {
-                if (values != null && values.length > 0) {
-                    notifyParams.put(key, values[0]);
-                }
-            });
-
-            log.info("微信支付回调参数: {}", notifyParams);
-
-            // 处理微信支付回调
-            boolean success = paymentService.handleWechatPayNotify(notifyParams);
-
-            if (success) {
-                log.info("微信支付回调处理成功");
-                return ResponseEntity.ok("success");
-            } else {
-                log.error("微信支付回调处理失败");
-                return ResponseEntity.ok("fail");
-            }
-
-        } catch (Exception e) {
-            log.error("处理微信支付回调异常", e);
-            return ResponseEntity.ok("fail");
-        }
-    }
-
-    /**
-     * 易支付回调
-     */
-    @PostMapping("/yipay/notify")
+    @RequestMapping(value = "/yipay/notify", method = {RequestMethod.GET, RequestMethod.POST})
     public ResponseEntity<String> yipayNotify(HttpServletRequest request) {
         try {
-            log.info("收到易支付回调通知");
+            log.info("收到易支付回调通知，请求方法: {}", request.getMethod());
 
             // 验证回调IP
             if (!paymentSecurityEnhancer.validateCallbackIP(request, "yipay")) {
@@ -465,20 +389,16 @@ public class PaymentController {
 
             log.info("易支付回调参数: {}", notifyParams);
 
-            // 处理易支付回调
-            boolean success = paymentService.handleYiPayNotify(notifyParams);
+            // 立即返回success，避免易支付重试，然后异步处理
+            paymentService.processPaymentCallbackAsync(notifyParams);
 
-            if (success) {
-                log.info("易支付回调处理成功");
-                return ResponseEntity.ok("success");
-            } else {
-                log.error("易支付回调处理失败");
-                return ResponseEntity.ok("fail");
-            }
+            log.info("易支付回调已提交异步处理");
+            return ResponseEntity.ok("success");
 
         } catch (Exception e) {
             log.error("处理易支付回调异常", e);
-            return ResponseEntity.ok("fail");
+            // 即使异常也返回success，避免重试风暴
+            return ResponseEntity.ok("success");
         }
     }
 
@@ -545,6 +465,21 @@ public class PaymentController {
         } catch (Exception e) {
             log.error("全量同步订单状态失败", e);
             return Result.failed("全量同步失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 手动同步单个订单状态（管理员接口）
+     */
+    @PostMapping("/admin/sync/order/{orderNo}")
+    public Result<Boolean> syncSingleOrder(@PathVariable String orderNo) {
+        try {
+            log.info("手动同步订单状态，订单号: {}", orderNo);
+            boolean result = paymentStatusSyncService.syncOrderStatus(orderNo);
+            return Result.success(result, result ? "同步成功" : "同步失败");
+        } catch (Exception e) {
+            log.error("手动同步订单状态失败，订单号: {}", orderNo, e);
+            return Result.failed("同步失败: " + e.getMessage());
         }
     }
 
