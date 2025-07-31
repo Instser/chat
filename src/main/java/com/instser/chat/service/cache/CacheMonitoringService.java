@@ -189,10 +189,10 @@ public class CacheMonitoringService {
      */
     private void logHealthStatus(boolean redisHealthy, CacheHealthMetrics metrics) {
         if (log.isInfoEnabled()) {
-            log.info("【缓存健康状态】Redis: {}, 熔断器: {}, L1命中率: {:.2f}%, L1大小: {}, 总请求: {}, 缓存命中: {}, Redis失败: {}",
+            log.info("【缓存健康状态】Redis: {}, 熔断器: {}, L1命中率: {}%, L1大小: {}, 总请求: {}, 缓存命中: {}, Redis失败: {}",
                     redisHealthy ? "健康" : "异常",
                     metrics.getCircuitBreakerState(),
-                    metrics.getL1HitRate() * 100,
+                    String.format("%.2f", metrics.getL1HitRate() * 100),
                     metrics.getL1Size(),
                     metrics.getTotalRequests(),
                     metrics.getCacheHits(),
@@ -206,16 +206,16 @@ public class CacheMonitoringService {
     private void checkAndSendAlerts(boolean redisHealthy, CacheHealthMetrics metrics) {
         // 检查L1缓存命中率告警
         if (metrics.getL1HitRate() < 0.5 && metrics.getTotalRequests() > 100) {
-            log.warn("【缓存告警】L1缓存命中率过低: {:.2f}%, 总请求数: {}", 
-                    metrics.getL1HitRate() * 100, metrics.getTotalRequests());
+            log.warn("【缓存告警】L1缓存命中率过低: {}%, 总请求数: {}",
+                    String.format("%.2f", metrics.getL1HitRate() * 100), metrics.getTotalRequests());
         }
         
         // 检查Redis失败率告警
         if (metrics.getTotalRequests() > 0) {
             double redisFailureRate = (double) metrics.getRedisFailures() / metrics.getTotalRequests();
             if (redisFailureRate > 0.1) { // 失败率超过10%
-                log.warn("【缓存告警】Redis失败率过高: {:.2f}%, 失败次数: {}, 总请求: {}", 
-                        redisFailureRate * 100, metrics.getRedisFailures(), metrics.getTotalRequests());
+                log.warn("【缓存告警】Redis失败率过高: {}%, 失败次数: {}, 总请求: {}",
+                        String.format("%.2f", redisFailureRate * 100), metrics.getRedisFailures(), metrics.getTotalRequests());
             }
         }
         
@@ -223,8 +223,8 @@ public class CacheMonitoringService {
         if (metrics.getTotalRequests() > 0) {
             double fallbackRate = (double) metrics.getFallbackUsages() / metrics.getTotalRequests();
             if (fallbackRate > 0.2) { // 降级使用率超过20%
-                log.warn("【缓存告警】降级策略使用率过高: {:.2f}%, 降级次数: {}, 总请求: {}", 
-                        fallbackRate * 100, metrics.getFallbackUsages(), metrics.getTotalRequests());
+                log.warn("【缓存告警】降级策略使用率过高: {}%, 降级次数: {}, 总请求: {}",
+                        String.format("%.2f", fallbackRate * 100), metrics.getFallbackUsages(), metrics.getTotalRequests());
             }
         }
     }
