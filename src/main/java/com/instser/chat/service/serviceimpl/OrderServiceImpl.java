@@ -12,6 +12,7 @@ import com.instser.chat.service.PackageService;
 import com.instser.chat.service.PaymentStatusSyncService;
 import com.instser.chat.service.RedisDistributedLockService;
 import com.instser.chat.service.UserPaymentStatusService;
+import com.instser.chat.service.cache.GlobalCacheManager;
 import com.instser.chat.util.MoneyUtil;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Lazy;
@@ -39,17 +40,20 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
     private final UserPaymentStatusService userPaymentStatusService;
     private final ExchangeRateService exchangeRateService;
     private final PaymentStatusSyncService paymentStatusSyncService;
+    private final GlobalCacheManager globalCacheManager;
 
     public OrderServiceImpl(PackageService packageService,
                            RedisDistributedLockService distributedLockService,
                            UserPaymentStatusService userPaymentStatusService,
                            ExchangeRateService exchangeRateService,
-                           @Lazy PaymentStatusSyncService paymentStatusSyncService) {
+                           @Lazy PaymentStatusSyncService paymentStatusSyncService,
+                           GlobalCacheManager globalCacheManager) {
         this.packageService = packageService;
         this.distributedLockService = distributedLockService;
         this.userPaymentStatusService = userPaymentStatusService;
         this.exchangeRateService = exchangeRateService;
         this.paymentStatusSyncService = paymentStatusSyncService;
+        this.globalCacheManager = globalCacheManager;
     }
 
     @Override
@@ -128,6 +132,9 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
         if (!this.save(order)) {
             throw new BusinessException("订单创建失败");
         }
+
+        // 清除近期未支付订单缓存
+        clearRecentPendingOrdersCache(userId, packageId);
 
         log.info("创建订单成功，订单号: {}, 用户ID: {}, 套餐ID: {}, 金额: {} {}",
                 order.getOrderNo(), userId, packageId, amount, currency);
@@ -222,6 +229,12 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
         // 使用分布式锁保护订单状态更新
         return distributedLockService.executeOrderLock(orderNo, () -> {
             try {
+                UserOrder order = getOrderByOrderNo(orderNo);
+                if (order == null) {
+                    log.warn("更新订单状态失败，未找到订单: {}", orderNo);
+                    return false;
+                }
+
                 LocalDateTime now = LocalDateTime.now();
                 int result;
 
@@ -236,6 +249,8 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
                 }
 
                 if (result > 0) {
+                    // 清除缓存
+                    clearRecentPendingOrdersCache(order.getUserId(), order.getPackageId());
                     return true;
                 } else {
                     log.warn("更新订单支付状态失败，订单号: {}, 状态: {}, 交易号: {}", orderNo, paymentStatus, transactionId);
@@ -260,7 +275,11 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
         }
 
         order.setPaymentStatus(2); // 已取消
-        return this.updateById(order);
+        boolean success = this.updateById(order);
+        if (success) {
+            clearRecentPendingOrdersCache(order.getUserId(), order.getPackageId());
+        }
+        return success;
     }
 
     @Override
@@ -283,7 +302,31 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
 
     @Override
     public int cleanupExpiredOrders() {
-        return baseMapper.cleanupExpiredOrders();
+        try {
+            // 1. 获取所有过期的订单
+            List<UserOrder> expiredOrders = getExpiredOrders();
+            if (expiredOrders.isEmpty()) {
+                log.info("没有需要清理的过期订单");
+                return 0;
+            }
+
+            log.info("发现 {} 个需要清理的过期订单", expiredOrders.size());
+
+            // 2. 清除相关缓存
+            for (UserOrder order : expiredOrders) {
+                clearRecentPendingOrdersCache(order.getUserId(), order.getPackageId());
+            }
+            log.info("已清除 {} 个过期订单的相关缓存", expiredOrders.size());
+
+            // 3. 批量更新数据库
+            int cleanedCount = baseMapper.cleanupExpiredOrders();
+            log.info("成功清理了 {} 个过期订单", cleanedCount);
+
+            return cleanedCount;
+        } catch (Exception e) {
+            log.error("清理过期订单时发生异常", e);
+            return 0;
+        }
     }
 
     @Override
@@ -370,14 +413,17 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
 
     @Override
     public List<UserOrder> getRecentPendingOrders(Long userId, Long packageId, int minutesAgo) {
-        try {
-            LocalDateTime timeThreshold = LocalDateTime.now().minusMinutes(minutesAgo);
-            log.debug("获取用户{}套餐{}在{}分钟内的待支付订单", userId, packageId, minutesAgo);
-            return baseMapper.selectRecentPendingOrders(userId, packageId, timeThreshold);
-        } catch (Exception e) {
-            log.error("获取用户{}套餐{}的近期待支付订单异常", userId, packageId, e);
-            return List.of();
-        }
+        String cacheKey = "order:recent_pending:" + userId + ":" + packageId;
+        return globalCacheManager.get("order:recent_pending", cacheKey, () -> {
+            try {
+                LocalDateTime timeThreshold = LocalDateTime.now().minusMinutes(minutesAgo);
+                log.debug("数据库查询：获取用户{}套餐{}在{}分钟内的待支付订单", userId, packageId, minutesAgo);
+                return baseMapper.selectRecentPendingOrders(userId, packageId, timeThreshold);
+            } catch (Exception e) {
+                log.error("数据库查询：获取用户{}套餐{}的近期待支付订单异常", userId, packageId, e);
+                return List.of();
+            }
+        });
     }
 
     @Override
@@ -401,5 +447,10 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
         String timestamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
         int random = ThreadLocalRandom.current().nextInt(100, 999);
         return "PAY" + timestamp + random;
+    }
+    private void clearRecentPendingOrdersCache(Long userId, Long packageId) {
+        String cacheKey = "order:recent_pending:" + userId + ":" + packageId;
+        globalCacheManager.evict("order:recent_pending", cacheKey);
+        log.debug("已清除近期未支付订单缓存，key: {}", cacheKey);
     }
 }

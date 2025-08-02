@@ -101,6 +101,14 @@ public class AlipayStrategy implements PaymentStrategy {
                 throw new PaymentException("无法获取支付链接");
             }
 
+            // 【修复】更新订单中的支付URL
+            order.setPaymentUrl(paymentUrl);
+            if (orderService.updateById(order)) {
+                log.info("已将支付URL更新到订单中，订单号: {}", order.getOrderNo());
+            } else {
+                log.warn("更新订单支付URL失败，订单号: {}", order.getOrderNo());
+            }
+
             // 构建响应
             PaymentResponseVO response = new PaymentResponseVO();
             response.setSuccess(true);

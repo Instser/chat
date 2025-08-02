@@ -226,9 +226,10 @@ public class PaymentServiceImpl implements PaymentService {
             }
 
             // 4. 检查支付请求是否已处理（防重放攻击）
-            if (redisPaymentSecurityService.isPaymentRequestProcessed(requestId, userId)) {
-                throw new PaymentException("重复的支付请求，请勿重复提交");
-            }
+            // 【优化】移除重复支付请求检查，该逻辑已在OrderService.createOrder中处理
+            // if (redisPaymentSecurityService.isPaymentRequestProcessed(requestId, userId)) {
+            //     throw new PaymentException("重复的支付请求，请勿重复提交");
+            // }
 
             // 5. 检查用户是否有活跃的支付会话，如果有则自动释放旧会话
             if (redisPaymentSecurityService.hasActivePaymentSession(userId)) {

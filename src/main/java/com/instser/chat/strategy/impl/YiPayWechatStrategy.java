@@ -80,6 +80,15 @@ public class YiPayWechatStrategy implements PaymentStrategy {
                 throw new PaymentException("无法生成支付链接");
             }
 
+            // 【修复】更新订单中的支付URL
+            order.setPaymentUrl(paymentUrl);
+            if (orderService.updateById(order)) {
+                log.info("已将支付URL更新到订单中，订单号: {}", order.getOrderNo());
+            } else {
+                log.warn("更新订单支付URL失败，订单号: {}", order.getOrderNo());
+                // 即使更新失败，也继续返回支付URL给用户，但不建议在生产中这样做
+            }
+
             // 构建响应
             PaymentResponseVO response = new PaymentResponseVO();
             response.setSuccess(true);

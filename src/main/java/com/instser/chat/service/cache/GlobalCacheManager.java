@@ -86,6 +86,9 @@ public class GlobalCacheManager {
         // 7. 套餐管理缓存（潜在优化点）
         registerCache("package", "package:config", CacheType.POTENTIAL, "套餐配置缓存", Duration.ofHours(1));
         registerCache("package", "package:permissions", CacheType.POTENTIAL, "套餐权限缓存", Duration.ofMinutes(30));
+
+        // 8. 订单管理缓存
+        registerCache("order", "order:recent_pending", CacheType.HYBRID, "近期未支付订单缓存", Duration.ofMinutes(5));
     }
 
     /**
