@@ -31,6 +31,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * 支付控制器
@@ -62,6 +63,44 @@ public class PaymentController {
     private final ExchangeRateService exchangeRateService;
     private final UserPaymentStatusService userPaymentStatusService;
     private final PaymentStatusSyncService paymentStatusSyncService;
+
+    /**
+     * 根据用户支付状态过滤套餐列表
+     *
+     * @param packages 原始套餐列表
+     * @param isUnpaidNewUser 是否为未支付新用户
+     * @return 过滤后的套餐列表
+     */
+    private List<Package> filterPackagesByUserStatus(List<Package> packages, boolean isUnpaidNewUser) {
+        if (packages == null || packages.isEmpty()) {
+            return packages;
+        }
+
+        return packages.stream()
+                .filter(pkg -> {
+                    Long packageId = pkg.getId();
+                    if (packageId == null) {
+                        return true; // 保留ID为null的套餐（如果有的话）
+                    }
+
+                    if (isUnpaidNewUser) {
+                        // 未支付新用户：移除ID为6的套餐
+                        boolean shouldInclude = !packageId.equals(6L);
+                        if (!shouldInclude) {
+                            log.debug("未支付新用户过滤：移除套餐ID={}", packageId);
+                        }
+                        return shouldInclude;
+                    } else {
+                        // 已支付用户：移除ID为5的套餐
+                        boolean shouldInclude = !packageId.equals(5L);
+                        if (!shouldInclude) {
+                            log.debug("已支付用户过滤：移除套餐ID={}", packageId);
+                        }
+                        return shouldInclude;
+                    }
+                })
+                .collect(Collectors.toList());
+    }
 
     /**
      * 获取当前认证用户ID
@@ -107,9 +146,13 @@ public class PaymentController {
             boolean showDiscountPrice = userPaymentStatusService.hasNeverPaid(userId);
             log.debug("用户{}支付状态检查: 从未付费={}, 显示优惠价格={}", userId, showDiscountPrice, showDiscountPrice);
 
-            // 转换为前端格式（使用汇率服务进行价格转换）
-            List<FrontendPackageVO> packageVOs = VOConverter.toFrontendPackageVOList(packages, currency, exchangeRateService, showDiscountPrice);
+            // 根据用户支付状态过滤套餐列表
+            List<Package> filteredPackages = filterPackagesByUserStatus(packages, showDiscountPrice);
+            log.debug("用户{}套餐过滤: 原始套餐数={}, 过滤后套餐数={}, 是否未支付新用户={}",
+                    userId, packages.size(), filteredPackages.size(), showDiscountPrice);
 
+            // 转换为前端格式（使用汇率服务进行价格转换）
+            List<FrontendPackageVO> packageVOs = VOConverter.toFrontendPackageVOList(filteredPackages, currency, exchangeRateService, showDiscountPrice);
 
             return Result.success(packageVOs);
         } catch (Exception e) {
@@ -146,6 +189,20 @@ public class PaymentController {
             boolean showDiscountPrice = userPaymentStatusService.hasNeverPaid(userId);
             log.debug("用户{}套餐信息查询: 从未付费={}, 显示优惠价格={}", userId, showDiscountPrice, showDiscountPrice);
 
+            // 检查用户是否有权限访问该套餐
+            Long packageId = packageEntity.getId();
+            if (packageId != null) {
+                if (showDiscountPrice && packageId.equals(6L)) {
+                    // 未支付新用户不能访问ID为6的套餐
+                    log.warn("未支付新用户{}尝试访问被限制的套餐ID={}", userId, packageId);
+                    return Result.failed("该套餐暂不可用");
+                } else if (!showDiscountPrice && packageId.equals(5L)) {
+                    // 已支付用户不能访问ID为5的套餐
+                    log.warn("已支付用户{}尝试访问被限制的套餐ID={}", userId, packageId);
+                    return Result.failed("该套餐暂不可用");
+                }
+            }
+
             // 转换为前端格式（使用汇率服务进行价格转换）
             FrontendPackageVO packageVO = VOConverter.toFrontendPackageVO(packageEntity, request.getCurrency(), exchangeRateService, showDiscountPrice);
 
@@ -167,10 +224,24 @@ public class PaymentController {
      * 根据类型获取套餐列表
      */
     @GetMapping("/packages/{type}")
-    public Result<List<PackageVO>> getPackagesByType(@PathVariable String type) {
+    public Result<List<PackageVO>> getPackagesByType(@PathVariable String type, Authentication authentication) {
         try {
             List<Package> packages = packageService.getPackagesByType(type);
-            List<PackageVO> packageVOs = VOConverter.toPackageVOList(packages);
+
+            // 获取当前用户ID，用于过滤套餐
+            Long userId = getCurrentUserId(authentication);
+            if (userId == null) {
+                log.warn("未登录用户尝试访问套餐列表，类型: {}", type);
+                return Result.unauthorized("请先登录");
+            }
+
+            // 检查用户是否从未付费，应用相同的过滤逻辑
+            boolean isUnpaidNewUser = userPaymentStatusService.hasNeverPaid(userId);
+            List<Package> filteredPackages = filterPackagesByUserStatus(packages, isUnpaidNewUser);
+            log.debug("用户{}按类型{}获取套餐: 原始套餐数={}, 过滤后套餐数={}, 是否未支付新用户={}",
+                    userId, type, packages.size(), filteredPackages.size(), isUnpaidNewUser);
+
+            List<PackageVO> packageVOs = VOConverter.toPackageVOList(filteredPackages);
             return Result.success(packageVOs);
         } catch (Exception e) {
             log.error("获取套餐列表失败，类型: {}", type, e);

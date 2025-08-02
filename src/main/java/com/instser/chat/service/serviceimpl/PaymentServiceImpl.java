@@ -83,8 +83,8 @@ public class PaymentServiceImpl implements PaymentService {
         List<PaymentMethodVO> paymentMethods = new ArrayList<>();
 
         for (String method : availableMethods) {
-            // 过滤掉易支付选项，前端只显示支付宝和微信支付
-            if ("yipay".equalsIgnoreCase(method)) {
+            // 过滤掉易支付和微信支付选项，前端只显示支付宝
+            if ("yipay".equalsIgnoreCase(method) || "wechatpay".equalsIgnoreCase(method)) {
                 continue;
             }
 
