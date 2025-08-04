@@ -6,6 +6,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.net.InetAddress;
+import java.net.UnknownHostException;
 import java.time.LocalTime;
 import java.util.Set;
 
@@ -34,13 +36,6 @@ public class PaymentSecurityEnhancer {
         "203.119.26.0/24"    // 支付宝回调IP段4
     );
 
-    // 易支付回调IP白名单（需要根据实际易支付平台配置）
-    private static final Set<String> YIPAY_CALLBACK_IPS = Set.of(
-        "127.0.0.1",         // 本地测试IP
-        "localhost",
-        "https://your-pay-gateway.example.com"          // 本地测试域名
-    );
-
     /**
      * 验证支付回调IP是否在白名单中
      *
@@ -50,33 +45,27 @@ public class PaymentSecurityEnhancer {
      */
     public boolean validateCallbackIP(HttpServletRequest request, String paymentMethod) {
         String clientIP = getClientIP(request);
-        log.debug("验证支付回调IP，客户端IP: {}, 支付方式: {}", clientIP, paymentMethod);
+        log.debug("验证支付回调来源，客户端IP: {}, 支付方式: {}", clientIP, paymentMethod);
 
         if (clientIP == null || clientIP.trim().isEmpty()) {
             log.warn("无法获取客户端IP地址");
             return false;
         }
 
-        Set<String> allowedIPs;
         if ("alipay".equalsIgnoreCase(paymentMethod)) {
-            allowedIPs = ALIPAY_CALLBACK_IPS;
+            boolean isAllowed = ALIPAY_CALLBACK_IPS.stream().anyMatch(ip -> isIPInRange(clientIP, ip));
+            if (!isAllowed) {
+                log.warn("支付宝回调IP验证失败，客户端IP: {}, 允许的IP: {}", clientIP, ALIPAY_CALLBACK_IPS);
+            }
+            return isAllowed;
         } else if ("yipay".equalsIgnoreCase(paymentMethod)) {
-            allowedIPs = YIPAY_CALLBACK_IPS;
+            // 根据用户要求，移除易支付回调的来源验证
+            log.info("根据配置，跳过易支付回调的来源验证。");
+            return true;
         } else {
             log.warn("未知的支付方式: {}", paymentMethod);
             return false;
         }
-
-        boolean isAllowed = allowedIPs.stream().anyMatch(ip -> isIPInRange(clientIP, ip));
-        
-        if (!isAllowed) {
-            log.warn("支付回调IP验证失败，客户端IP: {}, 支付方式: {}, 允许的IP: {}", 
-                    clientIP, paymentMethod, allowedIPs);
-        } else {
-            log.debug("支付回调IP验证通过，客户端IP: {}, 支付方式: {}", clientIP, paymentMethod);
-        }
-
-        return isAllowed;
     }
 
     /**
@@ -222,11 +211,18 @@ public class PaymentSecurityEnhancer {
             return false;
         }
 
-        // 简单的IP匹配，支持CIDR格式
+        // 修复潜在的StringIndexOutOfBoundsException
         if (allowedIP.contains("/")) {
-            // CIDR格式，这里简化处理，实际应该使用专门的IP工具库
-            String baseIP = allowedIP.split("/")[0];
-            return clientIP.startsWith(baseIP.substring(0, baseIP.lastIndexOf(".")));
+            // CIDR格式处理
+            String[] parts = allowedIP.split("/");
+            String baseIP = parts[0];
+            int lastDot = baseIP.lastIndexOf('.');
+            if (lastDot == -1) {
+                // 非法CIDR格式，退回精确匹配
+                return baseIP.equals(clientIP);
+            }
+            String subnet = baseIP.substring(0, lastDot);
+            return clientIP.startsWith(subnet);
         } else {
             // 精确匹配
             return clientIP.equals(allowedIP);

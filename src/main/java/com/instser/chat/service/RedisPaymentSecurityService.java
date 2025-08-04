@@ -116,6 +116,24 @@ public class RedisPaymentSecurityService {
     }
 
     /**
+     * 标记回调已处理（用于幂等性）
+     *
+     * @param callbackId 回调ID
+     */
+    public void markCallbackAsProcessed(String callbackId) {
+        if (callbackId == null || callbackId.trim().isEmpty()) {
+            return;
+        }
+        try {
+            String key = "payment:callback:" + callbackId;
+            redisTemplate.opsForValue().set(key, System.currentTimeMillis(), Duration.ofMinutes(callbackExpireTime));
+            log.debug("回调ID: {} 标记为已处理", callbackId);
+        } catch (Exception e) {
+            log.error("标记回调已处理异常，回调ID: {}", callbackId, e);
+        }
+    }
+
+    /**
      * 记录可疑支付行为
      *
      * @param userId 用户ID

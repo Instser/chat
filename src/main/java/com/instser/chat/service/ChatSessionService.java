@@ -71,4 +71,6 @@ public interface ChatSessionService extends IService<ChatSession> {
      * @return 是否更新成功
      */
     boolean updateSessionModel(String sessionId, Long modelId);
+
+    boolean deleteSessions(List<String> sessionIds);
 }

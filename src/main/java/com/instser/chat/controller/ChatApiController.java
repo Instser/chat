@@ -23,6 +23,7 @@ import org.springframework.web.bind.annotation.*;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 
+import com.instser.chat.dto.request.DeleteSessionRequest;
 import java.util.List;
 import java.util.Map;
 
@@ -166,6 +167,14 @@ public class ChatApiController {
             return Result.failed("会话删除失败");
         }
         return Result.success(null, "会话删除成功");
+    }
+@DeleteMapping("/sessions")
+    public Result<Void> deleteSessions(@RequestBody DeleteSessionRequest request) {
+        boolean allDeleted = chatSessionService.deleteSessions(request.getSessionIds());
+        if (!allDeleted) {
+            return Result.failed("部分会话删除失败");
+        }
+        return Result.success();
     }
 
     /**

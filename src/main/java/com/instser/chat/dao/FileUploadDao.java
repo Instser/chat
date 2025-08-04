@@ -46,6 +46,23 @@ public interface FileUploadDao extends BaseMapper<FileUpload> {
     List<FileUpload> selectBySessionId(@Param("sessionId") String sessionId);
 
     /**
+     * 根据会话ID列表查询文件列表
+     *
+     * @param sessionIds 会话ID列表
+     * @return 文件列表
+     */
+    @Select({
+        "<script>",
+        "SELECT * FROM t_file_upload WHERE session_id IN",
+        "<foreach item='item' index='index' collection='sessionIds' open='(' separator=',' close=')'>",
+        "#{item}",
+        "</foreach>",
+        " AND deleted = 0 ORDER BY create_time DESC",
+        "</script>"
+    })
+    List<FileUpload> selectBySessionIds(@Param("sessionIds") List<String> sessionIds);
+
+    /**
      * 根据消息ID查询文件列表
      *
      * @param messageId 消息ID

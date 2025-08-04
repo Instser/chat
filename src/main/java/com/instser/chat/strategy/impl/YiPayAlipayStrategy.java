@@ -66,6 +66,7 @@ public class YiPayAlipayStrategy implements PaymentStrategy {
                 paymentRequest.getCurrency(),
                 getPaymentMethod()
             );
+            log.info("【策略层】从OrderService接收到的订单对象: {}", order);
 
             // 获取套餐信息
             Package packageInfo = packageService.getPackageById(paymentRequest.getPackageId());
@@ -89,18 +90,34 @@ public class YiPayAlipayStrategy implements PaymentStrategy {
                 // 即使更新失败，也继续返回支付URL给用户，但不建议在生产中这样做
             }
 
+            // 【关键修复】从数据库重新获取订单，确保所有字段（包括createdTime）都是最新的
+            UserOrder finalOrder = orderService.getOrderByOrderNo(order.getOrderNo());
+            if (finalOrder == null) {
+                // 极端情况下的回退，理论上不应发生
+                log.warn("【策略层】无法从数据库重新获取订单，将使用旧的订单对象。订单号: {}", order.getOrderNo());
+                finalOrder = order;
+            }
+            log.info("【策略层】用于构建响应的最终订单对象: {}", finalOrder);
+
             // 构建响应
             PaymentResponseVO response = new PaymentResponseVO();
             response.setSuccess(true);
-            response.setOrderNo(order.getOrderNo());
+            response.setOrderNo(finalOrder.getOrderNo());
+            response.setPaymentRequestId(finalOrder.getPaymentRequestId());
             response.setPaymentMethod(getPaymentMethod());
-            response.setAmount(order.getAmount());
-            response.setCurrency(order.getCurrency());
+            response.setAmount(finalOrder.getAmount());
+            response.setCurrency(finalOrder.getCurrency());
             response.setPaymentUrl(paymentUrl);
             response.setMessage("支付宝订单创建成功");
+            response.setPaymentStatus(finalOrder.getPaymentStatus());
 
             // 设置订单创建时间 (ISO 8601格式)
-            response.setCreatedTime(order.getCreatedTime().toString());
+            if (finalOrder.getCreateTime() != null) {
+                response.setCreatedTime(finalOrder.getCreateTime().toString());
+                log.info("【策略层】成功设置createdTime: {}", finalOrder.getCreateTime());
+            } else {
+                log.warn("【策略层】finalOrder中的createdTime仍然为空，无法设置到响应中。");
+            }
 
             // 生成二维码URL
             String qrCodeUrl = QrCodeUtil.generatePaymentQrCodeUrl(paymentUrl);

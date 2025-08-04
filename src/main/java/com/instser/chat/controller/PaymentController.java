@@ -444,6 +444,12 @@ public class PaymentController {
         try {
             log.info("收到易支付回调通知，请求方法: {}", request.getMethod());
 
+            // 记录原始请求
+            if ("GET".equalsIgnoreCase(request.getMethod())) {
+                String queryString = request.getQueryString();
+                log.info("易支付回调原始请求 URL: {}{}", request.getRequestURL(), (queryString != null ? "?" + queryString : ""));
+            }
+
             // 验证回调IP
             if (!paymentSecurityEnhancer.validateCallbackIP(request, "yipay")) {
                 log.error("易支付回调IP验证失败");

@@ -203,14 +203,14 @@ public class OrderExpirationServiceImpl implements OrderExpirationService {
                 try {
                     // 这里可以实现将订单数据移动到归档表的逻辑
                     // 暂时只记录日志
-                    log.debug("归档订单: {}, 创建时间: {}", order.getOrderNo(), order.getCreatedTime());
+                    log.debug("归档订单: {}, 创建时间: {}", order.getOrderNo(), order.getCreateTime());
                     archivedCount++;
                     
                     // 记录审计日志
                     Map<String, Object> archiveDetailsMap = Map.of(
                         "reason", "过期订单自动归档",
                         "archiveTime", LocalDateTime.now().toString(),
-                        "originalCreateTime", order.getCreatedTime().toString()
+                        "originalCreateTime", order.getCreateTime().toString()
                     );
                     String details = ((PaymentAuditServiceImpl) paymentAuditService).createOperationDetails(archiveDetailsMap);
                     

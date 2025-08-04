@@ -91,7 +91,8 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
             }
 
             log.info("返回用户{}的现有订单: {}，状态: {}", userId, latestOrder.getOrderNo(), latestOrder.getPaymentStatus());
-            return latestOrder;
+            // 【修复】确保返回的订单信息包含数据库生成的字段
+            return getOrderByOrderNo(latestOrder.getOrderNo());
         }
 
         // 选择价格：检查用户是否为新用户且套餐有优惠价格
@@ -109,7 +110,7 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
         // 格式化金额精度
         amount = MoneyUtil.formatAmount(amount, currency);
 
-        // 【保留原有逻辑】检查并取消用户的进行中订单
+        // 【优化】仅在创建新订单时，才取消用户已有的其他待支付订单
         int cancelledCount = cancelUserPendingOrders(userId);
         if (cancelledCount > 0) {
             log.info("用户{}发起新订单，已取消{}个进行中的订单", userId, cancelledCount);
@@ -139,7 +140,10 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
         log.info("创建订单成功，订单号: {}, 用户ID: {}, 套餐ID: {}, 金额: {} {}",
                 order.getOrderNo(), userId, packageId, amount, currency);
 
-        return order;
+        // 【修复】从数据库重新获取订单，以包含自动生成的createdTime
+        UserOrder finalOrder = getOrderByOrderNo(order.getOrderNo());
+        log.info("【订单创建完成】返回最终订单对象: {}", finalOrder);
+        return finalOrder;
     }
 
     /**

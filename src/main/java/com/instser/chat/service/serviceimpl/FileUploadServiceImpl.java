@@ -393,6 +393,47 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
     }
 
     @Override
+    public int deleteFilesBySessionIds(List<String> sessionIds, Long userId) {
+        if (sessionIds == null || sessionIds.isEmpty() || userId == null) {
+            log.warn("批量删除会话文件失败，参数不完整：sessionIds={}, userId={}", sessionIds, userId);
+            return 0;
+        }
+
+        try {
+            // 获取所有相关会话的文件
+            List<FileUpload> files = fileUploadDao.selectBySessionIds(sessionIds);
+            if (files == null || files.isEmpty()) {
+                log.info("会话列表 {} 没有关联的文件，跳过删除", sessionIds);
+                return 0;
+            }
+
+            // 验证文件所有权并执行物理删除
+            int deletedCount = 0;
+            for (FileUpload file : files) {
+                if (file.getUserId().equals(userId)) {
+                    // 执行物理删除
+                    boolean deleted = deleteFilePhysicallyInternal(file);
+                    if (deleted) {
+                        deletedCount++;
+                        log.info("文件{}已物理删除，关联会话：{}", file.getFileId(), file.getSessionId());
+                    } else {
+                        log.warn("文件{}物理删除失败，关联会话：{}", file.getFileId(), file.getSessionId());
+                    }
+                } else {
+                    log.warn("文件{}不属于用户{}，跳过删除", file.getFileId(), userId);
+                }
+            }
+
+            log.info("批量删除会话关联文件完成，删除数量：{}/{}", deletedCount, files.size());
+            return deletedCount;
+
+        } catch (Exception e) {
+            log.error("批量删除会话关联文件失败: {}", e.getMessage());
+            return 0;
+        }
+    }
+
+    @Override
     public boolean deleteFile(String fileId, Long userId) {
         FileUpload fileUpload = getByFileId(fileId);
         if (fileUpload == null) {

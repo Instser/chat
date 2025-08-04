@@ -9,6 +9,7 @@ import com.instser.chat.service.ChatMessageService;
 import com.instser.chat.service.FileUploadService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -206,5 +207,58 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionDao, ChatSess
 
         log.error("【数据库重试】会话保存失败，已达到最大重试次数，会话ID：{}", session.getSessionId());
         return false;
+    }
+
+    @Override
+    @Transactional
+    public boolean deleteSessions(List<String> sessionIds) {
+        if (sessionIds == null || sessionIds.isEmpty()) {
+            return true;
+        }
+
+        try {
+            // 1. 获取会话信息并验证用户权限
+            List<ChatSession> sessions = this.list(new LambdaQueryWrapper<ChatSession>().in(ChatSession::getSessionId, sessionIds));
+            if (sessions.isEmpty()) {
+                log.warn("【批量删除】未找到任何有效会话，会话ID列表：{}", sessionIds);
+                return true; // 或者根据业务返回false
+            }
+
+            // 从第一个会话中断言所有会话都属于同一个用户
+            Long userId = sessions.get(0).getUserId();
+            for (ChatSession session : sessions) {
+                if (!session.getUserId().equals(userId)) {
+                    log.error("【批量删除】权限验证失败：会话列表包含不属于用户 {} 的会话", userId);
+                    throw new SecurityException("无权删除部分会话");
+                }
+            }
+
+            List<String> validSessionIds = sessions.stream().map(ChatSession::getSessionId).collect(java.util.stream.Collectors.toList());
+
+            // 2. 批量删除关联的消息
+            int deletedMessagesCount = chatMessageService.deleteAllBySessionIds(validSessionIds, userId);
+            log.info("【批量删除】删除关联消息完成，数量：{}", deletedMessagesCount);
+
+            // 3. 批量删除关联的文件
+            int deletedFilesCount = fileUploadService.deleteFilesBySessionIds(validSessionIds, userId);
+            log.info("【批量删除】删除关联文件完成，数量：{}", deletedFilesCount);
+
+            // 4. 批量删除会话
+            boolean result = this.removeByIds(sessions.stream().map(ChatSession::getId).collect(java.util.stream.Collectors.toList()));
+
+            if (result) {
+                log.info("【批量删除】成功，删除会话：{}个，关联消息：{}条，关联文件：{}个",
+                        validSessionIds.size(), deletedMessagesCount, deletedFilesCount);
+            } else {
+                log.error("【批量删除】失败，会话ID列表：{}", validSessionIds);
+            }
+
+            return result;
+
+        } catch (Exception e) {
+            log.error("【批量删除】异常，会话ID列表：{}", sessionIds, e);
+            // 根据需要决定是否抛出异常或返回false
+            throw new RuntimeException("批量删除会话失败", e);
+        }
     }
 }

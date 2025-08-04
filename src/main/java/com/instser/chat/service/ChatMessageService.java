@@ -150,4 +150,13 @@ public interface ChatMessageService extends IService<ChatMessage> {
      * @return 删除的消息数量
      */
     int deleteAllBySessionId(String sessionId, Long userId);
+
+    /**
+     * 批量删除指定会话的所有消息及其关联数据
+     *
+     * @param sessionIds 会话ID列表
+     * @param userId     用户ID（用于验证权限）
+     * @return 删除的消息数量
+     */
+    int deleteAllBySessionIds(List<String> sessionIds, Long userId);
 }

@@ -55,6 +55,14 @@ public interface WebSearchContentService extends IService<WebSearchContent> {
     boolean deleteByMessageId(String messageId);
 
     /**
+     * 批量删除联网内容
+     *
+     * @param messageIds 消息ID列表
+     * @return 删除的记录数
+     */
+    int deleteByMessageIds(List<String> messageIds);
+
+    /**
      * 获取用户的联网查询历史（简单分页）
      *
      * @param userId 用户ID

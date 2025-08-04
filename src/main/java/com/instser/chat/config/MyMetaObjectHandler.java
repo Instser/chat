@@ -29,7 +29,6 @@ public class MyMetaObjectHandler implements MetaObjectHandler {
         LocalDateTime businessTime = LocalDateTime.now(BUSINESS_ZONE);
 
         // 支持不同的时间字段命名
-        this.strictInsertFill(metaObject, "createdTime", LocalDateTime.class, businessTime);
         this.strictInsertFill(metaObject, "createTime", LocalDateTime.class, businessTime);
         this.strictInsertFill(metaObject, "updateTime", LocalDateTime.class, businessTime);
     }

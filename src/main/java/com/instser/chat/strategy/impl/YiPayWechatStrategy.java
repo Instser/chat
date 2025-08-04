@@ -98,9 +98,12 @@ public class YiPayWechatStrategy implements PaymentStrategy {
             response.setCurrency(order.getCurrency());
             response.setPaymentUrl(paymentUrl);
             response.setMessage("微信支付订单创建成功");
+            response.setPaymentStatus(order.getPaymentStatus());
 
             // 设置订单创建时间 (ISO 8601格式)
-            response.setCreatedTime(order.getCreatedTime().toString());
+            if (order.getCreateTime() != null) {
+                response.setCreatedTime(order.getCreateTime().toString());
+            }
 
             // 生成二维码URL
             String qrCodeUrl = QrCodeUtil.generatePaymentQrCodeUrl(paymentUrl);

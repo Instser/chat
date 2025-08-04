@@ -78,4 +78,21 @@ public interface WebSearchContentDao extends BaseMapper<WebSearchContent> {
      */
     @Update("UPDATE t_web_search_content SET deleted = 1, update_time = NOW() WHERE message_id = #{messageId} AND deleted = 0")
     int deleteByMessageId(@Param("messageId") String messageId);
+
+    /**
+     * 批量逻辑删除联网内容
+     *
+     * @param messageIds 消息ID列表
+     * @return 删除行数
+     */
+    @Update({
+        "<script>",
+        "UPDATE t_web_search_content SET deleted = 1, update_time = NOW() WHERE message_id IN",
+        "<foreach item='item' index='index' collection='messageIds' open='(' separator=',' close=')'>",
+        "#{item}",
+        "</foreach>",
+        " AND deleted = 0",
+        "</script>"
+    })
+    int deleteByMessageIds(@Param("messageIds") List<String> messageIds);
 }

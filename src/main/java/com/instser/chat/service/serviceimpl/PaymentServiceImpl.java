@@ -395,7 +395,6 @@ public class PaymentServiceImpl implements PaymentService {
 
 
 
-
     @Override
     public UserOrder queryPaymentStatus(String orderNo) {
         return orderService.getOrderByOrderNo(orderNo);
@@ -445,7 +444,7 @@ public class PaymentServiceImpl implements PaymentService {
             response.setAmount(updatedOrder.getAmount());
             response.setCurrency(updatedOrder.getCurrency());
             response.setPaymentMethod(updatedOrder.getPaymentMethod());
-            response.setCreatedTime(updatedOrder.getCreatedTime());
+            response.setCreatedTime(updatedOrder.getCreateTime());
 
             log.info("支付状态查询并同步成功，订单号: {}, 状态: {}", orderNo, paymentStatus);
             return response;
@@ -751,17 +750,18 @@ public class PaymentServiceImpl implements PaymentService {
             String outTradeNo = notifyParams.get("out_trade_no");
             String tradeStatus = notifyParams.get("trade_status");
             String sign = notifyParams.get("sign");
+            String paymentType = notifyParams.get("type"); // 获取支付类型
 
             if (outTradeNo == null || sign == null) {
                 log.error("易支付回调参数不完整");
                 return false;
             }
 
-            // 生成回调唯一标识进行防重放攻击检查
-            String callbackId = generateCallbackId(outTradeNo, String.valueOf(System.currentTimeMillis()), sign);
+            // 使用确定性参数生成回调唯一标识，修复幂等性问题
+            String callbackId = outTradeNo + "_" + (tradeNo != null ? tradeNo : "") + "_" + (paymentType != null ? paymentType : "");
             if (redisPaymentSecurityService.isCallbackProcessed(callbackId)) {
-                log.warn("检测到易支付重放攻击，回调ID: {}", callbackId);
-                return false;
+                log.warn("易支付回调重复处理，跳过。回调ID: {}", callbackId);
+                return true; // 幂等性处理：重复通知应返回成功
             }
 
             // 验证签名
@@ -845,6 +845,8 @@ public class PaymentServiceImpl implements PaymentService {
                     redisPaymentSecurityService.releasePaymentSession(order.getUserId());
                     log.debug("释放用户{}支付会话锁，订单号: {}", order.getUserId(), outTradeNo);
 
+                    // 标记回调已成功处理
+                    redisPaymentSecurityService.markCallbackAsProcessed(callbackId);
                     return true;
                 } else {
                     log.error("易支付订单状态更新失败，订单号: {}, 状态: {} -> {}",
@@ -863,6 +865,7 @@ public class PaymentServiceImpl implements PaymentService {
 
         return false;
     }
+
 
 
 
@@ -1276,32 +1279,11 @@ public class PaymentServiceImpl implements PaymentService {
      */
     private void processPaymentCallbackInternal(Map<String, String> notifyParams) {
         String outTradeNo = notifyParams.get("out_trade_no");
-        String tradeNo = notifyParams.get("trade_no");
-        String paymentType = notifyParams.get("type");
-
         try {
-            log.info("开始异步处理易支付回调，订单号: {}, 交易号: {}, 支付类型: {}",
-                    outTradeNo, tradeNo, paymentType);
+            log.info("开始异步处理易支付回调，订单号: {}", outTradeNo);
 
-            // 生成回调ID用于幂等性检查
-            String callbackId = outTradeNo + "_" + tradeNo + "_" + paymentType;
-
-            // 检查是否已处理过（使用现有的Redis方法）
-            if (redisPaymentSecurityService.isCallbackProcessed(callbackId)) {
-                log.info("回调已处理过，跳过处理: {}", outTradeNo);
-                return;
-            }
-
-            // 根据支付类型调用相应的处理方法
-            boolean success = false;
-            if ("wxpay".equals(paymentType)) {
-                success = handleWechatPayNotify(notifyParams);
-            } else if ("alipay".equals(paymentType)) {
-                success = handleAlipayNotify(notifyParams);
-            } else {
-                log.error("未知的支付类型: {}", paymentType);
-                return;
-            }
+            // 直接调用统一的易支付处理方法
+            boolean success = handleYiPayNotify(notifyParams);
 
             if (success) {
                 log.info("异步处理易支付回调成功，订单号: {}", outTradeNo);

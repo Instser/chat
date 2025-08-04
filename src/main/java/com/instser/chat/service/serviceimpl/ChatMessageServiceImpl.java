@@ -593,4 +593,62 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
             return 0;
         }
     }
+
+    @Override
+    public int deleteAllBySessionIds(List<String> sessionIds, Long userId) {
+        log.info("【批量会话消息删除】开始删除多个会话的所有消息，会话ID数量：{}，用户ID：{}", sessionIds.size(), userId);
+
+        if (sessionIds == null || sessionIds.isEmpty()) {
+            return 0;
+        }
+
+        try {
+            // 获取所有相关会话的消息
+            LambdaQueryWrapper<ChatMessage> queryWrapper = new LambdaQueryWrapper<>();
+            queryWrapper.in(ChatMessage::getSessionId, sessionIds);
+            List<ChatMessage> allMessages = list(queryWrapper);
+
+            if (allMessages == null || allMessages.isEmpty()) {
+                log.info("【批量会话消息删除】未找到任何相关消息");
+                return 0;
+            }
+
+            // 验证权限
+            for (ChatMessage message : allMessages) {
+                if (!message.getUserId().equals(userId)) {
+                    log.error("【批量会话消息删除】权限验证失败，用户ID不匹配，期望：{}，实际：{}", userId, message.getUserId());
+                    // 或者抛出异常
+                    return 0;
+                }
+            }
+
+            List<Long> messagesToDelete = allMessages.stream().map(ChatMessage::getId).collect(java.util.stream.Collectors.toList());
+            List<String> messageIdsToDelete = allMessages.stream().map(ChatMessage::getMessageId).collect(java.util.stream.Collectors.toList());
+
+            // 批量删除关联文件
+            int deletedFilesCount = fileUploadService.deleteFilesByMessageIds(messageIdsToDelete, userId);
+            log.info("【批量会话消息删除】删除关联文件完成，数量：{}", deletedFilesCount);
+
+            // 批量删除关联的联网内容
+            int deletedWebSearchCount = webSearchContentService.deleteByMessageIds(messageIdsToDelete);
+            log.info("【批量会话消息删除】删除关联联网内容完成，数量：{}", deletedWebSearchCount);
+
+            // 批量删除消息
+            boolean result = this.removeByIds(messagesToDelete);
+            int deletedCount = result ? messagesToDelete.size() : 0;
+
+            if (result) {
+                log.info("【批量会话消息删除】成功，删除消息：{}条，删除文件：{}个，删除联网内容：{}条",
+                        deletedCount, deletedFilesCount, deletedWebSearchCount);
+            } else {
+                log.error("【批量会话消息删除】失败");
+            }
+
+            return deletedCount;
+
+        } catch (Exception e) {
+            log.error("【批量会话消息删除】异常", e);
+            return 0;
+        }
+    }
 }

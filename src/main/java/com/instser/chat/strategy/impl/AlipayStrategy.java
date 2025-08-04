@@ -120,7 +120,7 @@ public class AlipayStrategy implements PaymentStrategy {
             response.setMessage("支付订单创建成功");
 
             // 设置订单创建时间 (ISO 8601格式)
-            response.setCreatedTime(order.getCreatedTime().toString());
+            response.setCreatedTime(order.getCreateTime().toString());
 
             // 生成二维码URL
             String qrCodeUrl = QrCodeUtil.generatePaymentQrCodeUrl(paymentUrl);

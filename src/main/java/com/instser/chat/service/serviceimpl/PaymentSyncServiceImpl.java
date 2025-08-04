@@ -238,6 +238,6 @@ public class PaymentSyncServiceImpl implements PaymentSyncService {
 
         // 检查订单创建时间，只同步30分钟内的订单
         LocalDateTime cutoffTime = LocalDateTime.now().minusMinutes(30);
-        return order.getCreatedTime().isAfter(cutoffTime);
+        return order.getCreateTime().isAfter(cutoffTime);
     }
 }

@@ -115,6 +115,15 @@ public interface FileUploadService extends IService<FileUpload> {
     int deleteFilesBySessionId(String sessionId, Long userId);
 
     /**
+     * 根据会话ID列表批量删除关联的文件（物理删除）
+     *
+     * @param sessionIds 会话ID列表
+     * @param userId 用户ID（用于权限验证）
+     * @return 删除的文件数量
+     */
+    int deleteFilesBySessionIds(List<String> sessionIds, Long userId);
+
+    /**
      * 删除文件（物理删除）
      *
      * @param fileId 文件ID

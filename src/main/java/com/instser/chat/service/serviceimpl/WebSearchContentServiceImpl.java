@@ -181,6 +181,21 @@ public class WebSearchContentServiceImpl extends ServiceImpl<WebSearchContentDao
     }
 
     @Override
+    public int deleteByMessageIds(List<String> messageIds) {
+        if (messageIds == null || messageIds.isEmpty()) {
+            return 0;
+        }
+        try {
+            int deleted = webSearchContentDao.deleteByMessageIds(messageIds);
+            log.info("【联网存储】批量删除联网内容成功，消息ID数量：{}", messageIds.size());
+            return deleted;
+        } catch (Exception e) {
+            log.error("【联网存储】批量删除联网内容失败", e);
+            return 0;
+        }
+    }
+
+    @Override
     public List<WebSearchContent> getUserWebSearchHistory(Long userId, int page, int size) {
         try {
             int offset = (page - 1) * size;
