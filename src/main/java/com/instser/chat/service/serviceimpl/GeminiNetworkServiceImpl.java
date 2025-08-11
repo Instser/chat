@@ -52,7 +52,7 @@ public class GeminiNetworkServiceImpl implements GeminiNetworkService {
                 throw new RuntimeException("联网服务配置异常，请联系管理员");
             }
 
-            log.info("【Gemini联网】开始处理联网查询，使用模型：{}，会话上下文长度：{}", webSearchModel.getModelName(), userContext.length());
+            log.info("【Gemini联网】开始处理联网查询，使用模型：{}，会话上下文长度：{}", webSearchModel.getModelCode(), userContext.length());
             log.debug("【Gemini联网】发送的完整上下文内容：\n{}", userContext);
 
             // 构建请求体
@@ -67,9 +67,9 @@ public class GeminiNetworkServiceImpl implements GeminiNetworkService {
 
             // 构建请求URL
             String requestUrl = String.format("%s/models/%s:generateContent",
-                    webSearchModel.getBaseUrl(), webSearchModel.getModelName());
+                    webSearchModel.getBaseUrl(), webSearchModel.getModelCode());
 
-            log.info("【Gemini联网】发送请求到：{}，模型：{}", webSearchModel.getBaseUrl(), webSearchModel.getModelName());
+            log.info("【Gemini联网】发送请求到：{}，模型：{}", webSearchModel.getBaseUrl(), webSearchModel.getModelCode());
 
             // 发送请求
             ResponseEntity<String> response = restTemplate.exchange(
