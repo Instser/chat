@@ -165,6 +165,23 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionDao, ChatSess
         return result;
     }
 
+    @Override
+    public void updateSessionUpdateTime(String sessionId) {
+        if (sessionId == null || sessionId.trim().isEmpty()) {
+            return; // 防御性编程
+        }
+        com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<ChatSession> updateWrapper = new com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper<>();
+        updateWrapper
+                .eq(ChatSession::getSessionId, sessionId)
+                .set(ChatSession::getUpdateTime, LocalDateTime.now());
+        boolean updated = this.update(updateWrapper);
+        if (updated) {
+            log.debug("会话更新时间已刷新，会话ID：{}", sessionId);
+        } else {
+            log.warn("刷新会话更新时间失败，会话ID：{}", sessionId);
+        }
+    }
+
     /**
      * 带重试机制的会话保存方法
      * @param session 要保存的会话对象

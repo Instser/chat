@@ -1,7 +1,8 @@
 package com.instser.chat.service.serviceimpl;
 
-import com.instser.chat.config.GeminiConfig;
+import com.instser.chat.entity.AiModel;
 import com.instser.chat.entity.GeminiGroundingResponse;
+import com.instser.chat.service.AiModelService;
 import com.instser.chat.service.GeminiNetworkService;
 import com.instser.chat.service.GeminiResponseParser;
 import lombok.RequiredArgsConstructor;
@@ -30,11 +31,11 @@ public class GeminiNetworkServiceImpl implements GeminiNetworkService {
     @Qualifier("geminiRestTemplate")
     private final RestTemplate restTemplate;
 
-    private final GeminiConfig geminiConfig;
+    private final AiModelService aiModelService;
     private final GeminiResponseParser responseParser;
 
-    // 硬编码的Gemini模型参数
-    private static final String GEMINI_MODEL_CODE = "gemini-2.5-flash";
+    private static final Long WEB_SEARCH_MODEL_ID = 6L;
+
 
     @Override
     public GeminiGroundingResponse queryWithGrounding(String userContext) {
@@ -44,24 +45,31 @@ public class GeminiNetworkServiceImpl implements GeminiNetworkService {
         }
 
         try {
-            log.info("【Gemini联网】开始处理联网查询，会话上下文长度：{}", userContext.length());
+            // 从数据库获取联网模型配置
+            AiModel webSearchModel = aiModelService.getById(WEB_SEARCH_MODEL_ID);
+            if (webSearchModel == null) {
+                log.error("【Gemini联网】未找到ID为{}的联网模型配置，请检查数据库。", WEB_SEARCH_MODEL_ID);
+                throw new RuntimeException("联网服务配置异常，请联系管理员");
+            }
+
+            log.info("【Gemini联网】开始处理联网查询，使用模型：{}，会话上下文长度：{}", webSearchModel.getModelName(), userContext.length());
             log.debug("【Gemini联网】发送的完整上下文内容：\n{}", userContext);
 
-            // 构建请求体，基于gemini-test.py的实现
+            // 构建请求体
             Map<String, Object> requestBody = buildGeminiRequest(userContext);
 
             // 设置请求头，使用Bearer认证
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(geminiConfig.getApiKey());
+            headers.setBearerAuth(webSearchModel.getApiKey());
 
             HttpEntity<Map<String, Object>> httpEntity = new HttpEntity<>(requestBody, headers);
 
-            // 构建请求URL，不再使用key参数
+            // 构建请求URL
             String requestUrl = String.format("%s/models/%s:generateContent",
-                    geminiConfig.getBaseUrl(), GEMINI_MODEL_CODE);
+                    webSearchModel.getBaseUrl(), webSearchModel.getModelName());
 
-            log.info("【Gemini联网】发送请求到：{}，模型：{}", geminiConfig.getBaseUrl(), GEMINI_MODEL_CODE);
+            log.info("【Gemini联网】发送请求到：{}，模型：{}", webSearchModel.getBaseUrl(), webSearchModel.getModelName());
 
             // 发送请求
             ResponseEntity<String> response = restTemplate.exchange(

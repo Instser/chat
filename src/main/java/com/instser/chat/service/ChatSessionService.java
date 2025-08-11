@@ -72,5 +72,11 @@ public interface ChatSessionService extends IService<ChatSession> {
      */
     boolean updateSessionModel(String sessionId, Long modelId);
 
+    /**
+     * 更新指定会话的更新时间
+     * @param sessionId 会话ID
+     */
+    void updateSessionUpdateTime(String sessionId);
+
     boolean deleteSessions(List<String> sessionIds);
 }

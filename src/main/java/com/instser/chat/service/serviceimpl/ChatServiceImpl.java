@@ -112,6 +112,9 @@ public class ChatServiceImpl implements ChatService {
                 return validationResult;
             }
 
+            // 更新会话更新时间
+            chatSessionService.updateSessionUpdateTime(request.getSessionId());
+
             // 获取并验证模型配置
             AiModel model = validateAndGetModel(request.getModelId(), request.getSessionId(), request.getUserId(), response);
             if (model == null) {
@@ -3736,6 +3739,9 @@ public class ChatServiceImpl implements ChatService {
                 sessionId, messageId, modelId, network);
 
         try {
+            // 更新会话更新时间
+            chatSessionService.updateSessionUpdateTime(sessionId);
+
             // 设置响应头
             setStreamResponseHeaders(response);
 
@@ -3958,6 +3964,9 @@ public class ChatServiceImpl implements ChatService {
         log.info("开始处理编辑重发请求，sessionId：{}，messageId：{}，newContent长度：{}，filesId：{}，modelId：{}，network：{}", sessionId, messageId, newContent.length(), filesId, modelId, network);
 
         try {
+            // 更新会话更新时间
+            chatSessionService.updateSessionUpdateTime(sessionId);
+
             // 设置响应头
             setStreamResponseHeaders(response);
 
