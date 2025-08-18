@@ -16,7 +16,9 @@ import org.springframework.util.StringUtils;
 import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -91,6 +93,12 @@ public class Package implements Serializable {
      */
     @TableField("model_permissions")
     private String modelPermissions;
+
+    /**
+     * 套餐功能特性列表（JSON格式存储）
+     */
+    @TableField("features")
+    private String features;
 
     /**
      * 是否启用（0-禁用，1-启用）
@@ -180,6 +188,26 @@ public class Package implements Serializable {
     }
 
     /**
+     * 获取套餐功能特性列表
+     *
+     * @return 功能特性列表
+     */
+    public List<String> getFeaturesList() {
+        if (!StringUtils.hasText(this.features)) {
+            return getDefaultFeatures();
+        }
+
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            TypeReference<List<String>> typeRef = new TypeReference<List<String>>() {};
+            return mapper.readValue(this.features, typeRef);
+        } catch (Exception e) {
+            log.warn("解析套餐{}功能特性配置失败，使用默认配置", this.getId(), e);
+            return getDefaultFeatures();
+        }
+    }
+
+    /**
      * 获取默认模型权限配置
      *
      * @return 默认模型权限配置
@@ -210,6 +238,51 @@ public class Package implements Serializable {
                 break;
             default:
                 // 默认无权限
+                break;
+        }
+
+        return defaults;
+    }
+
+    /**
+     * 获取默认功能特性列表
+     *
+     * @return 默认功能特性列表
+     */
+    private List<String> getDefaultFeatures() {
+        List<String> defaults = new ArrayList<>();
+
+        // 根据套餐类型返回默认功能特性
+        if (this.packageType == null) {
+            defaults.add("Standard features");
+            return defaults;
+        }
+
+        switch (this.packageType) {
+            case "basic":
+                defaults.add("Basic AI chat functionality");
+                defaults.add("Standard model access");
+                defaults.add("Daily usage limits");
+                defaults.add("Email support");
+                break;
+            case "medium":
+                defaults.add("Enhanced AI chat functionality");
+                defaults.add("Standard and Performance model access");
+                defaults.add("Higher daily usage limits");
+                defaults.add("Priority email support");
+                defaults.add("Chat history export");
+                break;
+            case "high":
+                defaults.add("Premium AI chat functionality");
+                defaults.add("All model access including Beta models");
+                defaults.add("Unlimited daily usage");
+                defaults.add("24/7 priority support");
+                defaults.add("Advanced chat history management");
+                defaults.add("API access");
+                defaults.add("Custom integrations");
+                break;
+            default:
+                defaults.add("Standard features");
                 break;
         }
 

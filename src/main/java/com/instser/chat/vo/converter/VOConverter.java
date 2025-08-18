@@ -289,6 +289,9 @@ public class VOConverter {
             }
         }
 
+        // 设置功能特性列表
+        packageVO.setFeatures(packageEntity.getFeaturesList());
+
         return packageVO;
     }
 
@@ -390,20 +393,8 @@ public class VOConverter {
         // 直接映射有效期天数
         frontendPackageVO.setPeriod(packageEntity.getValidityDays());
 
-        // 解析功能特性 (暂时使用模型权限作为功能特性)
-        if (packageEntity.getModelPermissions() != null) {
-            try {
-                ObjectMapper mapper = new ObjectMapper();
-                List<String> permissions = mapper.readValue(packageEntity.getModelPermissions(),
-                    new TypeReference<List<String>>() {});
-                frontendPackageVO.setFeatures(permissions);
-            } catch (Exception e) {
-                // 如果解析失败，提供默认功能特性
-                frontendPackageVO.setFeatures(getDefaultFeatures(packageEntity.getPackageType()));
-            }
-        } else {
-            frontendPackageVO.setFeatures(getDefaultFeatures(packageEntity.getPackageType()));
-        }
+        // 设置功能特性列表
+        frontendPackageVO.setFeatures(packageEntity.getFeaturesList());
 
         return frontendPackageVO;
     }
@@ -475,41 +466,6 @@ public class VOConverter {
 
 
 
-
-    /**
-     * 获取默认功能特性
-     */
-    private static List<String> getDefaultFeatures(String packageType) {
-        List<String> features = new ArrayList<>();
-        if (packageType == null) {
-            return features;
-        }
-
-        switch (packageType.toLowerCase()) {
-            case "basic":
-                features.add("Basic AI models");
-                features.add("Limited messages");
-                features.add("Standard support");
-                break;
-            case "premium":
-                features.add("Advanced AI models");
-                features.add("Unlimited messages");
-                features.add("Priority support");
-                features.add("Chat history export");
-                break;
-            case "enterprise":
-                features.add("All AI models");
-                features.add("Unlimited messages");
-                features.add("24/7 support");
-                features.add("Custom integrations");
-                features.add("Team management");
-                break;
-            default:
-                features.add("Standard features");
-                break;
-        }
-        return features;
-    }
 
     /**
      * 获取支付状态描述

@@ -79,6 +79,11 @@ public class PackageVO {
     private List<String> modelPermissions;
 
     /**
+     * 套餐功能特性列表
+     */
+    private List<String> features;
+
+    /**
      * 是否启用
      */
     private Boolean isEnabled;
