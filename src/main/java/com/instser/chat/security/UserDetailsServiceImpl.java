@@ -1,5 +1,6 @@
 package com.instser.chat.security;
 
+import com.instser.chat.common.util.LogUtils;
 import com.instser.chat.entity.User;
 import com.instser.chat.service.UserService;
 import lombok.RequiredArgsConstructor;
@@ -30,8 +31,8 @@ public class UserDetailsServiceImpl implements UserDetailsService {
     
     @Override
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        log.debug("加载用户信息: {}", username);
-        
+        LogUtils.logUserDebug(log, null, "加载用户信息", "用户名：{}", username);
+
         User user;
         try {
             // 判断是邮箱还是用户名
@@ -41,17 +42,17 @@ public class UserDetailsServiceImpl implements UserDetailsService {
                 user = userService.getUserByUsername(username);
             }
         } catch (Exception e) {
-            log.error("查询用户信息失败: {}", username, e);
+            LogUtils.logUserError(log, null, "查询用户信息", "查询用户信息失败，用户名：{}", e, username);
             throw new UsernameNotFoundException("用户不存在: " + username);
         }
-        
+
         if (user == null) {
-            log.warn("用户不存在: {}", username);
+            LogUtils.logUserWarning(log, null, "用户验证", "用户不存在：{}", username);
             throw new UsernameNotFoundException("用户不存在: " + username);
         }
-        
+
         if (user.getStatus() == null || user.getStatus() != 1) {
-            log.warn("用户已被禁用: {}", username);
+            LogUtils.logUserWarning(log, user.getId(), "用户验证", "用户已被禁用，用户名：{}", username);
             throw new UsernameNotFoundException("用户已被禁用: " + username);
         }
         

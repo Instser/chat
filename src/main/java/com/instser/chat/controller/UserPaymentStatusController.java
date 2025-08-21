@@ -16,9 +16,11 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
+import com.instser.chat.common.util.LogUtils;
 
 /**
  * 用户支付状态控制器
+
  * 提供用户充值状态查询API
  *
  * @author instser
@@ -49,10 +51,10 @@ public class UserPaymentStatusController {
                 return userDetails.getUserId();
             }
             // 如果不是CustomUserDetails，返回null表示认证失败
-            log.warn("认证主体不是CustomUserDetails类型：{}", principal.getClass().getName());
+            LogUtils.logUserWarning(log, null, "认证", "认证主体不是CustomUserDetails类型：{}", principal.getClass().getName());
             return null;
         } catch (Exception e) {
-            log.warn("获取用户ID失败", e);
+            LogUtils.logUserWarning(log, null, "认证", "获取用户ID失败", e);
             return null;
         }
     }
@@ -70,16 +72,16 @@ public class UserPaymentStatusController {
             }
 
             Map<String, Object> overview = new HashMap<>();
-            
+
             // 基本状态判定
             boolean neverPaid = userPaymentStatusService.hasNeverPaid(userId);
             boolean onlyFree = userPaymentStatusService.isOnlyFreeUser(userId);
             boolean activePaid = userPaymentStatusService.isActivePaidUser(userId);
-            
+
             // 支付信息
             BigDecimal totalAmount = userPaymentStatusService.getTotalPaidAmount(userId);
             LocalDateTime firstPaymentTime = userPaymentStatusService.getFirstPaymentTime(userId);
-            
+
             // 状态分类
             String statusCategory;
             if (neverPaid) {
@@ -91,7 +93,7 @@ public class UserPaymentStatusController {
             } else {
                 statusCategory = "INACTIVE_PAID";
             }
-            
+
             overview.put("userId", userId);
             overview.put("neverPaid", neverPaid);
             overview.put("onlyFreeUser", onlyFree);
@@ -99,12 +101,12 @@ public class UserPaymentStatusController {
             overview.put("statusCategory", statusCategory);
             overview.put("totalPaidAmount", totalAmount);
             overview.put("firstPaymentTime", firstPaymentTime);
-            
-            log.info("用户{}支付状态查询成功: {}", userId, statusCategory);
+
+            LogUtils.logUserOperation(log, userId, "查询支付状态", "用户支付状态查询成功: {}", statusCategory);
             return ResponseEntity.ok(Result.success(overview));
-            
+
         } catch (Exception e) {
-            log.error("获取用户支付状态概览异常", e);
+            LogUtils.logUserError(log, getCurrentUserId(authentication), "查询支付状态", "获取用户支付状态概览异常", e);
             return ResponseEntity.ok(Result.failed("查询失败"));
         }
     }
@@ -122,12 +124,12 @@ public class UserPaymentStatusController {
             }
 
             boolean neverPaid = userPaymentStatusService.hasNeverPaid(userId);
-            log.debug("用户{}充值状态检查: 从未充值={}", userId, neverPaid);
-            
+            LogUtils.logUserDebug(log, userId, "充值状态检查", "从未充值={}", neverPaid);
+
             return ResponseEntity.ok(Result.success(neverPaid));
-            
+
         } catch (Exception e) {
-            log.error("检查用户充值状态异常", e);
+            LogUtils.logUserError(log, getCurrentUserId(authentication), "充值状态检查", "检查用户充值状态异常", e);
             return ResponseEntity.ok(Result.failed("查询失败"));
         }
     }
@@ -145,12 +147,12 @@ public class UserPaymentStatusController {
             }
 
             boolean onlyFree = userPaymentStatusService.isOnlyFreeUser(userId);
-            log.debug("用户{}套餐使用状态检查: 仅免费套餐={}", userId, onlyFree);
-            
+            LogUtils.logUserDebug(log, userId, "套餐使用状态检查", "仅免费套餐={}", onlyFree);
+
             return ResponseEntity.ok(Result.success(onlyFree));
-            
+
         } catch (Exception e) {
-            log.error("检查用户套餐使用状态异常", e);
+            LogUtils.logUserError(log, getCurrentUserId(authentication), "套餐使用状态检查", "检查用户套餐使用状态异常", e);
             return ResponseEntity.ok(Result.failed("查询失败"));
         }
     }
@@ -168,12 +170,12 @@ public class UserPaymentStatusController {
             }
 
             boolean activePaid = userPaymentStatusService.isActivePaidUser(userId);
-            log.debug("用户{}活跃付费状态检查: 活跃付费用户={}", userId, activePaid);
-            
+            LogUtils.logUserDebug(log, userId, "活跃付费状态检查", "活跃付费用户={}", activePaid);
+
             return ResponseEntity.ok(Result.success(activePaid));
-            
+
         } catch (Exception e) {
-            log.error("检查用户活跃付费状态异常", e);
+            LogUtils.logUserError(log, getCurrentUserId(authentication), "活跃付费状态检查", "检查用户活跃付费状态异常", e);
             return ResponseEntity.ok(Result.failed("查询失败"));
         }
     }
@@ -191,12 +193,12 @@ public class UserPaymentStatusController {
             }
 
             BigDecimal totalAmount = userPaymentStatusService.getTotalPaidAmount(userId);
-            log.debug("用户{}总充值金额查询: {}", userId, totalAmount);
-            
+            LogUtils.logUserDebug(log, userId, "总充值金额查询", "总充值金额: {}", totalAmount);
+
             return ResponseEntity.ok(Result.success(totalAmount));
-            
+
         } catch (Exception e) {
-            log.error("获取用户总充值金额异常", e);
+            LogUtils.logUserError(log, getCurrentUserId(authentication), "总充值金额查询", "获取用户总充值金额异常", e);
             return ResponseEntity.ok(Result.failed("查询失败"));
         }
     }
@@ -214,12 +216,12 @@ public class UserPaymentStatusController {
             }
 
             LocalDateTime firstPaymentTime = userPaymentStatusService.getFirstPaymentTime(userId);
-            log.debug("用户{}首次充值时间查询: {}", userId, firstPaymentTime);
-            
+            LogUtils.logUserDebug(log, userId, "首次充值时间查询", "首次充值时间: {}", firstPaymentTime);
+
             return ResponseEntity.ok(Result.success(firstPaymentTime));
-            
+
         } catch (Exception e) {
-            log.error("获取用户首次充值时间异常", e);
+            LogUtils.logUserError(log, getCurrentUserId(authentication), "首次充值时间查询", "获取用户首次充值时间异常", e);
             return ResponseEntity.ok(Result.failed("查询失败"));
         }
     }
@@ -240,7 +242,7 @@ public class UserPaymentStatusController {
 
             // 检查管理员权限（这里简化处理，实际应该检查用户角色）
             // TODO: 添加管理员权限检查
-            
+
             Map<String, Object> status = new HashMap<>();
             status.put("userId", userId);
             status.put("neverPaid", userPaymentStatusService.hasNeverPaid(userId));
@@ -248,12 +250,12 @@ public class UserPaymentStatusController {
             status.put("activePaidUser", userPaymentStatusService.isActivePaidUser(userId));
             status.put("totalPaidAmount", userPaymentStatusService.getTotalPaidAmount(userId));
             status.put("firstPaymentTime", userPaymentStatusService.getFirstPaymentTime(userId));
-            
-            log.info("管理员{}查询用户{}支付状态成功", currentUserId, userId);
+
+            LogUtils.logAdminOperation(log, "查询用户支付状态", "管理员{}查询用户{}支付状态成功", currentUserId, userId);
             return ResponseEntity.ok(Result.success(status));
-            
+
         } catch (Exception e) {
-            log.error("管理员查询用户支付状态异常", e);
+            LogUtils.logAdminOperation(log, "查询用户支付状态", "管理员查询用户支付状态异常", e);
             return ResponseEntity.ok(Result.failed("查询失败"));
         }
     }

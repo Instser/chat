@@ -25,6 +25,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
+import com.instser.chat.common.util.LogUtils;
 /**
  * 订单服务实现类
  *
@@ -71,14 +72,14 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
         // 【新增】检查是否有相同套餐的近期待支付订单
         List<UserOrder> recentOrders = getRecentPendingOrders(userId, packageId, 30);
         if (!recentOrders.isEmpty()) {
-            log.info("发现用户{}有{}个相同套餐的近期待支付订单，返回最新的待支付订单", userId, recentOrders.size());
+            LogUtils.logUserOperation(log, userId, "创建订单", "发现用户有{}个相同套餐的近期待支付订单，返回最新的待支付订单", recentOrders.size());
 
             // 获取最新的待支付订单
             UserOrder latestOrder = recentOrders.get(0); // 查询结果已按创建时间倒序排列
 
             // 主动同步支付状态，确保返回的订单状态是最新的
             try {
-                log.debug("同步订单{}的支付状态", latestOrder.getOrderNo());
+                LogUtils.logUserOperation(log, userId, "创建订单", "同步订单{}的支付状态", latestOrder.getOrderNo());
                 paymentStatusSyncService.syncOrderStatus(latestOrder.getOrderNo());
 
                 // 重新获取订单信息，确保状态是最新的
@@ -87,10 +88,10 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
                     latestOrder = updatedOrder;
                 }
             } catch (Exception e) {
-                log.warn("同步订单{}状态异常，使用当前状态: {}", latestOrder.getOrderNo(), e.getMessage());
+                LogUtils.logUserWarning(log, userId, "创建订单", "同步订单{}状态异常，使用当前状态: {}", latestOrder.getOrderNo(), e.getMessage());
             }
 
-            log.info("返回用户{}的现有订单: {}，状态: {}", userId, latestOrder.getOrderNo(), latestOrder.getPaymentStatus());
+            LogUtils.logUserOperation(log, userId, "创建订单", "返回用户{}的现有订单: {}，状态: {}", userId, latestOrder.getOrderNo(), latestOrder.getPaymentStatus());
             // 【修复】确保返回的订单信息包含数据库生成的字段
             return getOrderByOrderNo(latestOrder.getOrderNo());
         }
@@ -113,7 +114,7 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
         // 【优化】仅在创建新订单时，才取消用户已有的其他待支付订单
         int cancelledCount = cancelUserPendingOrders(userId);
         if (cancelledCount > 0) {
-            log.info("用户{}发起新订单，已取消{}个进行中的订单", userId, cancelledCount);
+            LogUtils.logUserOperation(log, userId, "创建订单", "发起新订单，已取消{}个进行中的订单", cancelledCount);
         }
 
         // 创建订单
@@ -137,12 +138,12 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
         // 清除近期未支付订单缓存
         clearRecentPendingOrdersCache(userId, packageId);
 
-        log.info("创建订单成功，订单号: {}, 用户ID: {}, 套餐ID: {}, 金额: {} {}",
-                order.getOrderNo(), userId, packageId, amount, currency);
+        LogUtils.logUserOperation(log, userId, "创建订单", "创建订单成功，订单号: {}, 套餐ID: {}, 金额: {} {}",
+                order.getOrderNo(), packageId, amount, currency);
 
         // 【修复】从数据库重新获取订单，以包含自动生成的createdTime
         UserOrder finalOrder = getOrderByOrderNo(order.getOrderNo());
-        log.info("【订单创建完成】返回最终订单对象: {}", finalOrder);
+        LogUtils.logUserOperation(log, userId, "创建订单", "【订单创建完成】返回最终订单对象: {}", finalOrder);
         return finalOrder;
     }
 
@@ -164,17 +165,17 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
             boolean hasDiscountPrice = discountPrice != null && discountPrice.compareTo(BigDecimal.ZERO) > 0;
 
             if (isNewUser && hasDiscountPrice) {
-                log.info("用户{}为新用户且套餐{}有优惠价格，使用优惠价格: {} USD",
-                        userId, packageInfo.getId(), discountPrice);
+                LogUtils.logUserOperation(log, userId, "选择价格", "用户为新用户且套餐{}有优惠价格，使用优惠价格: {} USD",
+                        packageInfo.getId(), discountPrice);
                 return discountPrice;
             } else {
-                log.debug("用户{}使用套餐{}原价: {} USD (新用户: {}, 有优惠价格: {})",
-                        userId, packageInfo.getId(), packageInfo.getPrice(), isNewUser, hasDiscountPrice);
+                LogUtils.logUserDebug(log, userId, "选择价格", "用户使用套餐{}原价: {} USD (新用户: {}, 有优惠价格: {})",
+                        packageInfo.getId(), packageInfo.getPrice(), isNewUser, hasDiscountPrice);
                 return packageInfo.getPrice();
             }
         } catch (Exception e) {
-            log.error("选择价格时发生异常，用户ID: {}, 套餐ID: {}, 使用原价",
-                    userId, packageInfo.getId(), e);
+            LogUtils.logUserError(log, userId, "选择价格", "选择价格时发生异常，套餐ID: {}, 使用原价", e,
+                    packageInfo.getId());
             return packageInfo.getPrice();
         }
     }
@@ -191,13 +192,13 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
     private BigDecimal convertPriceWithExchangeRate(BigDecimal amount, String fromCurrency, String toCurrency, String paymentMethod) {
         try {
             BigDecimal convertedAmount = exchangeRateService.convertPrice(amount, fromCurrency, toCurrency);
-            log.info("支付方式{}汇率转换: {} {} -> {} {} (汇率: {})",
+            LogUtils.logAdminOperation(log, "汇率转换", "支付方式{}汇率转换: {} {} -> {} {} (汇率: {})",
                     paymentMethod, amount, fromCurrency, convertedAmount, toCurrency,
                     exchangeRateService.getExchangeRate(fromCurrency, toCurrency));
             return convertedAmount;
         } catch (Exception e) {
-            log.error("汇率转换失败，支付方式: {}, 金额: {} {}, 使用原始金额",
-                    paymentMethod, amount, fromCurrency, e);
+            LogUtils.logAdminOperation(log, "汇率转换", "汇率转换失败，支付方式: {}, 金额: {} {}, 使用原始金额", e,
+                    paymentMethod, amount, fromCurrency);
             return amount;
         }
     }
@@ -235,7 +236,7 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
             try {
                 UserOrder order = getOrderByOrderNo(orderNo);
                 if (order == null) {
-                    log.warn("更新订单状态失败，未找到订单: {}", orderNo);
+                    LogUtils.logAdminOperation(log, "更新订单状态", "更新订单状态失败，未找到订单: {}", orderNo);
                     return false;
                 }
 
@@ -245,11 +246,11 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
                 if (setPaymentTime && paymentStatus == 1) {
                     // 支付成功时设置支付时间
                     result = baseMapper.updatePaymentStatus(orderNo, paymentStatus, transactionId, now, now);
-                    log.info("更新订单支付状态成功（含支付时间），订单号: {}, 状态: {}, 交易号: {}", orderNo, paymentStatus, transactionId);
+                    LogUtils.logUserOperation(log, order.getUserId(), "更新订单状态", "更新订单支付状态成功（含支付时间），订单号: {}, 状态: {}, 交易号: {}", orderNo, paymentStatus, transactionId);
                 } else {
                     // 其他状态变更不设置支付时间
                     result = baseMapper.updatePaymentStatusWithoutTime(orderNo, paymentStatus, transactionId, now);
-                    log.info("更新订单支付状态成功（不含支付时间），订单号: {}, 状态: {}, 交易号: {}", orderNo, paymentStatus, transactionId);
+                    LogUtils.logUserOperation(log, order.getUserId(), "更新订单状态", "更新订单支付状态成功（不含支付时间），订单号: {}, 状态: {}, 交易号: {}", orderNo, paymentStatus, transactionId);
                 }
 
                 if (result > 0) {
@@ -257,11 +258,11 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
                     clearRecentPendingOrdersCache(order.getUserId(), order.getPackageId());
                     return true;
                 } else {
-                    log.warn("更新订单支付状态失败，订单号: {}, 状态: {}, 交易号: {}", orderNo, paymentStatus, transactionId);
+                    LogUtils.logUserWarning(log, order.getUserId(), "更新订单状态", "更新订单支付状态失败，订单号: {}, 状态: {}, 交易号: {}", orderNo, paymentStatus, transactionId);
                     return false;
                 }
             } catch (Exception e) {
-                log.error("更新订单支付状态异常，订单号: {}, 状态: {}, 交易号: {}", orderNo, paymentStatus, transactionId, e);
+                LogUtils.logUserError(log, null, "更新订单状态", "更新订单支付状态异常，订单号: {}, 状态: {}, 交易号: {}", e, orderNo, paymentStatus, transactionId);
                 return false;
             }
         });
@@ -310,25 +311,25 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
             // 1. 获取所有过期的订单
             List<UserOrder> expiredOrders = getExpiredOrders();
             if (expiredOrders.isEmpty()) {
-                log.info("没有需要清理的过期订单");
+                LogUtils.logAdminOperation(log, "清理过期订单", "没有需要清理的过期订单");
                 return 0;
             }
 
-            log.info("发现 {} 个需要清理的过期订单", expiredOrders.size());
+            LogUtils.logAdminOperation(log, "清理过期订单", "发现 {} 个需要清理的过期订单", expiredOrders.size());
 
             // 2. 清除相关缓存
             for (UserOrder order : expiredOrders) {
                 clearRecentPendingOrdersCache(order.getUserId(), order.getPackageId());
             }
-            log.info("已清除 {} 个过期订单的相关缓存", expiredOrders.size());
+            LogUtils.logAdminOperation(log, "清理过期订单", "已清除 {} 个过期订单的相关缓存", expiredOrders.size());
 
             // 3. 批量更新数据库
             int cleanedCount = baseMapper.cleanupExpiredOrders();
-            log.info("成功清理了 {} 个过期订单", cleanedCount);
+            LogUtils.logAdminOperation(log, "清理过期订单", "成功清理了 {} 个过期订单", cleanedCount);
 
             return cleanedCount;
         } catch (Exception e) {
-            log.error("清理过期订单时发生异常", e);
+            LogUtils.logAdminOperation(log, "清理过期订单", "清理过期订单时发生异常", e);
             return 0;
         }
     }
@@ -406,11 +407,11 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
         try {
             int cancelledCount = baseMapper.cancelUserPendingOrders(userId);
             if (cancelledCount > 0) {
-                log.info("取消用户{}的{}个待支付订单", userId, cancelledCount);
+                LogUtils.logUserOperation(log, userId, "取消订单", "取消用户{}个待支付订单", cancelledCount);
             }
             return cancelledCount;
         } catch (Exception e) {
-            log.error("取消用户{}的待支付订单异常", userId, e);
+            LogUtils.logUserError(log, userId, "取消订单", "取消用户待支付订单异常", e);
             return 0;
         }
     }

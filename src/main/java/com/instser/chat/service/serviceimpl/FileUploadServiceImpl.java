@@ -51,8 +51,8 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
         Path tempFilePath = null;
         String originalFilename = file.getOriginalFilename(); // 移到try外面，确保在catch中可以访问
 
-        log.info("【文件上传】用户ID：{}，文件名：{}，大小：{} KB，类型：{}",
-            userId, originalFilename, file.getSize() / 1024, file.getContentType());
+        LogUtils.logUserOperation(log, userId, "文件上传", "文件名：{}，大小：{} KB，类型：{}",
+            originalFilename, file.getSize() / 1024, file.getContentType());
 
         try {
             log.debug("【文件验证】开始验证文件，文件名：{}", originalFilename);
@@ -131,18 +131,18 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
                 throw new FileUploadException("FILE_SAVE_FAILED", "Failed to save file to database after retries");
             }
 
-            log.info("【文件上传】文件上传成功，用户ID：{}，文件ID：{}，文件名：{}，大小：{} KB，内容长度：{}",
-                userId, fileId, originalFilename, file.getSize() / 1024, fileContent.length());
+            LogUtils.logUserOperation(log, userId, "文件上传", "文件上传成功，文件ID：{}，文件名：{}，大小：{} KB，内容长度：{}",
+                fileId, originalFilename, file.getSize() / 1024, fileContent.length());
 
             return fileUpload;
 
         } catch (FileUploadException e) {
-            log.warn("【文件上传】业务异常，用户ID：{}，文件名：{}，错误：{}", userId, originalFilename, e.getMessage());
+            LogUtils.logUserWarning(log, userId, "文件上传", "业务异常，文件名：{}，错误：{}", originalFilename, e.getMessage());
             // FileUploadException直接重新抛出，不要转换
             throw e;
         } catch (IllegalArgumentException e) {
             // 参数验证错误，记录具体原因并抛出特定异常
-            log.warn("【文件上传】参数验证失败，用户ID：{}，文件名：{}，错误：{}", userId, originalFilename, e.getMessage());
+            LogUtils.logUserWarning(log, userId, "文件上传", "参数验证失败，文件名：{}，错误：{}", originalFilename, e.getMessage());
             // 根据具体错误类型抛出不同的异常
             if (e.getMessage().contains("文件不能为空")) {
                 throw new FileUploadException("FILE_EMPTY", "File cannot be empty");

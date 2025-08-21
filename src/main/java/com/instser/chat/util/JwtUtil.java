@@ -13,6 +13,7 @@ import javax.crypto.SecretKey;
 import java.time.Duration;
 import java.util.Date;
 import java.util.HashMap;
+import com.instser.chat.common.util.LogUtils;
 import java.util.Map;
 import java.util.function.Function;
 
@@ -26,16 +27,16 @@ import java.util.function.Function;
 @Component
 @RequiredArgsConstructor
 public class JwtUtil {
-    
+
     private final JwtConfig jwtConfig;
-    
+
     /**
      * 获取签名密钥
      */
     private SecretKey getSigningKey() {
         return Keys.hmacShaKeyFor(jwtConfig.getSecret().getBytes());
     }
-    
+
     /**
      * 生成JWT Token
      */
@@ -45,17 +46,17 @@ public class JwtUtil {
         claims.put("username", user.getUsername());
         claims.put("email", user.getEmail());
         claims.put("role", user.getRole());
-        
+
         return createToken(claims, user.getUsername());
     }
-    
+
     /**
      * 创建Token
      */
     private String createToken(Map<String, Object> claims, String subject) {
         Date now = new Date();
         Date expiration = new Date(now.getTime() + jwtConfig.getExpiration() * 1000);
-        
+
         return Jwts.builder()
                 .setClaims(claims)
                 .setSubject(subject)
@@ -64,14 +65,14 @@ public class JwtUtil {
                 .signWith(getSigningKey(), SignatureAlgorithm.HS512)
                 .compact();
     }
-    
+
     /**
      * 从Token中获取用户名
      */
     public String getUsernameFromToken(String token) {
         return getClaimFromToken(token, Claims::getSubject);
     }
-    
+
     /**
      * 从Token中获取用户ID
      */
@@ -83,7 +84,7 @@ public class JwtUtil {
         }
         return (Long) userId;
     }
-    
+
     /**
      * 从Token中获取用户角色
      */
@@ -91,14 +92,14 @@ public class JwtUtil {
         Claims claims = getAllClaimsFromToken(token);
         return (String) claims.get("role");
     }
-    
+
     /**
      * 从Token中获取过期时间
      */
     public Date getExpirationDateFromToken(String token) {
         return getClaimFromToken(token, Claims::getExpiration);
     }
-    
+
     /**
      * 从Token中获取指定声明
      */
@@ -106,7 +107,7 @@ public class JwtUtil {
         final Claims claims = getAllClaimsFromToken(token);
         return claimsResolver.apply(claims);
     }
-    
+
     /**
      * 从Token中获取所有声明
      */
@@ -118,23 +119,23 @@ public class JwtUtil {
                     .parseClaimsJws(token)
                     .getBody();
         } catch (ExpiredJwtException e) {
-            log.warn("JWT Token已过期: {}", e.getMessage());
+            LogUtils.logUserWarning(log, null, "JWT验证", "JWT Token已过期: {}", e.getMessage());
             throw e;
         } catch (UnsupportedJwtException e) {
-            log.error("不支持的JWT Token: {}", e.getMessage());
+            LogUtils.logUserError(log, null, "JWT验证", "不支持的JWT Token: {}", e, e.getMessage());
             throw e;
         } catch (MalformedJwtException e) {
-            log.error("JWT Token格式错误: {}", e.getMessage());
+            LogUtils.logUserError(log, null, "JWT验证", "JWT Token格式错误: {}", e, e.getMessage());
             throw e;
         } catch (SecurityException e) {
-            log.error("JWT Token签名验证失败: {}", e.getMessage());
+            LogUtils.logUserError(log, null, "JWT验证", "JWT Token签名验证失败: {}", e, e.getMessage());
             throw e;
         } catch (IllegalArgumentException e) {
-            log.error("JWT Token参数错误: {}", e.getMessage());
+            LogUtils.logUserError(log, null, "JWT验证", "JWT Token参数错误: {}", e, e.getMessage());
             throw e;
         }
     }
-    
+
     /**
      * 检查Token是否过期
      */
@@ -146,7 +147,7 @@ public class JwtUtil {
             return true;
         }
     }
-    
+
     /**
      * 验证Token
      */
@@ -155,11 +156,11 @@ public class JwtUtil {
             final String tokenUsername = getUsernameFromToken(token);
             return (username.equals(tokenUsername) && !isTokenExpired(token));
         } catch (Exception e) {
-            log.warn("Token验证失败: {}", e.getMessage());
+            LogUtils.logUserWarning(log, null, "JWT验证", "Token验证失败: {}", e.getMessage());
             return false;
         }
     }
-    
+
     /**
      * 验证Token（不检查用户名）
      */
@@ -168,11 +169,11 @@ public class JwtUtil {
             getAllClaimsFromToken(token);
             return !isTokenExpired(token);
         } catch (Exception e) {
-            log.warn("Token验证失败: {}", e.getMessage());
+            LogUtils.logUserWarning(log, null, "JWT验证", "Token验证失败: {}", e.getMessage());
             return false;
         }
     }
-    
+
     /**
      * 创建认证Cookie
      */
@@ -185,7 +186,7 @@ public class JwtUtil {
                 .path(jwtConfig.getPath())
                 .build();
     }
-    
+
     /**
      * 清除认证Cookie
      */
@@ -196,7 +197,7 @@ public class JwtUtil {
                 .path(jwtConfig.getPath())
                 .build();
     }
-    
+
     /**
      * 从请求头中提取Token
      */

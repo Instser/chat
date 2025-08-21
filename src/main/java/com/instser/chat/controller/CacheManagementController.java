@@ -19,6 +19,7 @@ import jakarta.servlet.http.HttpServletRequest;
 
 import jakarta.annotation.PostConstruct;
 
+import com.instser.chat.common.util.LogUtils;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -29,6 +30,7 @@ import java.util.stream.Collectors;
  * 全局缓存管理控制器
  * 提供全系统缓存监控、管理和调试接口
  *
+
  * 安全配置:
  * - 运行端口: 8081 (集成到现有management端口)
  * - 访问限制: API密钥验证（支持远程访问）
@@ -486,7 +488,7 @@ public class CacheManagementController {
             // 记录操作历史
             recordOperation("CLEAR_ALL_CACHE", "清空所有缓存", clientIp);
 
-            log.info("管理员清空所有缓存，IP: {}", clientIp);
+            LogUtils.logAdminOperation(log, "清空缓存", "管理员清空所有缓存，IP: {}", clientIp);
             return ResponseEntity.ok(Result.success("缓存已清空"));
         } catch (Exception e) {
             log.error("清空缓存失败", e);
@@ -553,7 +555,7 @@ public class CacheManagementController {
             result.put("module", module);
             result.put("type", type);
 
-            log.info("缓存预热完成，IP: {}, 预热缓存数: {}", clientIp, warmedCaches);
+            LogUtils.logAdminOperation(log, "缓存预热", "缓存预热完成，IP: {}, 预热缓存数: {}", clientIp, warmedCaches);
             return ResponseEntity.ok(Result.success(result));
 
         } catch (Exception e) {
@@ -605,7 +607,7 @@ public class CacheManagementController {
     public Result<String> evictCache(@PathVariable String key) {
         try {
             hybridCacheManager.evict(key);
-            log.info("管理员删除缓存，key: {}", key);
+            LogUtils.logAdminOperation(log, "删除缓存", "管理员删除缓存，key: {}", key);
             return Result.success("缓存已删除");
         } catch (Exception e) {
             log.error("删除缓存失败，key: {}", key, e);
@@ -620,7 +622,7 @@ public class CacheManagementController {
     public Result<String> clearModuleCache(@PathVariable String module) {
         try {
             globalCacheManager.clearModule(module);
-            log.info("管理员清空模块缓存，module: {}", module);
+            LogUtils.logAdminOperation(log, "清空模块缓存", "管理员清空模块缓存，module: {}", module);
             return Result.success("模块缓存已清空");
         } catch (Exception e) {
             log.error("清空模块缓存失败，module: {}", module, e);
@@ -641,7 +643,7 @@ public class CacheManagementController {
                 globalCacheManager.clearCache(cacheName);
             }
 
-            log.info("管理员清空类型缓存，type: {}", type);
+            LogUtils.logAdminOperation(log, "清空类型缓存", "管理员清空类型缓存，type: {}", type);
             return Result.success("类型缓存已清空");
         } catch (IllegalArgumentException e) {
             return Result.failed("无效的缓存类型: " + type);
@@ -658,7 +660,7 @@ public class CacheManagementController {
     public Result<String> resetCircuitBreaker() {
         try {
             circuitBreaker.reset();
-            log.info("管理员重置Redis熔断器");
+            LogUtils.logAdminOperation(log, "重置熔断器", "管理员重置Redis熔断器");
             return Result.success("熔断器已重置");
         } catch (Exception e) {
             log.error("重置熔断器失败", e);
@@ -673,7 +675,7 @@ public class CacheManagementController {
     public Result<String> forceOpenCircuitBreaker() {
         try {
             circuitBreaker.forceOpen();
-            log.warn("管理员手动触发Redis熔断器开启");
+            LogUtils.logAdminOperation(log, "手动开启熔断器", "管理员手动触发Redis熔断器开启");
             return Result.success("熔断器已手动开启");
         } catch (Exception e) {
             log.error("手动触发熔断器失败", e);
@@ -688,7 +690,7 @@ public class CacheManagementController {
     public Result<String> resetMonitoringStats() {
         try {
             monitoringService.resetStats();
-            log.info("管理员重置缓存监控统计");
+            LogUtils.logAdminOperation(log, "重置监控统计", "管理员重置缓存监控统计");
             return Result.success("监控统计已重置");
         } catch (Exception e) {
             log.error("重置监控统计失败", e);
@@ -703,18 +705,18 @@ public class CacheManagementController {
     public Result<Map<String, Object>> getCacheHealth() {
         try {
             Map<String, Object> health = new HashMap<>();
-            
+
             // Redis可用性
             boolean redisAvailable = circuitBreaker.isAvailable();
             health.put("redisAvailable", redisAvailable);
             health.put("circuitBreakerState", circuitBreaker.getState().name());
-            
+
             // 缓存性能
             HybridCacheManager.CacheStats cacheStats = hybridCacheManager.getStats();
             double hitRate = cacheStats.getL1HitRate();
             health.put("l1HitRate", hitRate);
             health.put("l1Size", cacheStats.getL1Size());
-            
+
             // 整体健康状态
             String overallStatus;
             if (!redisAvailable) {
@@ -725,7 +727,7 @@ public class CacheManagementController {
                 overallStatus = "HEALTHY"; // 健康状态
             }
             health.put("overallStatus", overallStatus);
-            
+
             // 建议
             if (!redisAvailable) {
                 health.put("recommendation", "Redis服务异常，系统已切换到降级模式，请检查Redis连接");
@@ -734,9 +736,9 @@ public class CacheManagementController {
             } else {
                 health.put("recommendation", "缓存系统运行正常");
             }
-            
+
             return Result.success(health);
-            
+
         } catch (Exception e) {
             log.error("获取缓存健康状态失败", e);
             return Result.failed("获取缓存健康状态失败: " + e.getMessage());

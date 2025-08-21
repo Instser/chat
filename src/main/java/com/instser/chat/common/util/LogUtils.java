@@ -1,13 +1,15 @@
 package com.instser.chat.common.util;
 
+import org.slf4j.Logger;
 import org.springframework.util.StringUtils;
 
 /**
  * 日志工具类
- * 提供日志记录相关的工具方法，主要用于内容截断等
+ * 提供日志记录相关的工具方法，包括内容截断、用户操作日志记录等
  *
  * @author instser
  * @since 2025-07-15
+ * @updated 2025-08-20 添加用户操作日志记录方法
  */
 public class LogUtils {
 
@@ -69,5 +71,225 @@ public class LogUtils {
      */
     public static boolean isEmpty(String str) {
         return !StringUtils.hasText(str);
+    }
+
+    // ==================== 用户操作日志记录方法 ====================
+
+    /**
+     * 记录用户操作信息日志
+     *
+     * @param logger 日志记录器
+     * @param userId 用户ID
+     * @param operation 操作描述
+     * @param message 详细消息
+     * @param args 消息参数
+     */
+    public static void logUserOperation(Logger logger, Long userId, String operation, String message, Object... args) {
+        if (userId != null) {
+            String logMessage = String.format("【%s】用户ID：%d，%s", operation, userId, message);
+            logger.info(logMessage, args);
+        } else {
+            String logMessage = String.format("【%s】用户ID：未知，%s", operation, message);
+            logger.info(logMessage, args);
+        }
+    }
+
+    /**
+     * 记录用户会话操作信息日志
+     *
+     * @param logger 日志记录器
+     * @param userId 用户ID
+     * @param sessionId 会话ID
+     * @param operation 操作描述
+     * @param message 详细消息
+     * @param args 消息参数
+     */
+    public static void logUserSessionOperation(Logger logger, Long userId, String sessionId, String operation, String message, Object... args) {
+        if (userId != null && sessionId != null) {
+            String logMessage = String.format("【%s】用户ID：%d，会话ID：%s，%s", operation, userId, sessionId, message);
+            logger.info(logMessage, args);
+        } else if (userId != null) {
+            String logMessage = String.format("【%s】用户ID：%d，会话ID：未知，%s", operation, userId, message);
+            logger.info(logMessage, args);
+        } else if (sessionId != null) {
+            String logMessage = String.format("【%s】用户ID：未知，会话ID：%s，%s", operation, sessionId, message);
+            logger.info(logMessage, args);
+        } else {
+            String logMessage = String.format("【%s】用户ID：未知，会话ID：未知，%s", operation, message);
+            logger.info(logMessage, args);
+        }
+    }
+
+    /**
+     * 记录用户操作警告日志
+     *
+     * @param logger 日志记录器
+     * @param userId 用户ID
+     * @param operation 操作描述
+     * @param message 详细消息
+     * @param args 消息参数
+     */
+    public static void logUserWarning(Logger logger, Long userId, String operation, String message, Object... args) {
+        if (userId != null) {
+            String logMessage = String.format("【%s警告】用户ID：%d，%s", operation, userId, message);
+            logger.warn(logMessage, args);
+        } else {
+            String logMessage = String.format("【%s警告】用户ID：未知，%s", operation, message);
+            logger.warn(logMessage, args);
+        }
+    }
+
+    /**
+     * 记录用户会话操作警告日志
+     *
+     * @param logger 日志记录器
+     * @param userId 用户ID
+     * @param sessionId 会话ID
+     * @param operation 操作描述
+     * @param message 详细消息
+     * @param args 消息参数
+     */
+    public static void logUserSessionWarning(Logger logger, Long userId, String sessionId, String operation, String message, Object... args) {
+        if (userId != null && sessionId != null) {
+            String logMessage = String.format("【%s警告】用户ID：%d，会话ID：%s，%s", operation, userId, sessionId, message);
+            logger.warn(logMessage, args);
+        } else if (userId != null) {
+            String logMessage = String.format("【%s警告】用户ID：%d，会话ID：未知，%s", operation, userId, message);
+            logger.warn(logMessage, args);
+        } else if (sessionId != null) {
+            String logMessage = String.format("【%s警告】用户ID：未知，会话ID：%s，%s", operation, sessionId, message);
+            logger.warn(logMessage, args);
+        } else {
+            String logMessage = String.format("【%s警告】用户ID：未知，会话ID：未知，%s", operation, message);
+            logger.warn(logMessage, args);
+        }
+    }
+
+    /**
+     * 记录用户操作错误日志
+     *
+     * @param logger 日志记录器
+     * @param userId 用户ID
+     * @param operation 操作描述
+     * @param message 详细消息
+     * @param throwable 异常信息
+     * @param args 消息参数
+     */
+    public static void logUserError(Logger logger, Long userId, String operation, String message, Throwable throwable, Object... args) {
+        if (userId != null) {
+            String logMessage = String.format("【%s异常】用户ID：%d，%s", operation, userId, message);
+            if (throwable != null) {
+                logger.error(logMessage, throwable);
+            } else {
+                logger.error(logMessage, args);
+            }
+        } else {
+            String logMessage = String.format("【%s异常】用户ID：未知，%s", operation, message);
+            if (throwable != null) {
+                logger.error(logMessage, throwable);
+            } else {
+                logger.error(logMessage, args);
+            }
+        }
+    }
+
+    /**
+     * 记录用户会话操作错误日志
+     *
+     * @param logger 日志记录器
+     * @param userId 用户ID
+     * @param sessionId 会话ID
+     * @param operation 操作描述
+     * @param message 详细消息
+     * @param throwable 异常信息
+     * @param args 消息参数
+     */
+    public static void logUserSessionError(Logger logger, Long userId, String sessionId, String operation, String message, Throwable throwable, Object... args) {
+        if (userId != null && sessionId != null) {
+            String logMessage = String.format("【%s异常】用户ID：%d，会话ID：%s，%s", operation, userId, sessionId, message);
+            if (throwable != null) {
+                logger.error(logMessage, throwable);
+            } else {
+                logger.error(logMessage, args);
+            }
+        } else if (userId != null) {
+            String logMessage = String.format("【%s异常】用户ID：%d，会话ID：未知，%s", operation, userId, message);
+            if (throwable != null) {
+                logger.error(logMessage, throwable);
+            } else {
+                logger.error(logMessage, args);
+            }
+        } else if (sessionId != null) {
+            String logMessage = String.format("【%s异常】用户ID：未知，会话ID：%s，%s", operation, sessionId, message);
+            if (throwable != null) {
+                logger.error(logMessage, throwable);
+            } else {
+                logger.error(logMessage, args);
+            }
+        } else {
+            String logMessage = String.format("【%s异常】用户ID：未知，会话ID：未知，%s", operation, message);
+            if (throwable != null) {
+                logger.error(logMessage, throwable);
+            } else {
+                logger.error(logMessage, args);
+            }
+        }
+    }
+
+    /**
+     * 记录用户操作调试日志
+     *
+     * @param logger 日志记录器
+     * @param userId 用户ID
+     * @param operation 操作描述
+     * @param message 详细消息
+     * @param args 消息参数
+     */
+    public static void logUserDebug(Logger logger, Long userId, String operation, String message, Object... args) {
+        if (userId != null) {
+            String logMessage = String.format("【%s调试】用户ID：%d，%s", operation, userId, message);
+            logger.debug(logMessage, args);
+        } else {
+            String logMessage = String.format("【%s调试】用户ID：未知，%s", operation, message);
+            logger.debug(logMessage, args);
+        }
+    }
+
+    /**
+     * 记录用户会话操作调试日志
+     *
+     * @param logger 日志记录器
+     * @param userId 用户ID
+     * @param sessionId 会话ID
+     * @param operation 操作描述
+     * @param message 详细消息
+     * @param args 消息参数
+     */
+    public static void logUserSessionDebug(Logger logger, Long userId, String sessionId, String operation, String message, Object... args) {
+        if (userId != null && sessionId != null) {
+            String logMessage = String.format("【%s调试】用户ID：%d，会话ID：%s，%s", operation, userId, sessionId, message);
+            logger.debug(logMessage, args);
+        } else if (userId != null) {
+            String logMessage = String.format("【%s调试】用户ID：%d，会话ID：未知，%s", operation, userId, message);
+            logger.debug(logMessage, args);
+        } else if (sessionId != null) {
+            String logMessage = String.format("【%s调试】用户ID：未知，会话ID：%s，%s", operation, sessionId, message);
+            logger.debug(logMessage, args);
+        } else {
+            String logMessage = String.format("【%s调试】用户ID：未知，会话ID：未知，%s", operation, message);
+            logger.debug(logMessage, args);
+        }
+    }
+
+    /**
+     * 记录管理员操作日志
+     * @param logger a logger instance
+     * @param operation the operation being logged
+     * @param message the log message
+     * @param args the log arguments
+     */
+    public static void logAdminOperation(Logger logger, String operation, String message, Object... args) {
+        String logMessage = String.format("【%s】%s", operation, message);
+        logger.info(logMessage, args);
     }
 }

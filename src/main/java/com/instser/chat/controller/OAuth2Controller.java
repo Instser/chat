@@ -23,6 +23,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import com.instser.chat.common.util.LogUtils;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.util.StringUtils;
@@ -79,7 +80,7 @@ public class OAuth2Controller {
         String clientIp = getClientIp(request);
         String userAgent = request.getHeader("User-Agent");
 
-        log.info("【API调用】OAuth2 API登录接口，提供商：{}，客户端IP：{}", provider, clientIp);
+        LogUtils.logUserOperation(log, null, "API调用", "OAuth2 API登录接口，提供商：{}，客户端IP：{}", provider, clientIp);
 
         try {
             // 1. 前端主导流程，直接处理用户信息获取
@@ -110,15 +111,15 @@ public class OAuth2Controller {
             auditService.logOAuth2Event(loginResult.getUser().getId(), provider, "API_LOGIN", "SUCCESS",
                 clientIp, userAgent, System.currentTimeMillis() - startTime, null, null);
 
-            log.info("【API响应】OAuth2 API登录成功，用户ID：{}，用户名：{}，是否新用户：{}",
-                loginResult.getUser().getId(), loginResult.getUser().getUsername(), loginResult.isNewUser());
+            LogUtils.logUserOperation(log, loginResult.getUser().getId(), "API响应", "OAuth2 API登录成功，用户名：{}，是否新用户：{}",
+                loginResult.getUser().getUsername(), loginResult.isNewUser());
 
             // 10. 返回用户数据
             String message = loginResult.isNewUser() ? "注册并登录成功" : "登录成功";
             return ResponseEntity.ok(Result.success(userVO, message));
 
         } catch (OAuth2Exception e) {
-            log.error("【API异常】OAuth2 API登录失败: provider={}, error={}", provider, e.getMessage());
+            LogUtils.logUserError(log, null, "API异常", "OAuth2 API登录失败: provider={}, error={}", e, provider, e.getMessage());
             auditService.logOAuth2Event(null, provider, "API_LOGIN", "FAILED",
                 clientIp, userAgent, System.currentTimeMillis() - startTime,
                 e.getErrorCode(), e.getMessage());
@@ -126,7 +127,7 @@ public class OAuth2Controller {
             return ResponseEntity.ok(Result.failed(e.getMessage()));
 
         } catch (Exception e) {
-            log.error("【API异常】OAuth2 API登录异常: provider={}", provider, e);
+            LogUtils.logUserError(log, null, "API异常", "OAuth2 API登录异常: provider={}", e, provider);
             auditService.logOAuth2Event(null, provider, "API_LOGIN", "ERROR",
                 clientIp, userAgent, System.currentTimeMillis() - startTime,
                 "SYSTEM_ERROR", e.getMessage());
@@ -217,7 +218,7 @@ public class OAuth2Controller {
 
             return userVO;
         } catch (Exception e) {
-            log.error("构建用户VO失败，用户ID：{}", user.getId(), e);
+            LogUtils.logUserError(log, user.getId(), "构建用户VO", "构建用户VO失败", e);
             // 返回基础VO，不包含套餐信息
             return VOConverter.toUserVO(user);
         }
@@ -242,7 +243,7 @@ public class OAuth2Controller {
 
             return new UserPackageInfo(userAccount.getPackageId(), packageInfo.getPackageName());
         } catch (Exception e) {
-            log.error("获取用户套餐信息失败，用户ID：{}", userId, e);
+            LogUtils.logUserError(log, userId, "获取用户套餐信息", "获取用户套餐信息失败", e);
             return null;
         }
     }

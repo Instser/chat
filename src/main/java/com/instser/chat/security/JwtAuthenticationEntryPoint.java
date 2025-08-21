@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
+import com.instser.chat.common.util.LogUtils;
 /**
  * JWT认证入口点
  * 处理未认证的请求
@@ -24,22 +25,22 @@ import java.nio.charset.StandardCharsets;
 @Slf4j
 @Component
 public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
-    
+
     private final ObjectMapper objectMapper = new ObjectMapper();
-    
+
     @Override
-    public void commence(HttpServletRequest request, 
-                        HttpServletResponse response, 
+    public void commence(HttpServletRequest request,
+                        HttpServletResponse response,
                         AuthenticationException authException) throws IOException, ServletException {
-        
-        log.warn("未认证的请求访问受保护的资源: {} {}", request.getMethod(), request.getRequestURI());
-        
+
+        LogUtils.logUserWarning(log, null, "认证", "未认证的请求访问受保护的资源: {} {}", request.getMethod(), request.getRequestURI());
+
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        
+
         Result<Object> result = Result.unauthorized("请先登录");
-        
+
         String jsonResponse = objectMapper.writeValueAsString(result);
         response.getWriter().write(jsonResponse);
     }

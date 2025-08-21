@@ -254,7 +254,7 @@ oauth2:
       token-uri: ${GOOGLE_TOKEN_URI:https://oauth2.googleapis.com/token}
       user-info-uri: ${GOOGLE_USER_INFO_URI:https://www.googleapis.com/oauth2/v3/userinfo}
       scope: ${GOOGLE_SCOPE:openid,email,profile}
-      redirect-uri: ${GOOGLE_REDIRECT_URI:http://chat.example.com/auth/callback/google}
+      redirect-uri: ${GOOGLE_REDIRECT_URI:https://chat.example.com/auth/callback/google}
     github:
       name: "GitHub"
       icon: "github"

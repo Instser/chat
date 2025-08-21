@@ -1,5 +1,6 @@
 package com.instser.chat.security;
 
+import com.instser.chat.common.util.LogUtils;
 import com.instser.chat.config.JwtConfig;
 import com.instser.chat.util.JwtUtil;
 import jakarta.servlet.FilterChain;
@@ -45,23 +46,30 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             if (token != null && SecurityContextHolder.getContext().getAuthentication() == null) {
                 if (jwtUtil.validateToken(token)) {
                     String username = jwtUtil.getUsernameFromToken(token);
-                    
+
                     UserDetails userDetails = userDetailsService.loadUserByUsername(username);
-                    
+
                     if (jwtUtil.validateToken(token, userDetails.getUsername())) {
-                        UsernamePasswordAuthenticationToken authToken = 
+                        UsernamePasswordAuthenticationToken authToken =
                             new UsernamePasswordAuthenticationToken(
-                                userDetails, 
-                                null, 
+                                userDetails,
+                                null,
                                 userDetails.getAuthorities()
                             );
                         authToken.setDetails(new WebAuthenticationDetailsSource().buildDetails(request));
                         SecurityContextHolder.getContext().setAuthentication(authToken);
+
+                        // 获取用户ID用于日志记录
+                        Long userId = null;
+                        if (userDetails instanceof UserDetailsServiceImpl.CustomUserDetails) {
+                            userId = ((UserDetailsServiceImpl.CustomUserDetails) userDetails).getUserId();
+                        }
+                        LogUtils.logUserOperation(log, userId, "JWT认证", "用户认证成功，用户名：{}", username);
                     }
                 }
             }
         } catch (Exception e) {
-            log.warn("JWT认证过程中发生异常: {}", e.getMessage());
+            LogUtils.logUserWarning(log, null, "JWT认证", "JWT认证过程中发生异常：{}", e.getMessage());
             // 清除可能存在的认证信息
             SecurityContextHolder.clearContext();
         }

@@ -59,7 +59,7 @@ public class ChatApiController {
     @PostMapping(value = "", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public void chat(@RequestBody Map<String, Object> request, Authentication authentication,
                      HttpServletRequest httpRequest, HttpServletResponse response) {
-        log.info("【API调用】聊天接口，请求参数：{}", LogUtils.formatRequestParams(request));
+        LogUtils.logUserOperation(log, getCurrentUserId(authentication), "API调用", "聊天接口，请求参数：{}", LogUtils.formatRequestParams(request));
 
         // 动态设置跨域头
         setCorsHeaders(httpRequest, response);
@@ -68,26 +68,24 @@ public class ChatApiController {
             // 将请求Map转换为DTO
             ChatRequestDTO chatRequest = ChatRequestDTO.fromMap(request);
 
-            log.debug("【聊天处理】开始处理聊天请求，用户ID：{}，会话ID：{}",
-                chatRequest.getUserId(), chatRequest.getSessionId());
+            LogUtils.logUserSessionDebug(log, chatRequest.getUserId(), chatRequest.getSessionId(), "聊天处理", "开始处理聊天请求");
 
             // 调用ChatService处理业务逻辑
             ChatResponseDTO chatResponse = chatService.processStreamChat(chatRequest, authentication, response);
 
             // 记录处理结果
             if (chatResponse.isSuccess()) {
-                log.info("【API响应】聊天请求处理成功，用户ID：{}", chatRequest.getUserId());
+                LogUtils.logUserSessionOperation(log, chatRequest.getUserId(), chatRequest.getSessionId(), "API响应", "聊天请求处理成功");
             } else {
                 String errorMsg = chatResponse.getErrorMessage();
                 if (errorMsg == null || errorMsg.trim().isEmpty()) {
                     errorMsg = "未知错误";
                 }
-                log.warn("【API响应】聊天请求处理失败，用户ID：{}，会话ID：{}，错误：{}",
-                    chatRequest.getUserId(), chatRequest.getSessionId(), errorMsg);
+                LogUtils.logUserSessionWarning(log, chatRequest.getUserId(), chatRequest.getSessionId(), "API响应", "聊天请求处理失败，错误：{}", errorMsg);
             }
 
         } catch (Exception e) {
-            log.error("【API异常】聊天接口异常：{}", e.getMessage(), e);
+            LogUtils.logUserError(log, getCurrentUserId(authentication), "API异常", "聊天接口异常：{}", e, e.getMessage());
             // 异常情况下的错误处理已在ChatService中完成
         }
     }
@@ -109,27 +107,27 @@ public class ChatApiController {
         Long userId = getCurrentUserId(authentication);
         String modelCode = (String) request.getOrDefault("model", "qwen3-235b-a22b");
 
-        log.info("【API调用】创建会话接口，用户ID：{}，模型：{}", userId, modelCode);
+        LogUtils.logUserOperation(log, userId, "API调用", "创建会话接口，模型：{}", modelCode);
 
         if (userId == null) {
-            log.warn("【API拒绝】用户未认证");
+            LogUtils.logUserWarning(log, null, "API拒绝", "用户未认证");
             return Result.unauthorized("用户未认证");
         }
 
         try {
             AiModel model = aiModelService.getModelByCode(modelCode);
             if (model == null) {
-                log.warn("【API拒绝】指定的模型不存在：{}", modelCode);
+                LogUtils.logUserWarning(log, userId, "API拒绝", "指定的模型不存在：{}", modelCode);
                 return Result.failed("指定的模型不存在");
             }
 
-            log.debug("【会话创建】开始创建会话，用户ID：{}，模型ID：{}", userId, model.getId());
+            LogUtils.logUserDebug(log, userId, "会话创建", "开始创建会话，模型ID：{}", model.getId());
             String sessionId = chatSessionService.createSession(userId, model.getId());
 
-            log.info("【API响应】会话创建成功，用户ID：{}，会话ID：{}", userId, sessionId);
+            LogUtils.logUserSessionOperation(log, userId, sessionId, "API响应", "会话创建成功");
             return Result.success(Map.of("sessionId", sessionId));
         } catch (Exception e) {
-            log.error("【API异常】创建会话失败，用户ID：{}，错误：{}", userId, e.getMessage(), e);
+            LogUtils.logUserError(log, userId, "API异常", "创建会话失败，错误：{}", e, e.getMessage());
             return Result.failed("创建会话失败");
         }
     }
@@ -202,11 +200,11 @@ public class ChatApiController {
                         Long userId = getCurrentUserId(auth);
                         if (userId != null) {
                             // 由于没有chatId，这里无法保存到数据库，只记录日志
-                            log.warn("modelId格式错误，用户ID：{}，错误值：{}", userId, modelIdObj);
+                            LogUtils.logUserWarning(log, userId, "参数验证", "modelId格式错误，错误值：{}", modelIdObj);
                         }
                     }
                 } catch (Exception ex) {
-                    log.warn("处理modelId格式错误时获取用户信息失败", ex);
+                    LogUtils.logUserWarning(log, null, "参数验证", "处理modelId格式错误时获取用户信息失败", ex);
                 }
                 throw new Exception("modelId格式错误");
             }
@@ -249,11 +247,11 @@ public class ChatApiController {
                     Long userId = getCurrentUserId(auth);
                     if (userId != null) {
                         chatService.saveErrorResponse(chatId, userId, 1L, errorContent);
-                        log.info("参数验证失败错误响应已保存到数据库，会话ID：{}，用户ID：{}，原因：chatId为空", chatId, userId);
+                        LogUtils.logUserSessionOperation(log, userId, chatId, "参数验证", "参数验证失败错误响应已保存到数据库，原因：chatId为空");
                     }
                 }
             } catch (Exception e) {
-                log.warn("保存参数验证错误响应失败", e);
+                LogUtils.logUserWarning(log, null, "参数验证", "保存参数验证错误响应失败", e);
             }
             return false;
         }
@@ -269,11 +267,11 @@ public class ChatApiController {
                     Long userId = getCurrentUserId(auth);
                     if (userId != null) {
                         chatService.saveErrorResponse(chatId, userId, 1L, errorContent);
-                        log.info("参数验证失败错误响应已保存到数据库，会话ID：{}，用户ID：{}，原因：messageId为空", chatId, userId);
+                        LogUtils.logUserSessionOperation(log, userId, chatId, "参数验证", "参数验证失败错误响应已保存到数据库，原因：messageId为空");
                     }
                 }
             } catch (Exception e) {
-                log.warn("保存参数验证错误响应失败", e);
+                LogUtils.logUserWarning(log, null, "参数验证", "保存参数验证错误响应失败", e);
             }
             return false;
         }
@@ -285,11 +283,11 @@ public class ChatApiController {
      * 处理通用异常
      */
     private void handleCommonException(Exception e, String operation, HttpServletResponse response) {
-        log.error("{}接口异常", operation, e);
+        LogUtils.logUserError(log, null, "API异常", "{}接口异常", e, operation);
         try {
             writeErrorResponse(response, "Request failed. Please try again later.");
         } catch (Exception ex) {
-            log.error("发送错误响应失败", ex);
+            LogUtils.logUserError(log, null, "API异常", "发送错误响应失败", ex);
         }
     }
 
@@ -299,7 +297,7 @@ public class ChatApiController {
     @PostMapping(value = "/retry", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public void retryChat(@RequestBody Map<String, Object> request, Authentication authentication,
                          HttpServletRequest httpRequest, HttpServletResponse response) {
-        log.info("收到重新生成请求：{}, 认证信息：{}", request, authentication);
+        LogUtils.logUserOperation(log, getCurrentUserId(authentication), "API调用", "收到重新生成请求：{}", request);
 
         // 动态设置跨域头
         setCorsHeaders(httpRequest, response);
@@ -330,7 +328,7 @@ public class ChatApiController {
     @PostMapping(value = "/edit-resend", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public void editResendChat(@RequestBody Map<String, Object> request, Authentication authentication,
                               HttpServletRequest httpRequest, HttpServletResponse response) {
-        log.info("收到编辑重发请求：{}, 认证信息：{}", request, authentication);
+        LogUtils.logUserOperation(log, getCurrentUserId(authentication), "API调用", "收到编辑重发请求：{}", request);
 
         // 动态设置跨域头
         setCorsHeaders(httpRequest, response);
@@ -358,10 +356,10 @@ public class ChatApiController {
                     Long userId = getCurrentUserId(authentication);
                     if (userId != null) {
                         chatService.saveErrorResponse(chatId, userId, 1L, errorContent);
-                        log.info("编辑重发参数验证失败错误响应已保存到数据库，会话ID：{}，用户ID：{}，原因：newContent为空", chatId, userId);
+                        LogUtils.logUserSessionOperation(log, userId, chatId, "参数验证", "编辑重发参数验证失败错误响应已保存到数据库，原因：newContent为空");
                     }
                 } catch (Exception e) {
-                    log.warn("保存编辑重发参数验证错误响应失败", e);
+                    LogUtils.logUserWarning(log, null, "参数验证", "保存编辑重发参数验证错误响应失败", e);
                 }
                 return;
             }
@@ -390,10 +388,10 @@ public class ChatApiController {
                 return userDetails.getUserId();
             }
             // 如果不是CustomUserDetails，返回null表示认证失败
-            log.warn("认证主体不是CustomUserDetails类型：{}", principal.getClass().getName());
+            LogUtils.logUserWarning(log, null, "认证", "认证主体不是CustomUserDetails类型：{}", principal.getClass().getName());
             return null;
         } catch (Exception e) {
-            log.warn("获取用户ID失败", e);
+            LogUtils.logUserWarning(log, null, "认证", "获取用户ID失败", e);
             return null;
         }
     }
@@ -410,7 +408,7 @@ public class ChatApiController {
             response.getWriter().write("3:\"" + errorMessage + "\"\n");
             response.getWriter().flush();
         } catch (Exception e) {
-            log.error("写入错误响应失败", e);
+            LogUtils.logUserError(log, null, "API响应", "写入错误响应失败", e);
         }
     }
 
@@ -475,30 +473,30 @@ public class ChatApiController {
 
             // 参数验证
             if (sessionId == null || sessionId.trim().isEmpty()) {
-                log.warn("中断聊天请求参数错误：sessionId为空");
+                LogUtils.logUserWarning(log, userId, "参数验证", "中断聊天请求参数错误：sessionId为空");
                 return Result.validateFailed("会话ID不能为空");
             }
 
             if (userId == null) {
-                log.warn("中断聊天请求认证失败：无法获取用户ID");
+                LogUtils.logUserWarning(log, null, "认证", "中断聊天请求认证失败：无法获取用户ID");
                 return Result.unauthorized("用户认证失败");
             }
 
-            log.info("用户{}请求中断聊天会话：sessionId={}", userId, sessionId);
+            LogUtils.logUserSessionOperation(log, userId, sessionId, "API调用", "请求中断聊天会话");
 
             // 执行中断操作
             boolean success = chatInterruptService.interruptChat(sessionId, userId);
 
             if (success) {
-                log.info("用户{}成功中断聊天会话：sessionId={}", userId, sessionId);
+                LogUtils.logUserSessionOperation(log, userId, sessionId, "API响应", "成功中断聊天会话");
                 return Result.success("聊天已中断");
             } else {
-                log.warn("用户{}中断聊天会话失败：sessionId={}", userId, sessionId);
+                LogUtils.logUserSessionWarning(log, userId, sessionId, "API响应", "中断聊天会话失败");
                 return Result.failed("中断失败，会话可能已完成或不存在");
             }
 
         } catch (Exception e) {
-            log.error("中断聊天请求处理异常", e);
+            LogUtils.logUserError(log, getCurrentUserId(authentication), "API异常", "中断聊天请求处理异常", e);
             return Result.failed("系统错误，请稍后重试");
         }
     }
@@ -519,7 +517,7 @@ public class ChatApiController {
             return Result.success(status, "获取状态成功");
 
         } catch (Exception e) {
-            log.error("获取聊天状态异常", e);
+            LogUtils.logUserError(log, getCurrentUserId(authentication), "API异常", "获取聊天状态异常", e);
             return Result.failed("获取状态失败");
         }
     }

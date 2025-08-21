@@ -282,30 +282,29 @@ public class PaymentController {
     public Result<?> createPayment(@Valid @RequestBody PaymentRequestVO paymentRequest, Authentication authentication) {
         Long userId = getCurrentUserId(authentication);
 
-        log.info("【API调用】创建支付订单接口，用户ID：{}，套餐ID：{}，支付方式：{}",
-            userId, paymentRequest.getPackageId(), paymentRequest.getPaymentMethod());
+        LogUtils.logUserOperation(log, userId, "API调用", "创建支付订单接口，套餐ID：{}，支付方式：{}", paymentRequest.getPackageId(), paymentRequest.getPaymentMethod());
 
         try {
             if (userId == null) {
-                log.warn("【API拒绝】用户未认证");
+                LogUtils.logUserWarning(log, null, "API拒绝", "用户未认证");
                 return ErrorResponseUtil.unauthorized("User not authenticated");
             }
 
             paymentRequest.setUserId(userId);
 
-            log.debug("【支付处理】开始创建支付订单，用户ID：{}", userId);
+            LogUtils.logUserDebug(log, userId, "支付处理", "开始创建支付订单");
 
             PaymentResponseVO response = paymentService.createPayment(paymentRequest);
 
             if (response.getSuccess()) {
-                log.info("【API响应】支付订单创建成功，用户ID：{}，订单号：{}", userId, response.getOrderNo());
+                LogUtils.logUserOperation(log, userId, "API响应", "支付订单创建成功，订单号：{}", response.getOrderNo());
                 return Result.success(response, "支付订单创建成功");
             } else {
-                log.warn("【API响应】支付订单创建失败，用户ID：{}，错误：{}", userId, response.getErrorMessage());
+                LogUtils.logUserWarning(log, userId, "API响应", "支付订单创建失败，错误：{}", response.getErrorMessage());
                 return ErrorResponseUtil.paymentCreateFailed(response.getErrorMessage());
             }
         } catch (Exception e) {
-            log.error("【API异常】创建支付订单失败，用户ID：{}，错误：{}", userId, e.getMessage(), e);
+            LogUtils.logUserError(log, userId, "API异常", "创建支付订单失败，错误：{}", e, e.getMessage());
 
             // 特殊处理重放攻击错误
             if (e.getMessage() != null && e.getMessage().contains("重复的支付请求")) {
@@ -331,18 +330,18 @@ public class PaymentController {
      */
     @GetMapping("/status/{orderNo}")
     public Result<?> getPaymentStatus(@PathVariable String orderNo) {
-        log.info("【API调用】查询支付状态接口，订单号：{}", orderNo);
+        LogUtils.logUserOperation(log, null, "API调用", "查询支付状态接口，订单号：{}", orderNo);
 
         try {
-            log.debug("【支付查询】开始查询支付状态，订单号：{}", orderNo);
+            LogUtils.logUserDebug(log, null, "支付查询", "开始查询支付状态，订单号：{}", orderNo);
 
             UserOrder order = paymentService.queryPaymentStatus(orderNo);
             if (order == null) {
-                log.warn("【API响应】未找到订单，订单号：{}", orderNo);
+                LogUtils.logUserWarning(log, null, "API响应", "未找到订单，订单号：{}", orderNo);
                 return ErrorResponseUtil.orderNotFound();
             }
 
-            log.debug("【支付查询】找到订单，订单号：{}，状态：{}", orderNo, order.getPaymentStatus());
+            LogUtils.logUserDebug(log, order.getUserId(), "支付查询", "找到订单，订单号：{}，状态：{}", orderNo, order.getPaymentStatus());
 
             // 构建简化的状态响应
             PaymentStatusResponseVO response = new PaymentStatusResponseVO();
@@ -350,10 +349,10 @@ public class PaymentController {
             response.setStatus(order.getPaymentStatus()); // 保持原始状态码
             response.setMessage(getPaymentStatusMessage(order.getPaymentStatus()));
 
-            log.info("【API响应】查询支付状态成功，订单号：{}，状态：{}", orderNo, response.getMessage());
+            LogUtils.logUserOperation(log, order.getUserId(), "API响应", "查询支付状态成功，订单号：{}，状态：{}", orderNo, response.getMessage());
             return Result.success(response);
         } catch (Exception e) {
-            log.error("【API异常】查询支付状态失败，订单号：{}，错误：{}", orderNo, e.getMessage(), e);
+            LogUtils.logUserError(log, null, "API异常", "查询支付状态失败，订单号：{}，错误：{}", e, orderNo, e.getMessage());
             return ErrorResponseUtil.paymentStatusQueryFailed();
         }
     }

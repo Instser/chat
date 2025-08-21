@@ -61,20 +61,20 @@ public class FileController {
 
         Long userId = getCurrentUserId(authentication);
 
-        log.info("【API调用】文件上传接口，用户ID：{}，文件数量：{}", userId, files != null ? files.length : 0);
+        LogUtils.logUserOperation(log, userId, "API调用", "文件上传接口，文件数量：{}", files != null ? files.length : 0);
 
         if (files == null || files.length == 0) {
-            log.warn("【API拒绝】文件为空，用户ID：{}", userId);
+            LogUtils.logUserWarning(log, userId, "API拒绝", "文件为空");
             return ErrorResponseUtil.fileEmpty();
         }
 
         try {
-            log.debug("【文件上传】开始批量上传文件，用户ID：{}，文件数量：{}", userId, files.length);
+            LogUtils.logUserDebug(log, userId, "文件上传", "开始批量上传文件，文件数量：{}", files.length);
 
             // 使用服务层进行文件上传（不传递sessionId和messageId，这些将在chat成功后更新）
             List<FileUpload> uploadedFiles = fileUploadService.uploadFiles(files, userId, null, null);
 
-            log.debug("【文件验证】开始校验存储完成性，用户ID：{}，上传文件数：{}", userId, uploadedFiles.size());
+            LogUtils.logUserDebug(log, userId, "文件验证", "开始校验存储完成性，上传文件数：{}", uploadedFiles.size());
 
             // 校验存储完成性
             List<String> validatedFileIds = new ArrayList<>();
@@ -98,11 +98,11 @@ public class FileController {
                         fileInfo.put("fileName", fileUpload.getFileName());
                         validatedFiles.add(fileInfo);
 
-                        log.debug("【文件验证】文件存储校验成功，文件ID：{}，文件名：{}，用户ID：{}",
-                                fileUpload.getFileId(), fileUpload.getFileName(), userId);
+                        LogUtils.logUserDebug(log, userId, "文件验证", "文件存储校验成功，文件ID：{}，文件名：{}",
+                                fileUpload.getFileId(), fileUpload.getFileName());
                     } else {
-                        log.error("【文件验证】文件存储校验失败，文件ID：{}，文件名：{}，用户ID：{}",
-                                fileUpload.getFileId(), fileUpload.getFileName(), userId);
+                        LogUtils.logUserError(log, userId, "文件验证", "文件存储校验失败，文件ID：{}，文件名：{}", null,
+                                fileUpload.getFileId(), fileUpload.getFileName());
                         failedFiles.add(fileUpload);
                     }
                 }
@@ -111,12 +111,12 @@ public class FileController {
             // 清理验证失败的文件的临时文件
             if (!failedFiles.isEmpty()) {
                 fileUploadService.cleanupTempFiles(failedFiles);
-                log.warn("【文件清理】清理了{}个验证失败的临时文件，用户ID：{}", failedFiles.size(), userId);
+                LogUtils.logUserWarning(log, userId, "文件清理", "清理了{}个验证失败的临时文件", failedFiles.size());
             }
 
             // 检查是否有文件上传成功
             if (validatedFileIds.isEmpty()) {
-                log.warn("【API响应】所有文件上传失败，用户ID：{}", userId);
+                LogUtils.logUserWarning(log, userId, "API响应", "所有文件上传失败");
                 return ErrorResponseUtil.fileUploadFailed();
             }
 
@@ -127,14 +127,14 @@ public class FileController {
             response.put("files", validatedFiles); // 文件详细信息数组
             response.put("message", "Upload succeed");
 
-            log.info("【API响应】文件上传成功，用户ID：{}，成功文件数：{}，文件ID：{}",
-                userId, validatedFileIds.size(), String.join(",", validatedFileIds));
+            LogUtils.logUserOperation(log, userId, "API响应", "文件上传成功，成功文件数：{}，文件ID：{}",
+                validatedFileIds.size(), String.join(",", validatedFileIds));
 
             return Result.success(response, "OK");
 
         } catch (FileUploadException e) {
-            log.error("【API异常】文件上传失败，用户ID：{}，错误类型：{}，错误信息：{}",
-                userId, e.getErrorType(), e.getErrorMessage());
+            LogUtils.logUserError(log, userId, "API异常", "文件上传失败，错误类型：{}，错误信息：{}", e,
+                e.getErrorType(), e.getErrorMessage());
 
             // 根据错误类型返回对应的错误响应
             switch (e.getErrorType()) {
@@ -151,7 +151,7 @@ public class FileController {
             }
         } catch (Exception e) {
             // 只记录错误消息，不打印堆栈跟踪
-            log.error("文件上传失败: {}", e.getMessage());
+            LogUtils.logUserError(log, userId, "API异常", "文件上传失败: {}", e, e.getMessage());
             return ErrorResponseUtil.fileUploadFailed();
         }
     }
@@ -200,16 +200,18 @@ public class FileController {
         try {
             boolean deleted = fileUploadService.deleteFile(fileId, userId);
             if (!deleted) {
+                LogUtils.logUserWarning(log, userId, "文件删除", "文件删除失败，文件ID：{}", fileId);
                 return Result.failed("文件删除失败");
             }
 
-            log.info("文件删除成功：用户ID={}, 文件ID={}", userId, fileId);
+            LogUtils.logUserOperation(log, userId, "文件删除", "文件删除成功，文件ID：{}", fileId);
             return Result.success(null, "文件删除成功");
 
         } catch (IllegalArgumentException e) {
+            LogUtils.logUserWarning(log, userId, "文件删除", "文件删除失败：{}", e.getMessage());
             return Result.failed(e.getMessage());
         } catch (Exception e) {
-            log.error("文件删除失败", e);
+            LogUtils.logUserError(log, userId, "文件删除", "文件删除失败", e);
             return Result.failed("文件删除失败");
         }
     }
@@ -254,12 +256,14 @@ public class FileController {
                 return Result.failed("文件内容更新失败");
             }
 
+            LogUtils.logUserOperation(log, userId, "文件内容更新", "文件内容更新成功，文件ID：{}", fileId);
             return Result.success(null, "文件内容更新成功");
 
         } catch (IllegalArgumentException e) {
+            LogUtils.logUserWarning(log, userId, "文件内容更新", "文件内容更新失败：{}", e.getMessage());
             return Result.failed(e.getMessage());
         } catch (Exception e) {
-            log.error("文件内容更新失败", e);
+            LogUtils.logUserError(log, userId, "文件内容更新", "文件内容更新失败", e);
             return Result.failed("文件内容更新失败");
         }
     }
@@ -322,15 +326,18 @@ public class FileController {
         try {
             boolean associated = fileUploadService.associateFileToMessage(fileId, messageId, userId);
             if (!associated) {
+                LogUtils.logUserWarning(log, userId, "文件关联", "文件关联失败，文件ID：{}，消息ID：{}", fileId, messageId);
                 return Result.failed("文件关联失败");
             }
 
+            LogUtils.logUserOperation(log, userId, "文件关联", "文件关联成功，文件ID：{}，消息ID：{}", fileId, messageId);
             return Result.success(null, "文件关联成功");
 
         } catch (IllegalArgumentException e) {
+            LogUtils.logUserWarning(log, userId, "文件关联", "文件关联失败：{}", e.getMessage());
             return Result.failed(e.getMessage());
         } catch (Exception e) {
-            log.error("文件关联失败", e);
+            LogUtils.logUserError(log, userId, "文件关联", "文件关联失败", e);
             return Result.failed("文件关联失败");
         }
     }
@@ -373,7 +380,7 @@ public class FileController {
             return Result.success(response, "文件下载成功");
 
         } catch (Exception e) {
-            log.error("文件下载失败", e);
+            LogUtils.logUserError(log, userId, "文件下载", "文件下载失败", e);
             return Result.failed("文件下载失败：" + e.getMessage());
         }
     }

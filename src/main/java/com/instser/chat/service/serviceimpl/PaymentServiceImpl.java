@@ -117,8 +117,8 @@ public class PaymentServiceImpl implements PaymentService {
 
     @Override
     public PaymentResponseVO createPayment(PaymentRequestVO paymentRequest) {
-        log.info("【支付创建】用户ID：{}，套餐ID：{}，支付方式：{}",
-            paymentRequest.getUserId(), paymentRequest.getPackageId(), paymentRequest.getPaymentMethod());
+        LogUtils.logUserOperation(log, paymentRequest.getUserId(), "支付创建", "套餐ID：{}，支付方式：{}",
+            paymentRequest.getPackageId(), paymentRequest.getPaymentMethod());
 
         // ✅ 使用PaymentSessionManager确保会话锁正确释放
         try (PaymentSessionManager sessionManager = new PaymentSessionManager(
@@ -156,19 +156,16 @@ public class PaymentServiceImpl implements PaymentService {
             // 7. 记录支付创建审计日志
             recordCreatePaymentAudit(paymentRequest, response);
 
-            log.info("【支付创建】支付创建成功，用户ID：{}，订单号：{}",
-                paymentRequest.getUserId(), response.getOrderNo());
+            LogUtils.logUserOperation(log, paymentRequest.getUserId(), "支付创建", "支付创建成功，订单号：{}", response.getOrderNo());
 
             return response;
 
         } catch (PaymentException | ResourceNotFoundException e) {
-            log.warn("【支付创建】支付创建失败，用户ID：{}，原因：{}",
-                paymentRequest.getUserId(), e.getMessage());
+            LogUtils.logUserWarning(log, paymentRequest.getUserId(), "支付创建", "支付创建失败，原因：{}", e.getMessage());
             // 业务异常直接抛出，由全局异常处理器处理
             throw e;
         } catch (Exception e) {
-            log.error("【支付创建】支付创建异常，用户ID：{}，错误：{}",
-                paymentRequest.getUserId(), e.getMessage(), e);
+            LogUtils.logUserError(log, paymentRequest.getUserId(), "支付创建", "支付创建异常，错误：{}", e, e.getMessage());
             throw new PaymentException("创建支付失败", e.getMessage());
         }
     }

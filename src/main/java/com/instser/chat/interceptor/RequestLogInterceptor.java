@@ -17,6 +17,7 @@ import java.io.IOException;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.Map;
+import com.instser.chat.common.util.LogUtils;
 
 /**
  * 请求日志拦截器
@@ -41,17 +42,17 @@ public class RequestLogInterceptor implements HandlerInterceptor {
 
         // 获取当前用户ID
         String userId = getCurrentUserId();
-        
+
         // 获取请求路径和方法
         String method = request.getMethod();
         String path = request.getRequestURI();
-        
+
         // 获取请求参数
         String parameters = getRequestParameters(request);
-        
+
         // 输出日志：（用户ID）调用（方法路径）参数为（请求参数）
-        log.info("（{}）调用（{} {}）参数为（{}）", userId, method, path, parameters);
-        
+        LogUtils.logUserOperation(log, Long.parseLong(userId), "API请求", "调用 {} {}，参数为（{}）", method, path, parameters);
+
         return true;
     }
 
@@ -61,12 +62,12 @@ public class RequestLogInterceptor implements HandlerInterceptor {
     private String getCurrentUserId() {
         try {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
-            if (authentication != null && authentication.isAuthenticated() && 
+            if (authentication != null && authentication.isAuthenticated() &&
                 !"anonymousUser".equals(authentication.getPrincipal())) {
-                
+
                 Object principal = authentication.getPrincipal();
                 if (principal instanceof UserDetailsServiceImpl.CustomUserDetails) {
-                    UserDetailsServiceImpl.CustomUserDetails userDetails = 
+                    UserDetailsServiceImpl.CustomUserDetails userDetails =
                         (UserDetailsServiceImpl.CustomUserDetails) principal;
                     return userDetails.getUser().getId().toString();
                 }
@@ -83,7 +84,7 @@ public class RequestLogInterceptor implements HandlerInterceptor {
     private String getRequestParameters(HttpServletRequest request) {
         try {
             Map<String, Object> params = new HashMap<>();
-            
+
             // 1. 获取URL参数
             Enumeration<String> paramNames = request.getParameterNames();
             while (paramNames.hasMoreElements()) {
@@ -95,14 +96,14 @@ public class RequestLogInterceptor implements HandlerInterceptor {
                     params.put(paramName, paramValues);
                 }
             }
-            
+
             // 2. 获取路径参数
             @SuppressWarnings("unchecked")
             Map<String, String> pathVariables = (Map<String, String>) request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE);
             if (pathVariables != null && !pathVariables.isEmpty()) {
                 params.putAll(pathVariables);
             }
-            
+
             // 3. 获取请求体参数（仅对POST、PUT、PATCH请求）
             String method = request.getMethod();
             if (("POST".equals(method) || "PUT".equals(method) || "PATCH".equals(method)) &&
@@ -117,16 +118,16 @@ public class RequestLogInterceptor implements HandlerInterceptor {
                     params.put("requestBody", requestBody);
                 }
             }
-            
+
             // 转换为JSON字符串
             if (params.isEmpty()) {
                 return "无";
             }
-            
+
             return objectMapper.writeValueAsString(params);
-            
+
         } catch (Exception e) {
-            log.debug("获取请求参数失败: {}", e.getMessage());
+            LogUtils.logUserDebug(log, null, "API请求", "获取请求参数失败: {}", e.getMessage());
             return "参数解析失败";
         }
     }
@@ -150,7 +151,7 @@ public class RequestLogInterceptor implements HandlerInterceptor {
             }
             return stringBuilder.toString();
         } catch (IOException e) {
-            log.debug("读取请求体失败: {}", e.getMessage());
+            LogUtils.logUserDebug(log, null, "API请求", "读取请求体失败: {}", e.getMessage());
             return null;
         }
     }

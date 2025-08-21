@@ -2,6 +2,7 @@ package com.instser.chat.controller;
 
 import com.instser.chat.common.result.Result;
 import com.instser.chat.common.util.ErrorResponseUtil;
+import com.instser.chat.common.util.LogUtils;
 import com.instser.chat.dto.request.ChangePasswordRequest;
 import com.instser.chat.dto.request.LoginRequest;
 
@@ -70,10 +71,10 @@ public class AuthController {
     public ResponseEntity<?> login(@Valid @RequestBody LoginRequest request,
                                                HttpServletResponse response) {
         String userIdentifier = request.getUsernameOrEmail();
-        log.info("【API调用】用户登录接口，用户标识：{}", userIdentifier);
+        LogUtils.logUserOperation(log, null, "API调用", "用户登录接口，用户标识：{}", userIdentifier);
 
         try {
-            log.debug("【登录处理】开始认证用户，用户标识：{}", userIdentifier);
+            LogUtils.logUserDebug(log, null, "登录处理", "开始认证用户，用户标识：{}", userIdentifier);
 
             // 认证用户
             Authentication authentication = authenticationManager.authenticate(
@@ -85,12 +86,12 @@ public class AuthController {
                 (UserDetailsServiceImpl.CustomUserDetails) authentication.getPrincipal();
             User user = userDetails.getUser();
 
-            log.debug("【登录处理】用户认证成功，开始更新登录时间，用户ID：{}", user.getId());
+            LogUtils.logUserDebug(log, user.getId(), "登录处理", "用户认证成功，开始更新登录时间");
 
             // 更新最后登录时间
             userService.updateLastLoginTime(user.getId());
 
-            log.debug("【登录处理】开始生成JWT令牌，用户ID：{}", user.getId());
+            LogUtils.logUserDebug(log, user.getId(), "登录处理", "开始生成JWT令牌");
 
             // 生成JWT Token
             String token = jwtUtil.generateToken(user);
@@ -99,16 +100,15 @@ public class AuthController {
             response.addHeader(HttpHeaders.SET_COOKIE, jwtUtil.createAuthCookie(token).toString());
 
             UserVO userVO = VOConverter.toUserVO(user);
-            log.info("【API响应】用户登录成功，用户ID：{}，用户名：{}", user.getId(), user.getUsername());
+            LogUtils.logUserOperation(log, user.getId(), "API响应", "用户登录成功，用户名：{}", user.getUsername());
 
             return ResponseEntity.ok(Result.success(userVO, "登录成功"));
 
         } catch (BadCredentialsException e) {
-            log.warn("【登录失败】用户名或密码错误，用户标识：{}", userIdentifier);
+            LogUtils.logUserWarning(log, null, "登录失败", "用户名或密码错误，用户标识：{}", userIdentifier);
             return ResponseEntity.ok(ErrorResponseUtil.invalidCredentials());
         } catch (Exception e) {
-            log.error("【API异常】用户登录异常，用户标识：{}，错误：{}",
-                userIdentifier, e.getMessage(), e);
+            LogUtils.logUserError(log, null, "API异常", "用户登录异常，用户标识：{}，错误：{}", e, userIdentifier, e.getMessage());
             return ResponseEntity.ok(ErrorResponseUtil.loginFailed("Login failed. Please try again later."));
         }
     }
@@ -143,7 +143,7 @@ public class AuthController {
             return ResponseEntity.ok(Result.success(userVO, "获取用户信息成功"));
 
         } catch (Exception e) {
-            log.error("获取用户信息失败", e);
+            LogUtils.logUserError(log, null, "获取用户信息", "获取用户信息失败", e);
             return ResponseEntity.status(500).body(Result.failed("获取用户信息失败"));
         }
     }
@@ -167,7 +167,7 @@ public class AuthController {
 
             return new UserPackageInfo(userAccount.getPackageId(), packageInfo.getPackageName());
         } catch (Exception e) {
-            log.error("获取用户套餐信息失败，用户ID：{}", userId, e);
+            LogUtils.logUserError(log, userId, "获取用户套餐信息", "获取用户套餐信息失败", e);
             return null;
         }
     }
@@ -208,11 +208,11 @@ public class AuthController {
             // 清除Security上下文
             SecurityContextHolder.clearContext();
 
-            log.info("用户登出成功，用户ID：{}", userId);
+            LogUtils.logUserOperation(log, userId, "用户登出", "用户登出成功");
             return ResponseEntity.ok(Result.success(null, "登出成功"));
 
         } catch (Exception e) {
-            log.error("用户登出异常", e);
+            LogUtils.logUserError(log, null, "用户登出", "用户登出异常", e);
             return ResponseEntity.status(500).body(Result.failed("登出失败"));
         }
     }
@@ -231,11 +231,11 @@ public class AuthController {
             // 直接更新密码，无需验证当前密码
             userService.updatePassword(user.getId(), request.getNewPassword());
 
-            log.info("用户修改密码成功: {}", user.getUsername());
+            LogUtils.logUserOperation(log, user.getId(), "修改密码", "用户修改密码成功，用户名：{}", user.getUsername());
             return ResponseEntity.ok(Result.success(null, "密码修改成功"));
 
         } catch (Exception e) {
-            log.error("修改密码失败", e);
+            LogUtils.logUserError(log, null, "修改密码", "修改密码失败", e);
             return ResponseEntity.status(500).body(Result.failed("密码修改失败"));
         }
     }
@@ -270,11 +270,11 @@ public class AuthController {
             User updatedUser = userService.updateProfile(user.getId(), request);
             UserVO userVO = VOConverter.toUserVO(updatedUser);
             
-            log.info("用户更新资料成功: {}", user.getUsername());
+            LogUtils.logUserOperation(log, user.getId(), "更新用户资料", "用户更新资料成功，用户名：{}", user.getUsername());
             return ResponseEntity.ok(Result.success(userVO, "用户信息更新成功"));
-            
+
         } catch (Exception e) {
-            log.error("更新用户资料失败", e);
+            LogUtils.logUserError(log, null, "更新用户资料", "更新用户资料失败", e);
             return ResponseEntity.status(500).body(Result.failed("用户信息更新失败"));
         }
     }
@@ -295,10 +295,10 @@ public class AuthController {
                 return userDetails.getUserId();
             }
             // 如果不是CustomUserDetails，返回null表示认证失败
-            log.warn("认证主体不是CustomUserDetails类型：{}", principal.getClass().getName());
+            LogUtils.logUserWarning(log, null, "认证验证", "认证主体不是CustomUserDetails类型：{}", principal.getClass().getName());
             return null;
         } catch (Exception e) {
-            log.warn("获取用户ID失败", e);
+            LogUtils.logUserWarning(log, null, "认证验证", "获取用户ID失败", e);
             return null;
         }
     }

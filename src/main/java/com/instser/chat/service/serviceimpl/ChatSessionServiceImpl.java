@@ -2,6 +2,7 @@ package com.instser.chat.service.serviceimpl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.instser.chat.common.util.LogUtils;
 import com.instser.chat.dao.ChatSessionDao;
 import com.instser.chat.entity.ChatSession;
 import com.instser.chat.service.ChatSessionService;
@@ -51,10 +52,10 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionDao, ChatSess
         // 使用重试机制保存会话
         boolean saved = saveSessionWithRetry(session, 3);
         if (saved) {
-            log.info("新会话创建成功，会话ID：{}", sessionId);
+            LogUtils.logUserSessionOperation(log, userId, sessionId, "创建会话", "新会话创建成功");
             return sessionId;
         } else {
-            log.error("新会话创建失败，会话ID：{}", sessionId);
+            LogUtils.logUserSessionError(log, userId, sessionId, "创建会话", "新会话创建失败", null);
             return null;
         }
     }
@@ -80,9 +81,9 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionDao, ChatSess
 
         boolean result = this.update(session, wrapper);
         if (result) {
-            log.info("会话标题更新成功，会话ID：{}，标题：{}", sessionId, title);
+            LogUtils.logUserSessionOperation(log, null, sessionId, "更新会话标题", "会话标题更新成功，标题：{}", title);
         } else {
-            log.warn("会话标题更新失败，会话ID：{}，标题：{}", sessionId, title);
+            LogUtils.logUserSessionWarning(log, null, sessionId, "更新会话标题", "会话标题更新失败，标题：{}", title);
         }
         return result;
     }
@@ -98,7 +99,7 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionDao, ChatSess
         session.setUpdateTime(LocalDateTime.now());
 
         this.update(session, wrapper);
-        log.info("会话活跃时间更新成功，会话ID：{}", sessionId);
+        LogUtils.logUserSessionOperation(log, null, sessionId, "更新会话活跃时间", "会话活跃时间更新成功");
     }
 
     @Override
@@ -107,7 +108,7 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionDao, ChatSess
             // 先获取会话信息，用于获取用户ID
             ChatSession session = getSessionInfo(sessionId);
             if (session == null) {
-                log.warn("会话不存在，无法删除，会话ID：{}", sessionId);
+                LogUtils.logUserSessionWarning(log, null, sessionId, "删除会话", "会话不存在，无法删除");
                 return false;
             }
 
@@ -115,18 +116,18 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionDao, ChatSess
             int deletedMessagesCount = 0;
             try {
                 deletedMessagesCount = chatMessageService.deleteAllBySessionId(sessionId, session.getUserId());
-                log.info("删除会话关联消息完成，消息数量：{}，会话ID：{}", deletedMessagesCount, sessionId);
+                LogUtils.logUserSessionOperation(log, session.getUserId(), sessionId, "删除会话关联消息", "删除会话关联消息完成，消息数量：{}", deletedMessagesCount);
             } catch (Exception e) {
-                log.error("删除会话关联消息失败，继续删除会话，会话ID：{}", sessionId, e);
+                LogUtils.logUserSessionError(log, session.getUserId(), sessionId, "删除会话关联消息", "删除会话关联消息失败，继续删除会话", e);
             }
 
             // 删除会话关联的文件（兜底处理，防止有遗漏的文件）
             int deletedFilesCount = 0;
             try {
                 deletedFilesCount = fileUploadService.deleteFilesBySessionId(sessionId, session.getUserId());
-                log.info("删除会话关联文件完成，文件数量：{}，会话ID：{}", deletedFilesCount, sessionId);
+                LogUtils.logUserSessionOperation(log, session.getUserId(), sessionId, "删除会话关联文件", "删除会话关联文件完成，文件数量：{}", deletedFilesCount);
             } catch (Exception e) {
-                log.error("删除会话关联文件失败，继续删除会话，会话ID：{}", sessionId, e);
+                LogUtils.logUserSessionError(log, session.getUserId(), sessionId, "删除会话关联文件", "删除会话关联文件失败，继续删除会话", e);
             }
 
             // 删除会话
@@ -135,14 +136,14 @@ public class ChatSessionServiceImpl extends ServiceImpl<ChatSessionDao, ChatSess
 
             boolean result = this.remove(wrapper);
             if (result) {
-                log.info("会话删除成功，会话ID：{}，删除关联消息：{}条，删除关联文件：{}个", sessionId, deletedMessagesCount, deletedFilesCount);
+                LogUtils.logUserSessionOperation(log, session.getUserId(), sessionId, "删除会话", "会话删除成功，删除关联消息：{}条，删除关联文件：{}个", deletedMessagesCount, deletedFilesCount);
             } else {
-                log.warn("会话删除失败，会话ID：{}", sessionId);
+                LogUtils.logUserSessionWarning(log, session.getUserId(), sessionId, "删除会话", "会话删除失败");
             }
             return result;
 
         } catch (Exception e) {
-            log.error("删除会话失败，会话ID：{}", sessionId, e);
+            LogUtils.logUserSessionError(log, null, sessionId, "删除会话", "删除会话失败", e);
             return false;
         }
     }

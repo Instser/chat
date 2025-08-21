@@ -15,15 +15,17 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 
+import com.instser.chat.common.util.LogUtils;
 /**
  * 用户账户服务实现类
  *
  * @author instser
  * @since 2025-06-18
+
  */
 @Slf4j
 @Service
-public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAccount> 
+public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAccount>
         implements UserAccountService {
 
     /**
@@ -53,8 +55,7 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
     @Transactional
     public boolean activatePackage(Long userId, Long packageId, Integer validityDays, Integer totalChatCount) {
         if (userId == null || packageId == null || validityDays == null) {
-            log.error("激活套餐参数不能为空: userId={}, packageId={}, validityDays={}",
-                    userId, packageId, validityDays);
+            LogUtils.logUserError(log, userId, "激活套餐", "激活套餐参数不能为空: packageId={}, validityDays={}", null, packageId, validityDays);
             return false;
         }
 
@@ -62,7 +63,7 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
             // 获取套餐信息以确定限制类型
             Package packageInfo = packageService.getPackageById(packageId);
             if (packageInfo == null) {
-                log.error("套餐{}不存在", packageId);
+                LogUtils.logUserError(log, userId, "激活套餐", "套餐{}不存在", null, packageId);
                 return false;
             }
 
@@ -71,10 +72,10 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
             if (validityDays == -1) {
                 // 永久有效：设置为null或很远的未来时间
                 expireTime = null;
-                log.info("套餐{}为永久有效套餐，过期时间设置为null", packageId);
+                LogUtils.logUserOperation(log, userId, "激活套餐", "套餐{}为永久有效套餐，过期时间设置为null", packageId);
             } else {
                 expireTime = getBusinessDateTime().plusDays(validityDays);
-                log.debug("套餐{}有效期{}天，过期时间：{}", packageId, validityDays, expireTime);
+                LogUtils.logUserDebug(log, userId, "激活套餐", "套餐{}有效期{}天，过期时间：{}", packageId, validityDays, expireTime);
             }
 
             Integer chatCount;
@@ -83,7 +84,7 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
             if ("daily".equals(packageInfo.getLimitType())) {
                 // 每日限制模式：总次数不限制
                 chatCount = -1;
-                log.info("套餐{}为每日限制模式，总次数设置为无限制", packageId);
+                LogUtils.logUserOperation(log, userId, "激活套餐", "套餐{}为每日限制模式，总次数设置为无限制", packageId);
             } else {
                 // 其他模式：使用传入的总次数或从套餐配置获取
                 chatCount = totalChatCount != null ? totalChatCount : packageInfo.getChatCount();
@@ -95,15 +96,15 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
             int updated = baseMapper.insertOrUpdateAccount(userId, packageId, expireTime, chatCount, membershipLevel, currentTime);
 
             if (updated > 0) {
-                log.info("用户{}套餐激活成功，套餐ID：{}，有效期：{}天，总次数：{}，限制类型：{}",
-                        userId, packageId, validityDays, chatCount, packageInfo.getLimitType());
+                LogUtils.logUserOperation(log, userId, "激活套餐", "套餐激活成功，套餐ID：{}，有效期：{}天，总次数：{}，限制类型：{}",
+                        packageId, validityDays, chatCount, packageInfo.getLimitType());
                 return true;
             }
 
-            log.error("用户{}套餐激活失败", userId);
+            LogUtils.logUserError(log, userId, "激活套餐", "套餐激活失败", null);
             return false;
         } catch (Exception e) {
-            log.error("激活套餐异常: userId={}, packageId={}", userId, packageId, e);
+            LogUtils.logUserError(log, userId, "激活套餐", "激活套餐异常: packageId={}", e, packageId);
             return false;
         }
     }
@@ -112,7 +113,7 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
     @Transactional
     public boolean updateUsage(Long userId, Integer usedCount) {
         if (userId == null || usedCount == null || usedCount <= 0) {
-            log.error("更新使用次数参数无效: userId={}, usedCount={}", userId, usedCount);
+            LogUtils.logUserError(log, userId, "更新使用次数", "更新使用次数参数无效: usedCount={}", null, usedCount);
             return false;
         }
 
@@ -124,14 +125,14 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
             if (updated > 0) {
                 // 增加总使用次数统计
                 baseMapper.incrementTotalChatCount(userId, usedCount, updateTime);
-                log.debug("用户{}使用次数更新成功，使用了{}次", userId, usedCount);
+                LogUtils.logUserDebug(log, userId, "更新使用次数", "使用次数更新成功，使用了{}次", usedCount);
                 return true;
             }
-            
-            log.warn("用户{}使用次数更新失败，可能次数不足", userId);
+
+            LogUtils.logUserWarning(log, userId, "更新使用次数", "使用次数更新失败，可能次数不足");
             return false;
         } catch (Exception e) {
-            log.error("更新使用次数异常: userId={}, usedCount={}", userId, usedCount, e);
+            LogUtils.logUserError(log, userId, "更新使用次数", "更新使用次数异常: usedCount={}", e, usedCount);
             return false;
         }
     }
@@ -161,22 +162,22 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
     @Transactional
     public boolean renewPackage(Long userId, Long packageId, Integer validityDays, Integer additionalChatCount) {
         if (userId == null || packageId == null || validityDays == null) {
-            log.error("续费套餐参数不能为空: userId={}, packageId={}, validityDays={}", 
-                    userId, packageId, validityDays);
+            LogUtils.logUserError(log, userId, "续费套餐", "续费套餐参数不能为空: packageId={}, validityDays={}", null,
+                    packageId, validityDays);
             return false;
         }
 
         try {
             UserAccount account = getUserAccount(userId);
             if (account == null) {
-                log.error("用户{}账户不存在，无法续费", userId);
+                LogUtils.logUserError(log, userId, "续费套餐", "用户账户不存在，无法续费", null);
                 return false;
             }
 
             // 计算新的过期时间
             LocalDateTime currentExpireTime = account.getPackageExpireTime();
             LocalDateTime newExpireTime;
-            
+
             if (currentExpireTime == null || currentExpireTime.isBefore(getBusinessDateTime())) {
                 // 如果已过期或无过期时间，从当前时间开始计算
                 newExpireTime = getBusinessDateTime().plusDays(validityDays);
@@ -194,17 +195,17 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
             String membershipLevel = getMembershipLevelFromPackage(newPackageInfo);
 
             int updated = baseMapper.updatePackageInfo(userId, packageId, newExpireTime, newRemaining, membershipLevel, getBusinessDateTime());
-            
+
             if (updated > 0) {
-                log.info("用户{}套餐续费成功，延长{}天，增加{}次聊天", 
-                        userId, validityDays, additionalChatCount);
+                LogUtils.logUserOperation(log, userId, "续费套餐", "套餐续费成功，延长{}天，增加{}次聊天",
+                        validityDays, additionalChatCount);
                 return true;
             }
-            
-            log.error("用户{}套餐续费失败", userId);
+
+            LogUtils.logUserError(log, userId, "续费套餐", "套餐续费失败", null);
             return false;
         } catch (Exception e) {
-            log.error("续费套餐异常: userId={}, packageId={}", userId, packageId, e);
+            LogUtils.logUserError(log, userId, "续费套餐", "续费套餐异常: packageId={}", e, packageId);
             return false;
         }
     }
@@ -223,10 +224,10 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
             LocalDateTime expiredTime = getBusinessDateTime().minusDays(7); // 清理7天前过期的记录
             LocalDateTime updateTime = getBusinessDateTime();
             int cleaned = baseMapper.cleanExpiredPackages(expiredTime, updateTime);
-            log.info("清理过期套餐完成，共清理{}条记录", cleaned);
+            LogUtils.logAdminOperation(log, "清理过期套餐", "清理过期套餐完成，共清理{}条记录", cleaned);
             return cleaned;
         } catch (Exception e) {
-            log.error("清理过期套餐异常", e);
+            LogUtils.logAdminOperation(log, "清理过期套餐", "清理过期套餐异常", e);
             return 0;
         }
     }
@@ -235,14 +236,14 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
     @Transactional
     public boolean initUserAccount(Long userId) {
         if (userId == null) {
-            log.error("初始化用户账户失败，用户ID不能为空");
+            LogUtils.logUserError(log, null, "初始化账户", "初始化用户账户失败，用户ID不能为空", null);
             return false;
         }
 
         try {
             // 检查是否已存在账户
             if (baseMapper.countByUserId(userId) > 0) {
-                log.debug("用户{}账户已存在，无需重复初始化", userId);
+                LogUtils.logUserDebug(log, userId, "初始化账户", "用户账户已存在，无需重复初始化");
                 return true;
             }
 
@@ -264,13 +265,13 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
 
             boolean saved = this.save(account);
             if (saved) {
-                log.info("用户{}账户初始化成功", userId);
+                LogUtils.logUserOperation(log, userId, "初始化账户", "用户账户初始化成功");
             } else {
-                log.error("用户{}账户初始化失败", userId);
+                LogUtils.logUserError(log, userId, "初始化账户", "用户账户初始化失败", null);
             }
             return saved;
         } catch (Exception e) {
-            log.error("初始化用户账户异常: userId={}", userId, e);
+            LogUtils.logUserError(log, userId, "初始化账户", "初始化用户账户异常", e);
             return false;
         }
     }
@@ -299,7 +300,7 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
     @Transactional
     public boolean updateTokenUsage(Long userId, Integer tokenCount) {
         if (userId == null || tokenCount == null || tokenCount <= 0) {
-            log.error("更新Token使用量参数无效: userId={}, tokenCount={}", userId, tokenCount);
+            LogUtils.logUserError(log, userId, "更新Token使用量", "更新Token使用量参数无效: tokenCount={}", null, tokenCount);
             return false;
         }
 
@@ -311,14 +312,14 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
             if (updated > 0) {
                 // 增加已使用Token统计
                 baseMapper.incrementTokenUsed(userId, tokenCount.longValue(), updateTime);
-                log.debug("用户{}Token使用量更新成功，使用了{}个Token", userId, tokenCount);
+                LogUtils.logUserDebug(log, userId, "更新Token使用量", "Token使用量更新成功，使用了{}个Token", tokenCount);
                 return true;
             }
 
-            log.warn("用户{}Token使用量更新失败，可能余额不足", userId);
+            LogUtils.logUserWarning(log, userId, "更新Token使用量", "Token使用量更新失败，可能余额不足");
             return false;
         } catch (Exception e) {
-            log.error("更新Token使用量异常: userId={}, tokenCount={}", userId, tokenCount, e);
+            LogUtils.logUserError(log, userId, "更新Token使用量", "更新Token使用量异常: tokenCount={}", e, tokenCount);
             return false;
         }
     }
@@ -327,7 +328,7 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
     @Transactional
     public boolean recordTokenUsageOnly(Long userId, Integer tokenCount) {
         if (userId == null || tokenCount == null || tokenCount <= 0) {
-            log.error("记录Token使用统计参数无效: userId={}, tokenCount={}", userId, tokenCount);
+            LogUtils.logUserError(log, userId, "记录Token使用统计", "记录Token使用统计参数无效: tokenCount={}", null, tokenCount);
             return false;
         }
 
@@ -337,14 +338,14 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
             int updated = baseMapper.incrementTokenUsed(userId, tokenCount.longValue(), updateTime);
 
             if (updated > 0) {
-                log.debug("用户{}Token使用统计记录成功，使用了{}个Token（仅统计）", userId, tokenCount);
+                LogUtils.logUserDebug(log, userId, "记录Token使用统计", "Token使用统计记录成功，使用了{}个Token（仅统计）", tokenCount);
                 return true;
             }
 
-            log.warn("用户{}Token使用统计记录失败", userId);
+            LogUtils.logUserWarning(log, userId, "记录Token使用统计", "Token使用统计记录失败");
             return false;
         } catch (Exception e) {
-            log.error("记录Token使用统计异常: userId={}, tokenCount={}", userId, tokenCount, e);
+            LogUtils.logUserError(log, userId, "记录Token使用统计", "记录Token使用统计异常: tokenCount={}", e, tokenCount);
             return false;
         }
     }
@@ -370,7 +371,7 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
     @Transactional
     public boolean addTokenBalance(Long userId, Long tokenCount) {
         if (userId == null || tokenCount == null || tokenCount <= 0) {
-            log.error("增加Token余额参数无效: userId={}, tokenCount={}", userId, tokenCount);
+            LogUtils.logUserError(log, userId, "增加Token余额", "增加Token余额参数无效: tokenCount={}", null, tokenCount);
             return false;
         }
 
@@ -379,14 +380,14 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
             int updated = baseMapper.incrementTokenBalance(userId, tokenCount, updateTime);
 
             if (updated > 0) {
-                log.info("用户{}Token余额增加成功，增加了{}个Token", userId, tokenCount);
+                LogUtils.logUserOperation(log, userId, "增加Token余额", "Token余额增加成功，增加了{}个Token", tokenCount);
                 return true;
             }
 
-            log.warn("用户{}Token余额增加失败", userId);
+            LogUtils.logUserWarning(log, userId, "增加Token余额", "Token余额增加失败");
             return false;
         } catch (Exception e) {
-            log.error("增加Token余额异常: userId={}, tokenCount={}", userId, tokenCount, e);
+            LogUtils.logUserError(log, userId, "增加Token余额", "增加Token余额异常: tokenCount={}", e, tokenCount);
             return false;
         }
     }

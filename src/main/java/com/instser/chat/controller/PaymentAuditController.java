@@ -15,6 +15,7 @@ import jakarta.validation.constraints.NotNull;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import com.instser.chat.common.util.LogUtils;
 /**
  * 支付审计日志控制器
  *
@@ -42,12 +43,12 @@ public class PaymentAuditController {
      * 根据订单号查询审计日志
      */
     @GetMapping("/order/{orderNo}")
-    public Result<List<PaymentAudit>> getAuditByOrderNo(@PathVariable @NotBlank String orderNo) {
+    public Result<List<PaymentAudit>> getAuditByOrderNo(@PathVariable @NotBlank String orderNo, Authentication authentication) {
         try {
             List<PaymentAudit> auditList = paymentAuditService.getAuditByOrderNo(orderNo);
             return Result.success(auditList, "查询审计日志成功");
         } catch (Exception e) {
-            log.error("查询订单审计日志失败，订单号: {}", orderNo, e);
+            LogUtils.logUserError(log, getCurrentUserId(authentication), "查询审计日志", "查询订单审计日志失败，订单号: {}", e, orderNo);
             return Result.failed("查询审计日志失败");
         }
     }
@@ -56,7 +57,7 @@ public class PaymentAuditController {
      * 根据操作类型查询审计日志
      */
     @GetMapping("/operation/{operationType}")
-    public Result<List<PaymentAudit>> getAuditByOperationType(
+    public Result<List<PaymentAudit>> getAuditByOperationType(Authentication authentication,
             @PathVariable @NotBlank String operationType,
             @RequestParam @NotNull @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
             @RequestParam @NotNull @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime) {
@@ -64,7 +65,7 @@ public class PaymentAuditController {
             List<PaymentAudit> auditList = paymentAuditService.getAuditByOperationType(operationType, startTime, endTime);
             return Result.success(auditList, "查询审计日志成功");
         } catch (Exception e) {
-            log.error("查询操作类型审计日志失败，操作类型: {}", operationType, e);
+            LogUtils.logUserError(log, getCurrentUserId(authentication), "查询审计日志", "查询操作类型审计日志失败，操作类型: {}", e, operationType);
             return Result.failed("查询审计日志失败");
         }
     }
@@ -73,7 +74,7 @@ public class PaymentAuditController {
      * 根据操作人查询审计日志
      */
     @GetMapping("/operator/{operatorId}")
-    public Result<List<PaymentAudit>> getAuditByOperator(
+    public Result<List<PaymentAudit>> getAuditByOperator(Authentication authentication,
             @PathVariable @NotNull Long operatorId,
             @RequestParam @NotNull @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
             @RequestParam @NotNull @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime endTime) {
@@ -81,7 +82,7 @@ public class PaymentAuditController {
             List<PaymentAudit> auditList = paymentAuditService.getAuditByOperator(operatorId, startTime, endTime);
             return Result.success(auditList, "查询审计日志成功");
         } catch (Exception e) {
-            log.error("查询操作人审计日志失败，操作人ID: {}", operatorId, e);
+            LogUtils.logUserError(log, getCurrentUserId(authentication), "查询审计日志", "查询操作人审计日志失败，操作人ID: {}", e, operatorId);
             return Result.failed("查询审计日志失败");
         }
     }
@@ -96,7 +97,7 @@ public class PaymentAuditController {
         try {
             return Long.parseLong(authentication.getName());
         } catch (NumberFormatException e) {
-            log.warn("无法解析用户ID: {}", authentication.getName());
+            LogUtils.logUserWarning(log, null, "认证", "无法解析用户ID: {}", authentication.getName());
             return null;
         }
     }

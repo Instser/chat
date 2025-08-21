@@ -19,6 +19,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
+import com.instser.chat.common.util.LogUtils;
 /**
  * 模型使用管理控制器
  *
@@ -53,10 +54,10 @@ public class ModelUsageController {
                 return userDetails.getUserId();
             }
             // 如果不是CustomUserDetails，返回null表示认证失败
-            log.warn("认证主体不是CustomUserDetails类型：{}", principal.getClass().getName());
+            LogUtils.logUserWarning(log, null, "认证", "认证主体不是CustomUserDetails类型：{}", principal.getClass().getName());
             return null;
         } catch (Exception e) {
-            log.warn("获取用户ID失败", e);
+            LogUtils.logUserWarning(log, null, "认证", "获取用户ID失败", e);
             return null;
         }
     }
@@ -76,14 +77,14 @@ public class ModelUsageController {
             @Parameter(description = "模型名称", required = true)
             @RequestParam String modelName) {
         try {
-            log.info("(用户ID:{})检查模型{}使用权限", userId, modelName);
-            
+            LogUtils.logUserOperation(log, userId, "权限检查", "检查模型{}使用权限", modelName);
+
             ChatLimitVO result = chatLimitService.validateModelChatPermission(userId, modelName);
-            
+
             return ResponseEntity.ok(Result.success(result, "权限检查完成"));
-            
+
         } catch (Exception e) {
-            log.error("检查用户{}模型{}权限异常", userId, modelName, e);
+            LogUtils.logUserError(log, userId, "权限检查", "检查模型{}权限异常", e, modelName);
             return ResponseEntity.ok(Result.failed("权限检查失败，请稍后重试"));
         }
     }
@@ -108,7 +109,7 @@ public class ModelUsageController {
                 return ResponseEntity.ok(Result.unauthorized("用户未认证"));
             }
 
-            log.info("(用户ID:{})记录模型{}使用", userId, modelName);
+            LogUtils.logUserOperation(log, userId, "使用记录", "记录模型{}使用", modelName);
 
             boolean success = chatLimitService.recordModelChatUsage(userId, modelName);
 
@@ -119,7 +120,7 @@ public class ModelUsageController {
             }
 
         } catch (Exception e) {
-            log.error("记录模型{}使用异常", modelName, e);
+            LogUtils.logUserError(log, getCurrentUserId(authentication), "使用记录", "记录模型{}使用异常", e, modelName);
             return ResponseEntity.ok(Result.failed("使用记录失败，请稍后重试"));
         }
     }
@@ -144,7 +145,7 @@ public class ModelUsageController {
                 return ResponseEntity.ok(Result.unauthorized("用户未认证"));
             }
 
-            log.info("(用户ID:{})查询模型{}剩余使用次数", userId, modelName);
+            LogUtils.logUserOperation(log, userId, "查询剩余次数", "查询模型{}剩余使用次数", modelName);
 
             // 获取用户账户信息
             ChatLimitVO limitInfo = chatLimitService.validateModelChatPermission(userId, modelName);
@@ -152,7 +153,7 @@ public class ModelUsageController {
             return ResponseEntity.ok(Result.success(limitInfo, "查询成功"));
 
         } catch (Exception e) {
-            log.error("查询模型{}剩余次数异常", modelName, e);
+            LogUtils.logUserError(log, getCurrentUserId(authentication), "查询剩余次数", "查询模型{}剩余次数异常", e, modelName);
             return ResponseEntity.ok(Result.failed("查询失败，请稍后重试"));
         }
     }
@@ -174,14 +175,14 @@ public class ModelUsageController {
                 return ResponseEntity.ok(Result.unauthorized("用户未认证"));
             }
 
-            log.info("(用户ID:{})查询今日模型使用情况", userId);
+            LogUtils.logUserOperation(log, userId, "查询今日使用情况", "查询今日模型使用情况");
 
             List<UserDailyUsage> usageList = userDailyUsageService.getUserModelUsageToday(userId);
 
             return ResponseEntity.ok(Result.success(usageList, "查询成功"));
 
         } catch (Exception e) {
-            log.error("查询今日模型使用情况异常", e);
+            LogUtils.logUserError(log, getCurrentUserId(authentication), "查询今日使用情况", "查询今日模型使用情况异常", e);
             return ResponseEntity.ok(Result.failed("查询失败，请稍后重试"));
         }
     }
@@ -193,15 +194,15 @@ public class ModelUsageController {
     @PostMapping("/init-package-config")
     public ResponseEntity<?> initPackageConfig() {
         try {
-            log.info("开始初始化套餐模型权限配置");
-            
+            LogUtils.logAdminOperation(log, "初始化配置", "开始初始化套餐模型权限配置");
+
             // 这里可以添加初始化逻辑，比如更新现有套餐的model_permissions字段
             // 暂时返回成功，实际的初始化逻辑在数据库升级脚本中完成
-            
+
             return ResponseEntity.ok(Result.success(null, "配置初始化完成"));
-            
+
         } catch (Exception e) {
-            log.error("初始化套餐配置异常", e);
+            LogUtils.logAdminOperation(log, "初始化配置", "初始化套餐配置异常", e);
             return ResponseEntity.ok(Result.failed("初始化失败，请稍后重试"));
         }
     }

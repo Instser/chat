@@ -30,15 +30,19 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.*;
 
+import com.instser.chat.common.util.LogUtils;
 /**
  * OAuth2服务实现类
+
  *
  * @author instser
  * @since 2025-07-16
+
  */
 @Service
 @Slf4j
 @Transactional
+
 public class OAuth2ServiceImpl implements OAuth2Service {
 
     @Autowired
@@ -123,14 +127,14 @@ public class OAuth2ServiceImpl implements OAuth2Service {
                     throw new OAuth2Exception("INVALID_PROVIDER", "不支持的OAuth提供商: " + provider);
             }
         } catch (Exception e) {
-            log.error("获取OAuth用户信息失败: provider={}, error={}", provider, e.getMessage());
+            LogUtils.logUserError(log, null, "OAuth2", "获取OAuth用户信息失败: provider={}, error={}", e, provider, e.getMessage());
             throw new OAuth2Exception("USER_INFO_ERROR", "获取用户信息失败: " + e.getMessage(), e);
         }
     }
 
     @Override
     public OAuth2LoginResult processLogin(OAuth2UserInfo userInfo, String clientIp, String userAgent) {
-        log.info("处理OAuth2登录: provider={}, email={}, ip={}",
+        LogUtils.logUserOperation(log, null, "OAuth2登录", "处理OAuth2登录: provider={}, email={}, ip={}",
             userInfo.getProvider(), userInfo.getEmail(), clientIp);
 
         // 1. 检查是否已绑定OAuth账号
@@ -142,7 +146,7 @@ public class OAuth2ServiceImpl implements OAuth2Service {
             updateOAuthLoginInfo(existingOAuth, userInfo);
             User user = userService.getById(existingOAuth.getUserId());
 
-            log.info("OAuth2用户登录成功: userId={}, provider={}", user.getId(), userInfo.getProvider());
+            LogUtils.logUserOperation(log, user.getId(), "OAuth2登录", "OAuth2用户登录成功: provider={}", userInfo.getProvider());
             return OAuth2LoginResult.existingUser(user);
         }
 
@@ -156,7 +160,7 @@ public class OAuth2ServiceImpl implements OAuth2Service {
             // 更新User表的最后登录时间（新绑定也算登录）
             userService.updateLastLoginTime(existingUser.getId());
 
-            log.info("OAuth2账号绑定成功: userId={}, provider={}", existingUser.getId(), userInfo.getProvider());
+            LogUtils.logUserOperation(log, existingUser.getId(), "OAuth2登录", "OAuth2账号绑定成功: provider={}", userInfo.getProvider());
             return OAuth2LoginResult.newBinding(existingUser);
         }
 
@@ -165,7 +169,7 @@ public class OAuth2ServiceImpl implements OAuth2Service {
         UserOAuth newOAuth = createOAuthBinding(newUser.getId(), userInfo);
         userOAuthDao.insert(newOAuth);
 
-        log.info("OAuth2新用户注册成功: userId={}, provider={}", newUser.getId(), userInfo.getProvider());
+        LogUtils.logUserOperation(log, newUser.getId(), "OAuth2注册", "OAuth2新用户注册成功: provider={}", userInfo.getProvider());
         return OAuth2LoginResult.newUser(newUser);
     }
 
@@ -543,7 +547,7 @@ public class OAuth2ServiceImpl implements OAuth2Service {
 
     @Override
     public void bindOAuthAccount(Long userId, String provider, String code, String clientIp) {
-        log.info("绑定OAuth账号: userId={}, provider={}", userId, provider);
+        LogUtils.logUserOperation(log, userId, "OAuth2绑定", "绑定OAuth账号: provider={}", provider);
 
         // 检查用户是否已绑定该提供商
         UserOAuth existingBinding = userOAuthDao.findByUserIdAndProvider(userId, provider);
@@ -571,7 +575,7 @@ public class OAuth2ServiceImpl implements OAuth2Service {
             userOAuthDao.insert(newBinding);
         }
 
-        log.info("OAuth账号绑定成功: userId={}, provider={}", userId, provider);
+        LogUtils.logUserOperation(log, userId, "OAuth2绑定", "OAuth2账号绑定成功: provider={}", provider);
     }
 
 

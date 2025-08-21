@@ -85,11 +85,11 @@ public class ChatServiceImpl implements ChatService {
         // 首先从认证信息中获取真实的用户ID
         Long authenticatedUserId = getCurrentUserId(authentication);
         if (authenticatedUserId == null) {
-            log.warn("【聊天开始】用户未认证，拒绝请求");
+            LogUtils.logUserWarning(log, null, "聊天开始", "用户未认证，拒绝请求");
             try {
                 writeErrorResponse(response, "用户未认证");
             } catch (IOException e) {
-                log.error("发送错误响应失败", e);
+                LogUtils.logUserError(log, null, "发送错误响应", "发送错误响应失败", e);
             }
             return ChatResponseDTO.failure("用户未认证");
         }
@@ -97,8 +97,7 @@ public class ChatServiceImpl implements ChatService {
         // 使用认证用户ID覆盖请求中的用户ID，确保安全性
         request.setUserId(authenticatedUserId);
 
-        log.info("【聊天开始】用户ID：{}，会话ID：{}，模型ID：{}",
-                request.getUserId(), request.getSessionId(), request.getModelId());
+        LogUtils.logUserSessionOperation(log, request.getUserId(), request.getSessionId(), "聊天开始", "模型ID：{}", request.getModelId());
 
         try {
             // 设置响应头
@@ -107,8 +106,7 @@ public class ChatServiceImpl implements ChatService {
             // 执行前置验证
             ChatResponseDTO validationResult = performPreValidation(request, authentication, response);
             if (validationResult != null) {
-                log.info("【聊天结束】用户ID：{}，会话ID：{}，结果：前置验证失败",
-                        request.getUserId(), request.getSessionId());
+                LogUtils.logUserSessionOperation(log, request.getUserId(), request.getSessionId(), "聊天结束", "结果：前置验证失败");
                 return validationResult;
             }
 
@@ -118,16 +116,14 @@ public class ChatServiceImpl implements ChatService {
             // 获取并验证模型配置
             AiModel model = validateAndGetModel(request.getModelId(), request.getSessionId(), request.getUserId(), response);
             if (model == null) {
-                log.info("【聊天结束】用户ID：{}，会话ID：{}，结果：模型验证失败",
-                        request.getUserId(), request.getSessionId());
+                LogUtils.logUserSessionOperation(log, request.getUserId(), request.getSessionId(), "聊天结束", "结果：模型验证失败");
                 return ChatResponseDTO.errorWithContent("Request failed. Please try again later.");
             }
 
             // 验证用户聊天权限
             ChatResponseDTO permissionResult = validateChatPermission(request.getUserId(), request.getSessionId(), model.getId(), response);
             if (permissionResult != null) {
-                log.info("【聊天结束】用户ID：{}，会话ID：{}，结果：权限验证失败",
-                        request.getUserId(), request.getSessionId());
+                LogUtils.logUserSessionOperation(log, request.getUserId(), request.getSessionId(), "聊天结束", "结果：权限验证失败");
                 return permissionResult;
             }
 

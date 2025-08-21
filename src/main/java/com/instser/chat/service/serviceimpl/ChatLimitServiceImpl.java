@@ -14,11 +14,13 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
 
+import com.instser.chat.common.util.LogUtils;
 /**
  * 聊天限制验证服务实现类
  *
  * @author instser
  * @since 2025-06-18
+
  */
 @Slf4j
 @Service
@@ -75,8 +77,8 @@ public class ChatLimitServiceImpl implements ChatLimitService {
             // 注意：过期时间为null表示永久有效
             if (userAccount.getPackageExpireTime() != null &&
                 userAccount.getPackageExpireTime().isBefore(getBusinessDateTime())) {
-                log.warn("用户{}套餐已过期，套餐ID：{}，套餐名称：{}，过期时间：{}，当前时间：{}",
-                    userId, userAccount.getPackageId(), packageInfo.getPackageName(),
+                LogUtils.logUserWarning(log, userId, "聊天权限验证", "套餐已过期，套餐ID：{}，套餐名称：{}，过期时间：{}，当前时间：{}",
+                    userAccount.getPackageId(), packageInfo.getPackageName(),
                     userAccount.getPackageExpireTime(), getBusinessDateTime());
                 return ChatLimitVO.failed("套餐已过期");
             }
@@ -86,7 +88,7 @@ public class ChatLimitServiceImpl implements ChatLimitService {
             result.setCanChat(true);
             result.setPackageName(packageInfo.getPackageName());
             result.setLimitType(packageInfo.getLimitType());
-            
+
             if (userAccount.getPackageExpireTime() != null) {
                 result.setPackageExpireTime(
                     userAccount.getPackageExpireTime().format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))
@@ -106,7 +108,7 @@ public class ChatLimitServiceImpl implements ChatLimitService {
             }
 
         } catch (Exception e) {
-            log.error("验证用户{}聊天权限时发生异常", userId, e);
+            LogUtils.logUserError(log, userId, "聊天权限验证", "验证聊天权限时发生异常", e);
             return ChatLimitVO.failed("系统异常，请稍后重试");
         }
     }
@@ -116,13 +118,13 @@ public class ChatLimitServiceImpl implements ChatLimitService {
         try {
             UserAccount userAccount = userAccountService.getUserAccount(userId);
             if (userAccount == null || userAccount.getPackageId() == null) {
-                log.warn("用户{}没有有效套餐，无法记录使用", userId);
+                LogUtils.logUserWarning(log, userId, "记录聊天使用", "没有有效套餐，无法记录使用");
                 return false;
             }
 
             Package packageInfo = packageService.getPackageById(userAccount.getPackageId());
             if (packageInfo == null) {
-                log.warn("用户{}的套餐{}不存在", userId, userAccount.getPackageId());
+                LogUtils.logUserWarning(log, userId, "记录聊天使用", "套餐{}不存在", userAccount.getPackageId());
                 return false;
             }
 
@@ -138,7 +140,7 @@ public class ChatLimitServiceImpl implements ChatLimitService {
             }
 
         } catch (Exception e) {
-            log.error("记录用户{}聊天使用时发生异常", userId, e);
+            LogUtils.logUserError(log, userId, "记录聊天使用", "记录聊天使用时发生异常", e);
             return false;
         }
     }
@@ -202,7 +204,7 @@ public class ChatLimitServiceImpl implements ChatLimitService {
         Package packageInfo = packageService.getPackageById(userAccount.getPackageId());
         if (packageInfo != null && "daily".equals(packageInfo.getLimitType())) {
             // 每日限制模式：不扣减总次数，直接返回成功
-            log.debug("用户{}使用每日限制套餐，不扣减总次数", userAccount.getUserId());
+            LogUtils.logUserDebug(log, userAccount.getUserId(), "记录总次数使用", "使用每日限制套餐，不扣减总次数");
             return true;
         }
 
@@ -210,9 +212,9 @@ public class ChatLimitServiceImpl implements ChatLimitService {
         boolean success = userAccountService.updateUsage(userAccount.getUserId(), 1);
 
         if (success) {
-            log.debug("用户{}总次数使用记录成功", userAccount.getUserId());
+            LogUtils.logUserDebug(log, userAccount.getUserId(), "记录总次数使用", "总次数使用记录成功");
         } else {
-            log.warn("用户{}总次数使用记录失败，可能次数不足或套餐已过期", userAccount.getUserId());
+            LogUtils.logUserWarning(log, userAccount.getUserId(), "记录总次数使用", "总次数使用记录失败，可能次数不足或套餐已过期");
         }
 
         return success;
@@ -256,7 +258,7 @@ public class ChatLimitServiceImpl implements ChatLimitService {
             return result;
 
         } catch (Exception e) {
-            log.error("验证用户{}模型{}聊天权限异常", userId, modelName, e);
+            LogUtils.logUserError(log, userId, "模型权限验证", "验证模型{}聊天权限异常", e, modelName);
             return ChatLimitVO.failed("权限验证失败，请稍后重试");
         }
     }
@@ -267,7 +269,7 @@ public class ChatLimitServiceImpl implements ChatLimitService {
             // 1. 获取用户账户信息
             UserAccount userAccount = userAccountService.getUserAccount(userId);
             if (userAccount == null || userAccount.getPackageId() == null) {
-                log.error("用户{}账户或套餐信息不存在，无法记录模型使用", userId);
+                LogUtils.logUserError(log, userId, "记录模型使用", "账户或套餐信息不存在，无法记录模型使用", null);
                 return false;
             }
 
@@ -275,15 +277,15 @@ public class ChatLimitServiceImpl implements ChatLimitService {
             boolean success = userDailyUsageService.recordModelChatUsage(userId, userAccount.getPackageId(), modelName);
 
             if (success) {
-                log.info("用户{}模型{}使用记录成功", userId, modelName);
+                LogUtils.logUserOperation(log, userId, "记录模型使用", "模型{}使用记录成功", modelName);
             } else {
-                log.warn("用户{}模型{}使用记录失败，可能已达到限制", userId, modelName);
+                LogUtils.logUserWarning(log, userId, "记录模型使用", "模型{}使用记录失败，可能已达到限制", modelName);
             }
 
             return success;
 
         } catch (Exception e) {
-            log.error("记录用户{}模型{}使用异常", userId, modelName, e);
+            LogUtils.logUserError(log, userId, "记录模型使用", "记录模型{}使用异常", e, modelName);
             return false;
         }
     }
@@ -291,7 +293,7 @@ public class ChatLimitServiceImpl implements ChatLimitService {
     @Override
     public boolean recordTokenUsage(Long userId, Integer tokenCount) {
         if (userId == null || tokenCount == null || tokenCount <= 0) {
-            log.error("记录Token使用参数无效: userId={}, tokenCount={}", userId, tokenCount);
+            LogUtils.logUserError(log, userId, "记录Token使用", "记录Token使用参数无效: tokenCount={}", null, tokenCount);
             return false;
         }
 
@@ -300,14 +302,14 @@ public class ChatLimitServiceImpl implements ChatLimitService {
             boolean success = userAccountService.recordTokenUsageOnly(userId, tokenCount);
 
             if (success) {
-                log.debug("用户{}Token使用记录成功，使用了{}个Token（仅统计，不扣减余额）", userId, tokenCount);
+                LogUtils.logUserDebug(log, userId, "记录Token使用", "Token使用记录成功，使用了{}个Token（仅统计，不扣减余额）", tokenCount);
             } else {
-                log.warn("用户{}Token使用记录失败", userId);
+                LogUtils.logUserWarning(log, userId, "记录Token使用", "Token使用记录失败");
             }
 
             return success;
         } catch (Exception e) {
-            log.error("记录用户{}Token使用异常", userId, e);
+            LogUtils.logUserError(log, userId, "记录Token使用", "记录Token使用异常", e);
             return false;
         }
     }

@@ -2,6 +2,7 @@ package com.instser.chat.service.serviceimpl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.instser.chat.common.util.LogUtils;
 import com.instser.chat.dao.ChatMessageDao;
 import com.instser.chat.entity.ChatMessage;
 import com.instser.chat.entity.ChatSession;
@@ -53,8 +54,7 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
 
     @Override
     public Long sendMessage(String sessionId, String role, String content, Long userId, Long modelId, Integer hasAttachments) {
-        log.debug("【消息入库】开始保存消息，用户ID：{}，会话ID：{}，角色：{}，模型ID：{}",
-                userId, sessionId, role, modelId);
+        LogUtils.logUserSessionDebug(log, userId, sessionId, "消息入库", "开始保存消息，角色：{}，模型ID：{}", role, modelId);
 
         ChatMessage message = new ChatMessage();
         message.setMessageId(java.util.UUID.randomUUID().toString().replace("-", ""));
@@ -74,16 +74,14 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
         // 使用重试机制保存消息
         boolean saved = saveMessageWithRetry(message, 3);
         if (saved) {
-            log.info("【消息入库】{}消息保存成功，用户ID：{}，会话ID：{}，消息ID：{}，内容长度：{}",
-                    "assistant".equals(role) ? "AI" : "用户", userId, sessionId, message.getMessageId(),
-                    content != null ? content.length() : 0);
-            log.debug("【消息入库】详细信息 - 数据库ID：{}，模型ID：{}，附件：{}，Token数：{}",
-                    message.getId(), modelId, hasAttachments != null && hasAttachments > 0 ? "有" : "无",
-                    message.getTokenCount());
+            LogUtils.logUserSessionOperation(log, userId, sessionId, "消息入库", "{}消息保存成功，消息ID：{}，内容长度：{}",
+                    "assistant".equals(role) ? "AI" : "用户", message.getMessageId(), content != null ? content.length() : 0);
+            LogUtils.logUserSessionDebug(log, userId, sessionId, "消息入库", "详细信息 - 数据库ID：{}，模型ID：{}，附件：{}，Token数：{}",
+                    message.getId(), modelId, hasAttachments != null && hasAttachments > 0 ? "有" : "无", message.getTokenCount());
             return message.getId();
         } else {
-            log.error("【消息入库】{}消息保存失败，用户ID：{}，会话ID：{}，消息ID：{}",
-                    "assistant".equals(role) ? "AI" : "用户", userId, sessionId, message.getMessageId());
+            LogUtils.logUserSessionError(log, userId, sessionId, "消息入库", "{}消息保存失败，消息ID：{}", null,
+                    "assistant".equals(role) ? "AI" : "用户", message.getMessageId());
             return null;
         }
     }

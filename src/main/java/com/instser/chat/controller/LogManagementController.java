@@ -15,10 +15,12 @@ import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpServletRequest;
 import java.util.Map;
+import com.instser.chat.common.util.LogUtils;
 
 /**
  * 日志管理控制器
  * 提供日志级别管理的Web接口（仅限localhost访问）
+
  *
  * 访问配置:
  * - 运行端口: 8081 (集成到现有management端口)
@@ -56,7 +58,7 @@ public class LogManagementController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(forbiddenResult);
         }
 
-        log.info("【日志管理】获取所有Logger级别");
+        LogUtils.logAdminOperation(log, "日志管理", "获取所有Logger级别");
         Map<String, String> levels = logLevelManager.getAllMainLoggerLevels();
         return ResponseEntity.ok(Result.success(levels));
     }
@@ -72,7 +74,7 @@ public class LogManagementController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(forbiddenResult);
         }
 
-        log.info("【日志管理】获取Logger级别，Logger：{}", loggerName);
+        LogUtils.logAdminOperation(log, "日志管理", "获取Logger级别，Logger：{}", loggerName);
         String level = logLevelManager.getCurrentLevel(loggerName);
         return ResponseEntity.ok(Result.success(level));
     }
@@ -89,7 +91,7 @@ public class LogManagementController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(forbiddenResult);
         }
 
-        log.info("【日志管理】设置Logger级别，Logger：{}，级别：{}", loggerName, level);
+        LogUtils.logAdminOperation(log, "日志管理", "设置Logger级别，Logger：{}，级别：{}", loggerName, level);
         boolean success = logLevelManager.setLevel(loggerName, level);
         if (success) {
             return ResponseEntity.ok(Result.success("日志级别设置成功"));
@@ -109,7 +111,7 @@ public class LogManagementController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(forbiddenResult);
         }
 
-        log.info("【日志管理】重置Logger级别，Logger：{}", loggerName);
+        LogUtils.logAdminOperation(log, "日志管理", "重置Logger级别，Logger：{}", loggerName);
         boolean success = logLevelManager.resetLevel(loggerName);
         if (success) {
             return ResponseEntity.ok(Result.success("日志级别重置成功"));
@@ -127,7 +129,7 @@ public class LogManagementController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(forbiddenResult);
         }
 
-        log.info("【日志管理】设置开发环境日志级别");
+        LogUtils.logAdminOperation(log, "日志管理", "设置开发环境日志级别");
         logLevelManager.setDevelopmentLevels();
         return ResponseEntity.ok(Result.success("开发环境日志级别设置完成"));
     }
@@ -141,7 +143,7 @@ public class LogManagementController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(forbiddenResult);
         }
 
-        log.info("【日志管理】设置生产环境日志级别");
+        LogUtils.logAdminOperation(log, "日志管理", "设置生产环境日志级别");
         logLevelManager.setProductionLevels();
         return ResponseEntity.ok(Result.success("生产环境日志级别设置完成"));
     }
@@ -155,7 +157,7 @@ public class LogManagementController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(forbiddenResult);
         }
 
-        log.info("【日志管理】设置问题排查日志级别");
+        LogUtils.logAdminOperation(log, "日志管理", "设置问题排查日志级别");
         logLevelManager.setDebuggingLevels();
         return ResponseEntity.ok(Result.success("问题排查日志级别设置完成"));
     }
@@ -169,7 +171,7 @@ public class LogManagementController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(forbiddenResult);
         }
 
-        log.info("【日志管理】开启SQL日志");
+        LogUtils.logAdminOperation(log, "日志管理", "开启SQL日志");
         logLevelManager.enableSqlLogging();
         return ResponseEntity.ok(Result.success("SQL日志已开启"));
     }
@@ -183,7 +185,7 @@ public class LogManagementController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(forbiddenResult);
         }
 
-        log.info("【日志管理】关闭SQL日志");
+        LogUtils.logAdminOperation(log, "日志管理", "关闭SQL日志");
         logLevelManager.disableSqlLogging();
         return ResponseEntity.ok(Result.success("SQL日志已关闭"));
     }
@@ -197,7 +199,7 @@ public class LogManagementController {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(forbiddenResult);
         }
 
-        log.info("【日志管理】获取日志文件状态");
+        LogUtils.logAdminOperation(log, "日志管理", "获取日志文件状态");
         String status = logManagementConfig.getLogManagementStatus();
         return ResponseEntity.ok(Result.success(status));
     }
