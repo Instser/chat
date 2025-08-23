@@ -1,5 +1,6 @@
 package com.instser.chat.service.serviceimpl;
 
+import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.instser.chat.common.exception.FileUploadException;
 import com.instser.chat.common.util.LogUtils;
@@ -655,39 +656,174 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
 
     @Override
     public int cleanupDeletedFilesAndRelatedRecords() {
-        // 查询所有标记为删除状态的文件记录
-        List<FileUpload> deletedFiles = fileUploadDao.selectDeletedFiles();
+        try {
+            log.info("=== 开始执行文件清理任务 ===");
+            long totalStartTime = System.currentTimeMillis();
+            int totalCleanedCount = 0;
 
-        if (deletedFiles == null || deletedFiles.isEmpty()) {
-            log.info("没有找到标记为删除的文件记录，跳过清理");
+            // 第一步：清理标记为删除的文件 (deleted = 1)
+            int deletedFilesCount = cleanupMarkedDeletedFiles();
+            totalCleanedCount += deletedFilesCount;
+
+            // 第二步：清理孤儿文件 (session_id为空或message_id为空，且创建时间超过2小时)
+            int orphanFilesCount = cleanupOrphanFiles();
+            totalCleanedCount += orphanFilesCount;
+
+            long totalDuration = System.currentTimeMillis() - totalStartTime;
+
+            log.info("=== 文件清理任务完成 ===");
+            log.info("清理统计：标记删除文件{}个，孤儿文件{}个，总计{}个，耗时{}ms", 
+                    deletedFilesCount, orphanFilesCount, totalCleanedCount, totalDuration);
+
+            return totalCleanedCount;
+
+        } catch (Exception e) {
+            log.error("=== 文件清理任务发生异常 ===", e);
             return 0;
         }
-
-        int cleanedCount = 0;
-        int relatedRecordsCleanedCount = 0;
-
-        for (FileUpload file : deletedFiles) {
-            try {
-                // 1. 清理相关的关联记录（如果需要的话）
-                // 注意：由于文件表有外键约束，这里主要是记录日志
-                // 实际的关联清理由数据库外键约束自动处理
-
-                // 2. 物理删除文件记录（彻底删除，不再使用逻辑删除）
-                if (fileUploadDao.deleteById(file.getId()) > 0) {
-                    cleanedCount++;
-                    log.info("已清理标记为删除的文件记录，文件ID：{}，文件名：{}，关联会话：{}，关联消息：{}",
-                            file.getFileId(), file.getFileName(), file.getSessionId(), file.getMessageId());
-                }
-            } catch (Exception e) {
-                log.error("清理标记为删除的文件失败，文件ID：{}，错误：{}",
-                        file.getFileId(), e.getMessage());
-            }
-        }
-
-        log.info("清理标记为删除的文件和关联记录完成，清理文件数量：{}，关联记录数量：{}",
-                cleanedCount, relatedRecordsCleanedCount);
-        return cleanedCount;
     }
+
+    /**
+     * 清理标记为删除的文件 (deleted = 1)
+     */
+    private int cleanupMarkedDeletedFiles() {
+        try {
+            log.info("--- 开始清理标记为删除的文件 ---");
+
+            // 使用QueryWrapper的apply方法避开MyBatis-Plus逻辑删除拦截
+            List<FileUpload> deletedFiles = baseMapper.selectList(
+                new QueryWrapper<FileUpload>()
+                    .apply("deleted = 1") // 使用apply避开逻辑删除拦截
+                    .orderByAsc("update_time")
+            );
+
+            if (deletedFiles == null || deletedFiles.isEmpty()) {
+                log.info("没有找到标记为删除的文件记录（deleted=1），跳过清理");
+                return 0;
+            }
+
+            log.info("发现{}个标记为删除的文件，开始清理", deletedFiles.size());
+
+            int cleanedCount = 0;
+            for (FileUpload file : deletedFiles) {
+                try {
+                    log.info("清理标记删除文件：ID={}，文件名={}，用户ID={}，会话ID={}，消息ID={}，更新时间={}",
+                            file.getFileId(), file.getFileName(), file.getUserId(), 
+                            file.getSessionId(), file.getMessageId(), file.getUpdateTime());
+
+                    // 物理删除文件记录
+                    if (fileUploadDao.deleteById(file.getId()) > 0) {
+                        cleanedCount++;
+                        log.info("✓ 标记删除文件清理成功：{}", file.getFileId());
+                    } else {
+                        log.warn("✗ 标记删除文件清理失败：{}，可能已被其他进程删除", file.getFileId());
+                    }
+
+                } catch (Exception e) {
+                    log.error("✗ 清理标记删除文件失败，文件ID：{}，错误：{}", file.getFileId(), e.getMessage(), e);
+                }
+            }
+
+            log.info("--- 标记删除文件清理完成：{}个 ---", cleanedCount);
+            return cleanedCount;
+
+        } catch (Exception e) {
+            log.error("--- 清理标记删除文件发生异常 ---", e);
+            return 0;
+        }
+    }
+
+    /**
+     * 清理孤儿文件 (session_id为空或message_id为空，且创建时间超过指定时间)
+     */
+    private int cleanupOrphanFiles() {
+        try {
+            log.info("--- 开始清理孤儿文件 ---");
+
+            // 使用上海时区计算时间阈值：2小时前创建的未关联文件
+            java.time.ZoneId shanghaiZone = java.time.ZoneId.of("Asia/Shanghai");
+            java.time.LocalDateTime threshold = java.time.LocalDateTime.now(shanghaiZone).minusHours(2);
+
+            log.info("孤儿文件清理时间阈值：{}（上海时区）", threshold);
+
+            // 查询孤儿文件：session_id为空或message_id为空，且创建时间超过阈值
+            List<FileUpload> orphanFiles = baseMapper.selectList(
+                new QueryWrapper<FileUpload>()
+                    .apply("deleted = 0") // 只查询未删除的记录
+                    .and(wrapper -> wrapper
+                        .isNull("session_id")
+                        .or()
+                        .eq("session_id", "")
+                        .or()
+                        .isNull("message_id")
+                        .or()
+                        .eq("message_id", "")
+                    )
+                    .lt("create_time", threshold) // 创建时间早于阈值（上海时区）
+                    .orderByAsc("create_time")
+            );
+
+            if (orphanFiles == null || orphanFiles.isEmpty()) {
+                log.info("没有发现孤儿文件（session_id或message_id为空且创建时间>2小时），跳过清理");
+                return 0;
+            }
+
+            log.info("发现{}个孤儿文件（上海时区创建时间早于{}），开始清理", orphanFiles.size(), threshold);
+
+            int cleanedCount = 0;
+            for (FileUpload file : orphanFiles) {
+                try {
+                    // 记录孤儿文件的详细信息
+                    String orphanType = getOrphanFileType(file);
+                    
+                    // 计算文件存在时长（使用上海时区）
+                    java.time.LocalDateTime now = java.time.LocalDateTime.now(shanghaiZone);
+                    long hoursOld = java.time.Duration.between(file.getCreatedTime(), now).toHours();
+                    
+                    log.info("清理孤儿文件：ID={}，文件名={}，用户ID={}，类型={}，会话ID={}，消息ID={}，创建时间={}（上海时区），存在时长={}小时",
+                            file.getFileId(), file.getFileName(), file.getUserId(), orphanType,
+                            file.getSessionId(), file.getMessageId(), file.getCreatedTime(), hoursOld);
+
+                    // 物理删除孤儿文件记录
+                    if (fileUploadDao.deleteById(file.getId()) > 0) {
+                        cleanedCount++;
+                        log.info("✓ 孤儿文件清理成功：{}（{}，存在{}小时）", file.getFileId(), orphanType, hoursOld);
+                    } else {
+                        log.warn("✗ 孤儿文件清理失败：{}，可能已被其他进程删除", file.getFileId());
+                    }
+
+                } catch (Exception e) {
+                    log.error("✗ 清理孤儿文件失败，文件ID：{}，错误：{}", file.getFileId(), e.getMessage(), e);
+                }
+            }
+
+            log.info("--- 孤儿文件清理完成：{}个 ---", cleanedCount);
+            return cleanedCount;
+
+        } catch (Exception e) {
+            log.error("--- 清理孤儿文件发生异常 ---", e);
+            return 0;
+        }
+    }
+
+    /**
+     * 判断孤儿文件的类型
+     */
+    private String getOrphanFileType(FileUpload file) {
+        boolean hasSession = file.getSessionId() != null && !file.getSessionId().trim().isEmpty();
+        boolean hasMessage = file.getMessageId() != null && !file.getMessageId().trim().isEmpty();
+        
+        if (!hasSession && !hasMessage) {
+            return "完全孤儿文件（无会话无消息）";
+        } else if (!hasSession) {
+            return "会话孤儿文件（无会话ID）";
+        } else if (!hasMessage) {
+            return "消息孤儿文件（无消息ID）";
+        } else {
+            return "正常文件（意外进入清理）";
+        }
+    }
+
 
     @Override
     public String getFileDownloadUrl(String fileId, Long userId) {

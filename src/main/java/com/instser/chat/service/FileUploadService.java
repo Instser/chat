@@ -257,13 +257,14 @@ public interface FileUploadService extends IService<FileUpload> {
      * 清理标记为删除状态的文件记录和关联数据
      *
      * 此方法会：
-     * 1. 查询所有deleted=1的文件记录
-     * 2. 清理相关的关联记录（如果有的话）
-     * 3. 物理删除文件记录
+     * 1. 查询所有deleted=1的文件记录并物理删除
+     * 2. 清理孤儿文件（session_id或message_id为空且创建时间超过阈值）
+     * 3. 清理相关的关联记录（如果有的话）
      *
-     * @return 清理的文件数量
+     * @return 清理的文件总数量
      */
     int cleanupDeletedFilesAndRelatedRecords();
+
 
     /**
      * 获取文件下载URL
