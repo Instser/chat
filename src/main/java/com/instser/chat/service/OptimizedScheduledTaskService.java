@@ -1289,12 +1289,12 @@ public class OptimizedScheduledTaskService {
                 // 计算慢查询比例
                 if (totalQueries > 0) {
                     double slowQueryRate = (double) slowQueries / totalQueries * 100;
-                    log.info("【慢查询统计】总慢查询: {}, 总查询: {}, 慢查询比例: {:.3f}%",
-                            slowQueries, totalQueries, slowQueryRate);
+                    log.info("【慢查询统计】总慢查询: {}, 总查询: {}, 慢查询比例: {}%",
+                            slowQueries, totalQueries, String.format("%.3f", slowQueryRate));
 
                     // 告警阈值：慢查询比例超过1%
                     if (slowQueryRate > 1.0) {
-                        log.warn("【慢查询告警】慢查询比例过高: {:.3f}%，建议优化查询性能", slowQueryRate);
+                        log.warn("【慢查询告警】慢查询比例过高: {}%，建议优化查询性能", String.format("%.3f", slowQueryRate));
                     }
                 }
 
@@ -1310,7 +1310,7 @@ public class OptimizedScheduledTaskService {
                 // 计算平均QPS
                 if (uptime > 0) {
                     double qps = (double) totalQueries / uptime;
-                    log.info("【性能统计】平均QPS: {:.2f}, 运行时间: {}秒", qps, uptime);
+                    log.info("【性能统计】平均QPS: {}, 运行时间: {}秒", String.format("%.2f", qps), uptime);
                 }
 
             }
@@ -1830,11 +1830,11 @@ public class OptimizedScheduledTaskService {
 
             double memoryUsagePercent = (double) usedMemory / maxMemory * 100;
 
-            log.debug("【资源监控】JVM内存使用率: {:.2f}%, 已用: {}MB, 最大: {}MB",
-                    memoryUsagePercent, usedMemory / 1024 / 1024, maxMemory / 1024 / 1024);
+            log.debug("【资源监控】JVM内存使用率: {}%, 已用: {}MB, 最大: {}MB",
+                    String.format("%.2f", memoryUsagePercent), usedMemory / 1024 / 1024, maxMemory / 1024 / 1024);
 
             if (memoryUsagePercent > 85) {
-                log.warn("【健康告警】JVM内存使用率过高: {:.2f}%", memoryUsagePercent);
+                log.warn("【健康告警】JVM内存使用率过高: {}%", String.format("%.2f", memoryUsagePercent));
             }
 
         } catch (Exception e) {
@@ -1874,11 +1874,11 @@ public class OptimizedScheduledTaskService {
 
             double diskUsagePercent = (double) usedSpace / totalSpace * 100;
 
-            log.debug("【资源监控】磁盘使用率: {:.2f}%, 已用: {}GB, 总计: {}GB",
-                    diskUsagePercent, usedSpace / 1024 / 1024 / 1024, totalSpace / 1024 / 1024 / 1024);
+            log.debug("【资源监控】磁盘使用率: {}%, 已用: {}GB, 总计: {}GB",
+                    String.format("%.2f", diskUsagePercent), usedSpace / 1024 / 1024 / 1024, totalSpace / 1024 / 1024 / 1024);
 
             if (diskUsagePercent > 90) {
-                log.warn("【健康告警】磁盘使用率过高: {:.2f}%", diskUsagePercent);
+                log.warn("【健康告警】磁盘使用率过高: {}%", String.format("%.2f", diskUsagePercent));
             }
 
         } catch (Exception e) {
