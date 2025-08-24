@@ -121,7 +121,7 @@ public class ChatServiceImpl implements ChatService {
             }
 
             // 验证用户聊天权限
-            ChatResponseDTO permissionResult = validateChatPermission(request.getUserId(), request.getSessionId(), model.getId(), response);
+            ChatResponseDTO permissionResult = validateChatPermission(request.getUserId(), request.getSessionId(), model, response);
             if (permissionResult != null) {
                 LogUtils.logUserSessionOperation(log, request.getUserId(), request.getSessionId(), "聊天结束", "结果：权限验证失败");
                 return permissionResult;
@@ -344,35 +344,114 @@ public class ChatServiceImpl implements ChatService {
      *
      * @param userId 用户ID
      * @param sessionId 会话ID（用于日志）
-     * @param modelId 模型ID（用于保存错误响应）
+     * @param model 模型信息
      * @param response HTTP响应
      * @return 如果验证失败返回错误响应，验证通过返回null
      */
-    private ChatResponseDTO validateChatPermission(Long userId, String sessionId, Long modelId, HttpServletResponse response) {
-        log.debug("【权限验证】开始验证聊天权限，用户ID：{}，会话ID：{}", userId, sessionId);
+    private ChatResponseDTO validateChatPermission(Long userId, String sessionId, AiModel model, HttpServletResponse response) {
+        log.debug("【权限验证】开始验证聊天权限，用户ID：{}，会话ID：{}，模型：{}", userId, sessionId, model.getModelName());
 
         try {
+            // 1. 验证基础聊天权限
             ChatLimitVO limitCheck = chatLimitService.validateChatPermission(userId);
             if (!limitCheck.getCanChat()) {
-                String errorContent = "Request failed. Please try again later.";
-                log.info("【权限验证】验证失败，用户ID：{}，会话ID：{}，原因：{}",
-                        userId, sessionId,
-                        limitCheck.getLimitReason() != null ? limitCheck.getLimitReason() : "权限验证失败");
+                String limitReason = limitCheck.getLimitReason();
+                log.error("【权限验证】基础验证失败，用户ID：{}，会话ID：{}，原因：{}",
+                        userId, sessionId, limitReason != null ? limitReason : "权限验证失败");
 
-                return handleErrorResponse(response, errorContent, sessionId, userId, modelId);
+                return handleLimitError(limitReason, response, sessionId, userId, model.getId());
             }
 
-            log.info("【权限验证】验证通过，用户ID：{}，套餐：{}，限制类型：{}",
-                    userId, limitCheck.getPackageName(), limitCheck.getLimitType());
-            log.debug("【权限验证】详细信息 - 会话ID：{}，剩余次数：{}，每日限制：{}",
-                    sessionId, limitCheck.getRemainingToday(), limitCheck.getDailyLimit());
+            // 2. 验证模型特定权限
+            ChatLimitVO modelLimitCheck = chatLimitService.validateModelChatPermission(userId, model.getModelName());
+            if (!modelLimitCheck.getCanChat()) {
+                String modelLimitReason = modelLimitCheck.getLimitReason();
+                log.error("【权限验证】模型验证失败，用户ID：{}，会话ID：{}，模型：{}，原因：{}",
+                        userId, sessionId, model.getModelName(), modelLimitReason != null ? modelLimitReason : "模型权限验证失败");
+
+                return handleLimitError(modelLimitReason, response, sessionId, userId, model.getId());
+            }
+
+            log.debug("【权限验证】验证通过，用户ID：{}，套餐：{}，限制类型：{}，模型：{}",
+                    userId, limitCheck.getPackageName(), limitCheck.getLimitType(), model.getModelName());
+            log.debug("【权限验证】详细信息 - 会话ID：{}，剩余次数：{}，每日限制：{}，模型剩余：{}",
+                    sessionId, limitCheck.getRemainingToday(), limitCheck.getDailyLimit(), modelLimitCheck.getModelRemainingToday());
 
             return null; // 验证通过
         } catch (Exception e) {
             log.error("【权限验证】验证异常，用户ID：{}，会话ID：{}", userId, sessionId, e);
             String errorContent = "Request failed. Please try again later.";
+            return handleErrorResponse(response, errorContent, sessionId, userId, model.getId());
+        }
+    }
+
+    /**
+     * 处理限制错误
+     */
+    private ChatResponseDTO handleLimitError(String limitReason, HttpServletResponse response, 
+                                           String sessionId, Long userId, Long modelId) {
+        // 检查是否是包/使用限制相关的错误，如果是则作为正常流式响应返回
+        if (isPackageOrUsageLimitError(limitReason)) {
+            String streamingErrorMessage = getStreamingErrorMessage(limitReason);
+            try {
+                // 设置响应头
+                setStreamResponseHeaders(response);
+                writeLimitErrorAsStreamingResponse(response, streamingErrorMessage);
+                
+                // 保存错误响应到数据库
+                if (sessionId != null && userId != null && modelId != null) {
+                    saveErrorResponse(sessionId, userId, modelId, streamingErrorMessage);
+                }
+                
+                return ChatResponseDTO.success(true, false, streamingErrorMessage); // 返回成功，因为我们已经发送了流式响应
+            } catch (IOException e) {
+                log.error("发送流式限制错误响应失败", e);
+                return handleErrorResponse(response, "Request failed. Please try again later.", sessionId, userId, modelId);
+            }
+        } else {
+            // 其他类型的错误仍然作为错误响应返回
+            String errorContent = "Request failed. Please try again later.";
             return handleErrorResponse(response, errorContent, sessionId, userId, modelId);
         }
+    }
+
+    /**
+     * 检查是否是套餐或使用限制相关的错误
+     */
+    private boolean isPackageOrUsageLimitError(String limitReason) {
+        if (limitReason == null) {
+            return false;
+        }
+        
+        // 检查是否包含套餐过期或使用限制相关的关键词
+        return limitReason.contains("Your package has expired") ||
+               limitReason.contains("model usage limit reached") ||
+               limitReason.contains("今日聊天次数已达到限制") ||
+               limitReason.contains("套餐聊天次数已用完");
+    }
+
+    /**
+     * 将限制原因转换为流式响应消息
+     */
+    private String getStreamingErrorMessage(String limitReason) {
+        if (limitReason == null) {
+            return "Usage limit reached. Please check your package status.";
+        }
+        
+        // 如果已经是英文消息，直接返回
+        if (limitReason.contains("Your package has expired") || 
+            limitReason.contains("model usage limit reached")) {
+            return limitReason;
+        }
+        
+        // 中文消息转换为英文
+        if (limitReason.contains("今日聊天次数已达到限制")) {
+            return "Daily usage limit reached, please use other models.";
+        } else if (limitReason.contains("套餐聊天次数已用完")) {
+            return "Package usage limit reached, please use other models.";
+        }
+        
+        return "Usage limit reached. Please check your package status.";
     }
 
     /**
@@ -996,6 +1075,25 @@ public class ChatServiceImpl implements ChatService {
         response.setHeader("x-vercel-ai-data-stream", "v1");
         response.setHeader("Cache-Control", "no-cache");
         response.setHeader("Connection", "keep-alive");
+    }
+
+    /**
+     * 写入限制错误作为正常流式响应
+     */
+    private void writeLimitErrorAsStreamingResponse(HttpServletResponse response, String errorMessage) throws IOException {
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            String vercelFormat = String.format("0:%s\n", mapper.writeValueAsString(errorMessage));
+            response.getWriter().write(vercelFormat);
+            
+            // 发送完成标记
+            String completionData = buildCompletionData(false, false, null);
+            response.getWriter().write(completionData);
+            response.getWriter().flush();
+        } catch (Exception e) {
+            log.error("发送限制错误流式响应失败", e);
+            throw new IOException("Failed to send streaming limit error response", e);
+        }
     }
 
     /**
@@ -3905,9 +4003,9 @@ public class ChatServiceImpl implements ChatService {
             updateSessionModelIfNeeded(sessionId, modelId, chatSession.getModelId());
 
             // 验证用户聊天权限和套餐限制
-            ChatResponseDTO permissionResult = validateChatPermission(userId, sessionId, model.getId(), response);
+            ChatResponseDTO permissionResult = validateChatPermission(userId, sessionId, model, response);
             if (permissionResult != null) {
-                log.info("重试请求聊天权限验证失败，会话ID：{}，用户ID：{}", sessionId, userId);
+                log.error("重试请求聊天权限验证失败，会话ID：{}，用户ID：{}", sessionId, userId);
                 return;
             }
 
@@ -4160,9 +4258,9 @@ public class ChatServiceImpl implements ChatService {
             updateSessionModelIfNeeded(sessionId, modelId, chatSession.getModelId());
 
             // 验证用户聊天权限和套餐限制
-            ChatResponseDTO permissionResult = validateChatPermission(userId, sessionId, model.getId(), response);
+            ChatResponseDTO permissionResult = validateChatPermission(userId, sessionId, model, response);
             if (permissionResult != null) {
-                log.info("编辑重发请求聊天权限验证失败，会话ID：{}，用户ID：{}", sessionId, userId);
+                log.error("编辑重发请求聊天权限验证失败，会话ID：{}，用户ID：{}", sessionId, userId);
                 return;
             }
 

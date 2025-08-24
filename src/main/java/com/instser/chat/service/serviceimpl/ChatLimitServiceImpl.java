@@ -80,7 +80,7 @@ public class ChatLimitServiceImpl implements ChatLimitService {
                 LogUtils.logUserWarning(log, userId, "聊天权限验证", "套餐已过期，套餐ID：{}，套餐名称：{}，过期时间：{}，当前时间：{}",
                     userAccount.getPackageId(), packageInfo.getPackageName(),
                     userAccount.getPackageExpireTime(), getBusinessDateTime());
-                return ChatLimitVO.failed("套餐已过期");
+                return ChatLimitVO.failed("Your package has expired");
             }
 
             // 根据限制类型进行验证
@@ -239,8 +239,8 @@ public class ChatLimitServiceImpl implements ChatLimitService {
             if (!userDailyUsageService.canChatWithModel(userId, userAccount.getPackageId(), modelName)) {
                 int remaining = userDailyUsageService.getRemainingModelChats(userId, userAccount.getPackageId(), modelName);
                 String message = remaining == -1 ?
-                    String.format("模型%s无限制使用", modelName) :
-                    String.format("模型%s今日使用次数已达限制，剩余%d次", modelName, remaining);
+                    String.format("%s model usage limit reached, please use other models", modelName) :
+                    String.format("%s model usage limit reached, please use other models", modelName);
                 return ChatLimitVO.failed(message);
             }
 
