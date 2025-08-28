@@ -41,7 +41,7 @@ public class RequestLogInterceptor implements HandlerInterceptor {
         }
 
         // 获取当前用户ID
-        String userId = getCurrentUserId();
+        Long userId = getCurrentUserId();
 
         // 获取请求路径和方法
         String method = request.getMethod();
@@ -51,7 +51,7 @@ public class RequestLogInterceptor implements HandlerInterceptor {
         String parameters = getRequestParameters(request);
 
         // 输出日志：（用户ID）调用（方法路径）参数为（请求参数）
-        LogUtils.logUserOperation(log, Long.parseLong(userId), "API请求", "调用 {} {}，参数为（{}）", method, path, parameters);
+        LogUtils.logUserOperation(log, userId, "API请求", "调用 {} {}，参数为（{}）", method, path, parameters);
 
         return true;
     }
@@ -59,7 +59,7 @@ public class RequestLogInterceptor implements HandlerInterceptor {
     /**
      * 获取当前用户ID
      */
-    private String getCurrentUserId() {
+    private Long getCurrentUserId() {
         try {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
             if (authentication != null && authentication.isAuthenticated() &&
@@ -69,13 +69,13 @@ public class RequestLogInterceptor implements HandlerInterceptor {
                 if (principal instanceof UserDetailsServiceImpl.CustomUserDetails) {
                     UserDetailsServiceImpl.CustomUserDetails userDetails =
                         (UserDetailsServiceImpl.CustomUserDetails) principal;
-                    return userDetails.getUser().getId().toString();
+                    return userDetails.getUser().getId();
                 }
             }
         } catch (Exception e) {
-            // 忽略异常，返回未认证
+            // 忽略异常，返回null表示未认证
         }
-        return "未认证";
+        return null; // 未认证用户返回null
     }
 
     /**

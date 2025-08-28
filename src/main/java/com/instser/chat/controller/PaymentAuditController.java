@@ -95,9 +95,15 @@ public class PaymentAuditController {
             return null;
         }
         try {
-            return Long.parseLong(authentication.getName());
-        } catch (NumberFormatException e) {
-            LogUtils.logUserWarning(log, null, "认证", "无法解析用户ID: {}", authentication.getName());
+            Object principal = authentication.getPrincipal();
+            if (principal instanceof com.instser.chat.security.UserDetailsServiceImpl.CustomUserDetails) {
+                com.instser.chat.security.UserDetailsServiceImpl.CustomUserDetails userDetails =
+                    (com.instser.chat.security.UserDetailsServiceImpl.CustomUserDetails) principal;
+                return userDetails.getUserId();
+            }
+            return null;
+        } catch (Exception e) {
+            LogUtils.logUserWarning(log, null, "认证", "获取用户ID失败: {}", e.getMessage());
             return null;
         }
     }
