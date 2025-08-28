@@ -64,7 +64,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                         if (userDetails instanceof UserDetailsServiceImpl.CustomUserDetails) {
                             userId = ((UserDetailsServiceImpl.CustomUserDetails) userDetails).getUserId();
                         }
-                        LogUtils.logUserOperation(log, userId, "JWT认证", "用户认证成功，用户名：{}", username);
+                        LogUtils.logUserDebug(log, userId, "JWT认证", "用户认证成功，用户名：{}", username);
                     }
                 }
             }

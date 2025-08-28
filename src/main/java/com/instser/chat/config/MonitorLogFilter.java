@@ -30,7 +30,8 @@ public class MonitorLogFilter extends Filter<ILoggingEvent> {
         "【内存监控】",
         "【CPU监控】",
         "【数据库监控】",
-        "【连接池监控】"
+        "【连接池监控】",
+        "【定时任务】"
     };
 
     @Override

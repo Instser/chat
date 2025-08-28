@@ -146,7 +146,7 @@ public class OAuth2ServiceImpl implements OAuth2Service {
             updateOAuthLoginInfo(existingOAuth, userInfo);
             User user = userService.getById(existingOAuth.getUserId());
 
-            LogUtils.logUserOperation(log, user.getId(), "OAuth2登录", "OAuth2用户登录成功: provider={}", userInfo.getProvider());
+        LogUtils.logUserDebug(log, user.getId(), "OAuth2登录", "OAuth2用户登录成功: provider={}", userInfo.getProvider());
             return OAuth2LoginResult.existingUser(user);
         }
 
@@ -167,7 +167,7 @@ public class OAuth2ServiceImpl implements OAuth2Service {
                 LogUtils.logUserOperation(log, existingUser.getId(), "OAuth2头像同步", "已更新用户头像：{}", userInfo.getAvatar());
             }
 
-            LogUtils.logUserOperation(log, existingUser.getId(), "OAuth2登录", "OAuth2账号绑定成功: provider={}", userInfo.getProvider());
+            LogUtils.logUserDebug(log, existingUser.getId(), "OAuth2登录", "OAuth2账号绑定成功: provider={}", userInfo.getProvider());
             return OAuth2LoginResult.newBinding(existingUser);
         }
 
@@ -176,7 +176,7 @@ public class OAuth2ServiceImpl implements OAuth2Service {
         UserOAuth newOAuth = createOAuthBinding(newUser.getId(), userInfo);
         userOAuthDao.insert(newOAuth);
 
-        LogUtils.logUserOperation(log, newUser.getId(), "OAuth2注册", "OAuth2新用户注册成功: provider={}", userInfo.getProvider());
+        LogUtils.logUserDebug(log, newUser.getId(), "OAuth2注册", "OAuth2新用户注册成功: provider={}", userInfo.getProvider());
         return OAuth2LoginResult.newUser(newUser);
     }
 
@@ -211,11 +211,11 @@ public class OAuth2ServiceImpl implements OAuth2Service {
                 String idToken = tokens[0];
                 String accessToken = tokens[1];
 
-                log.info("【Google用户信息】使用id_token解码获取用户信息");
+                log.debug("【Google用户信息】使用id_token解码获取用户信息");
                 return getUserInfoFromIdToken(idToken, accessToken);
             } else {
                 // 只有access_token，使用API调用
-                log.info("【Google用户信息】使用access_token调用API获取用户信息");
+                log.debug("【Google用户信息】使用access_token调用API获取用户信息");
                 return getGoogleUserInfoByToken(tokenResult);
             }
 
@@ -263,7 +263,7 @@ public class OAuth2ServiceImpl implements OAuth2Service {
 
             HttpEntity<MultiValueMap<String, String>> request = new HttpEntity<>(params, headers);
 
-            log.info("【Google Token交换】开始请求access token");
+            log.debug("【Google Token交换】开始请求access token");
             log.debug("【Google Token交换】请求URL: {}", googleTokenUri);
             log.debug("【Google Token交换】client_id: {}", googleClientId);
             log.debug("【Google Token交换】redirect_uri: {}", googleRedirectUri);
@@ -271,14 +271,14 @@ public class OAuth2ServiceImpl implements OAuth2Service {
 
             ResponseEntity<String> response = restTemplate.postForEntity(googleTokenUri, request, String.class);
 
-            log.info("【Google Token交换】响应状态码: {}", response.getStatusCode());
+            log.debug("【Google Token交换】响应状态码: {}", response.getStatusCode());
 
             if (response.getStatusCode() == HttpStatus.OK) {
                 JsonNode jsonNode = objectMapper.readTree(response.getBody());
                 String accessToken = jsonNode.get("access_token").asText();
                 String idToken = jsonNode.has("id_token") ? jsonNode.get("id_token").asText() : null;
 
-                log.info("【Google Token交换】成功获取access token，id_token存在: {}", idToken != null);
+                log.debug("【Google Token交换】成功获取access token，id_token存在: {}", idToken != null);
 
                 // 将id_token存储起来，供后续使用
                 if (idToken != null) {
@@ -349,7 +349,7 @@ public class OAuth2ServiceImpl implements OAuth2Service {
                 throw new OAuth2Exception("USER_ID_MISSING", "id_token中缺少用户ID");
             }
 
-            log.info("成功从id_token解码用户信息: userId={}, email={}", userInfo.getId(), userInfo.getEmail());
+            log.debug("成功从id_token解码用户信息: userId={}, email={}", userInfo.getId(), userInfo.getEmail());
             return userInfo;
 
         } catch (Exception e) {
@@ -371,7 +371,7 @@ public class OAuth2ServiceImpl implements OAuth2Service {
 
             HttpEntity<String> request = new HttpEntity<>(headers);
 
-            log.info("向Google请求用户信息: {}", googleUserInfoUri);
+            log.debug("向Google请求用户信息: {}", googleUserInfoUri);
             ResponseEntity<String> response = restTemplate.exchange(googleUserInfoUri, HttpMethod.GET, request, String.class);
 
             if (response.getStatusCode() == HttpStatus.OK) {
@@ -397,7 +397,7 @@ public class OAuth2ServiceImpl implements OAuth2Service {
                 userInfo.setAvatar(jsonNode.has("picture") ? jsonNode.get("picture").asText() : null);
                 userInfo.setRawData(responseBody);
 
-                log.info("成功获取Google用户信息: userId={}, email={}", userInfo.getId(), userInfo.getEmail());
+            log.debug("成功获取Google用户信息: userId={}, email={}", userInfo.getId(), userInfo.getEmail());
                 return userInfo;
             } else {
                 throw new OAuth2Exception("USER_INFO_REQUEST_FAILED", "Google用户信息请求失败: " + response.getStatusCode());
@@ -554,7 +554,7 @@ public class OAuth2ServiceImpl implements OAuth2Service {
 
     @Override
     public void bindOAuthAccount(Long userId, String provider, String code, String clientIp) {
-        LogUtils.logUserOperation(log, userId, "OAuth2绑定", "绑定OAuth账号: provider={}", provider);
+        LogUtils.logUserDebug(log, userId, "OAuth2绑定", "绑定OAuth账号: provider={}", provider);
 
         // 检查用户是否已绑定该提供商
         UserOAuth existingBinding = userOAuthDao.findByUserIdAndProvider(userId, provider);
@@ -582,7 +582,7 @@ public class OAuth2ServiceImpl implements OAuth2Service {
             userOAuthDao.insert(newBinding);
         }
 
-        LogUtils.logUserOperation(log, userId, "OAuth2绑定", "OAuth2账号绑定成功: provider={}", provider);
+        LogUtils.logUserDebug(log, userId, "OAuth2绑定", "OAuth2账号绑定成功: provider={}", provider);
     }
 
 
