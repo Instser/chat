@@ -690,10 +690,10 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
         try {
             log.info("--- 开始清理标记为删除的文件 ---");
 
-            // 使用QueryWrapper的apply方法避开MyBatis-Plus逻辑删除拦截
+            // 禁用逻辑删除拦截，直接查询 deleted = 1 的记录
             List<FileUpload> deletedFiles = baseMapper.selectList(
                 new QueryWrapper<FileUpload>()
-                    .apply("deleted = 1") // 使用apply避开逻辑删除拦截
+                    .eq("deleted", 1) // 直接使用eq，而不是apply
                     .orderByAsc("update_time")
             );
 
@@ -711,8 +711,8 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
                             file.getFileId(), file.getFileName(), file.getUserId(), 
                             file.getSessionId(), file.getMessageId(), file.getUpdateTime());
 
-                    // 物理删除文件记录
-                    if (fileUploadDao.deleteById(file.getId()) > 0) {
+                    // 物理删除文件记录（使用delete方法进行真正的物理删除）
+                    if (baseMapper.deleteById(file.getId()) > 0) {
                         cleanedCount++;
                         log.info("✓ 标记删除文件清理成功：{}", file.getFileId());
                     } else {
@@ -735,6 +735,7 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
 
     /**
      * 清理孤儿文件 (session_id为空或message_id为空，且创建时间超过指定时间)
+     * 包括逻辑删除和未删除的孤儿文件
      */
     private int cleanupOrphanFiles() {
         try {
@@ -747,9 +748,10 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
             log.info("孤儿文件清理时间阈值：{}（上海时区）", threshold);
 
             // 查询孤儿文件：session_id为空或message_id为空，且创建时间超过阈值
+            // 包括已逻辑删除(deleted=1)和未删除(deleted=0)的孤儿文件
             List<FileUpload> orphanFiles = baseMapper.selectList(
                 new QueryWrapper<FileUpload>()
-                    .apply("deleted = 0") // 只查询未删除的记录
+                    .in("deleted", 0, 1) // 明确查询deleted=0和deleted=1的记录
                     .and(wrapper -> wrapper
                         .isNull("session_id")
                         .or()
@@ -768,26 +770,27 @@ public class FileUploadServiceImpl extends ServiceImpl<FileUploadDao, FileUpload
                 return 0;
             }
 
-            log.info("发现{}个孤儿文件（上海时区创建时间早于{}），开始清理", orphanFiles.size(), threshold);
+            log.info("发现{}个孤儿文件（上海时区创建时间早于{}），包括逻辑删除和未删除的记录，开始清理", orphanFiles.size(), threshold);
 
             int cleanedCount = 0;
             for (FileUpload file : orphanFiles) {
                 try {
                     // 记录孤儿文件的详细信息
                     String orphanType = getOrphanFileType(file);
+                    String deleteStatus = file.getDeleted() == 1 ? "已逻辑删除" : "未删除";
                     
                     // 计算文件存在时长（使用上海时区）
                     java.time.LocalDateTime now = java.time.LocalDateTime.now(shanghaiZone);
                     long hoursOld = java.time.Duration.between(file.getCreatedTime(), now).toHours();
                     
-                    log.info("清理孤儿文件：ID={}，文件名={}，用户ID={}，类型={}，会话ID={}，消息ID={}，创建时间={}（上海时区），存在时长={}小时",
-                            file.getFileId(), file.getFileName(), file.getUserId(), orphanType,
+                    log.info("清理孤儿文件：ID={}，文件名={}，用户ID={}，类型={}，删除状态={}，会话ID={}，消息ID={}，创建时间={}（上海时区），存在时长={}小时",
+                            file.getFileId(), file.getFileName(), file.getUserId(), orphanType, deleteStatus,
                             file.getSessionId(), file.getMessageId(), file.getCreatedTime(), hoursOld);
 
-                    // 物理删除孤儿文件记录
-                    if (fileUploadDao.deleteById(file.getId()) > 0) {
+                    // 物理删除孤儿文件记录（使用baseMapper进行真正的物理删除）
+                    if (baseMapper.deleteById(file.getId()) > 0) {
                         cleanedCount++;
-                        log.info("✓ 孤儿文件清理成功：{}（{}，存在{}小时）", file.getFileId(), orphanType, hoursOld);
+                        log.info("✓ 孤儿文件清理成功：{}（{}，{}，存在{}小时）", file.getFileId(), orphanType, deleteStatus, hoursOld);
                     } else {
                         log.warn("✗ 孤儿文件清理失败：{}，可能已被其他进程删除", file.getFileId());
                     }
