@@ -159,6 +159,13 @@ public class OAuth2ServiceImpl implements OAuth2Service {
 
             // 更新User表的最后登录时间（新绑定也算登录）
             userService.updateLastLoginTime(existingUser.getId());
+            
+            // 如果OAuth用户有头像且现有用户头像为空，更新用户头像
+            if (userInfo.getAvatar() != null && 
+                (existingUser.getAvatar() == null || existingUser.getAvatar().isEmpty())) {
+                userService.updateUserAvatar(existingUser.getId(), userInfo.getAvatar());
+                LogUtils.logUserOperation(log, existingUser.getId(), "OAuth2头像同步", "已更新用户头像：{}", userInfo.getAvatar());
+            }
 
             LogUtils.logUserOperation(log, existingUser.getId(), "OAuth2登录", "OAuth2账号绑定成功: provider={}", userInfo.getProvider());
             return OAuth2LoginResult.newBinding(existingUser);
@@ -622,17 +629,26 @@ public class OAuth2ServiceImpl implements OAuth2Service {
         oauth.setLoginCount(oauth.getLoginCount() + 1);
 
         // 更新用户信息（如果有变化）
+        boolean needUpdateUserAvatar = false;
         if (!Objects.equals(oauth.getName(), userInfo.getName())) {
             oauth.setName(userInfo.getName());
         }
         if (!Objects.equals(oauth.getAvatar(), userInfo.getAvatar())) {
             oauth.setAvatar(userInfo.getAvatar());
+            needUpdateUserAvatar = true; // 标记需要同步更新用户表头像
         }
 
         userOAuthDao.updateById(oauth);
 
         // 同步更新User表的最后登录时间
         userService.updateLastLoginTime(oauth.getUserId());
+        
+        // 如果OAuth头像有更新，同步更新User表的头像
+        if (needUpdateUserAvatar && userInfo.getAvatar() != null) {
+            userService.updateUserAvatar(oauth.getUserId(), userInfo.getAvatar());
+            log.debug("【OAuth登录信息同步】已同步更新User表头像，用户ID：{}，头像URL：{}", 
+                oauth.getUserId(), userInfo.getAvatar());
+        }
 
         log.debug("【OAuth登录信息同步】已同步更新User表和OAuth表的最后登录时间，用户ID：{}", oauth.getUserId());
     }

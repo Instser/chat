@@ -405,7 +405,7 @@ public class ChatApiController {
             response.setCharacterEncoding("UTF-8");
             response.setHeader("Cache-Control", "no-cache");
             response.setHeader("Connection", "keep-alive");
-            response.getWriter().write("3:\"" + errorMessage + "\"\n");
+            response.getWriter().write("0:\"" + errorMessage + "\"\n");
             response.getWriter().flush();
         } catch (Exception e) {
             LogUtils.logUserError(log, null, "API响应", "写入错误响应失败", e);

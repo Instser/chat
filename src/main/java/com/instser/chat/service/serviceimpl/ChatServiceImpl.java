@@ -120,12 +120,7 @@ public class ChatServiceImpl implements ChatService {
                 return ChatResponseDTO.errorWithContent("Request failed. Please try again later.");
             }
 
-            // 验证用户聊天权限
-            ChatResponseDTO permissionResult = validateChatPermission(request.getUserId(), request.getSessionId(), model.getId(), response);
-            if (permissionResult != null) {
-                LogUtils.logUserSessionOperation(log, request.getUserId(), request.getSessionId(), "聊天结束", "结果：权限验证失败");
-                return permissionResult;
-            }
+
 
             // 准备会话和消息
             ChatResponseDTO sessionResult = prepareSessionAndMessage(request, model, response);
@@ -281,6 +276,24 @@ public class ChatServiceImpl implements ChatService {
                 return ChatResponseDTO.failure(permissionError);
             }
 
+            // 验证用户聊天权限（套餐、次数等）
+            String chatPermissionError = validateChatPermission(request.getUserId(), request.getSessionId());
+            if (chatPermissionError != null) {
+                try {
+                    if ("PACKAGE_EXPIRED".equals(chatPermissionError)) {
+                        writeCustomErrorResponse(response, "Your package has expired.", 0);
+                    } else if ("MODEL_LIMIT_EXCEEDED".equals(chatPermissionError)) {
+                        writeCustomErrorResponse(response, "The usage limit for this model has been reached. Please try another model.", 0);
+                    } else {
+                        writeErrorResponse(response, "Request failed. Please try again later.");
+                    }
+                    return ChatResponseDTO.failure(chatPermissionError);
+                } catch (IOException e) {
+                    log.error("发送权限验证错误响应失败", e);
+                    return ChatResponseDTO.failure("System error");
+                }
+            }
+
             // 检查聊天频率限制
             ChatResponseDTO rateLimitResult = validateChatRateLimit(request.getUserId(), request.getSessionId(), request.getModelId(), response);
             if (rateLimitResult != null) {
@@ -348,18 +361,15 @@ public class ChatServiceImpl implements ChatService {
      * @param response HTTP响应
      * @return 如果验证失败返回错误响应，验证通过返回null
      */
-    private ChatResponseDTO validateChatPermission(Long userId, String sessionId, Long modelId, HttpServletResponse response) {
+    private String validateChatPermission(Long userId, String sessionId) {
         log.debug("【权限验证】开始验证聊天权限，用户ID：{}，会话ID：{}", userId, sessionId);
 
         try {
             ChatLimitVO limitCheck = chatLimitService.validateChatPermission(userId);
-            if (!limitCheck.getCanChat()) {
-                String errorContent = "Request failed. Please try again later.";
-                log.info("【权限验证】验证失败，用户ID：{}，会话ID：{}，原因：{}",
-                        userId, sessionId,
-                        limitCheck.getLimitReason() != null ? limitCheck.getLimitReason() : "权限验证失败");
-
-                return handleErrorResponse(response, errorContent, sessionId, userId, modelId);
+            if (!limitCheck.isCanChat()) {
+                String reason = limitCheck.getLimitReason();
+                log.info("【权限验证】验证失败，用户ID：{}，会话ID：{}，原因：{}", userId, sessionId, reason);
+                return reason; // 返回失败原因
             }
 
             log.info("【权限验证】验证通过，用户ID：{}，套餐：{}，限制类型：{}",
@@ -370,8 +380,7 @@ public class ChatServiceImpl implements ChatService {
             return null; // 验证通过
         } catch (Exception e) {
             log.error("【权限验证】验证异常，用户ID：{}，会话ID：{}", userId, sessionId, e);
-            String errorContent = "Request failed. Please try again later.";
-            return handleErrorResponse(response, errorContent, sessionId, userId, modelId);
+            return "Request failed. Please try again later."; // 返回通用错误
         }
     }
 
@@ -1002,7 +1011,16 @@ public class ChatServiceImpl implements ChatService {
      * 写入错误响应
      */
     private void writeErrorResponse(HttpServletResponse response, String errorMessage) throws IOException {
-        response.getWriter().write("3:\"" + errorMessage + "\"\n");
+        response.getWriter().write("0:\"" + errorMessage + "\"\n");
+        response.getWriter().flush();
+    }
+
+
+    /**
+     * 写入自定义错误响应
+     */
+    private void writeCustomErrorResponse(HttpServletResponse response, String errorMessage, int errorType) throws IOException {
+        response.getWriter().write(errorType + ":\"" + errorMessage + "\"\n");
         response.getWriter().flush();
     }
 
@@ -3905,9 +3923,14 @@ public class ChatServiceImpl implements ChatService {
             updateSessionModelIfNeeded(sessionId, modelId, chatSession.getModelId());
 
             // 验证用户聊天权限和套餐限制
-            ChatResponseDTO permissionResult = validateChatPermission(userId, sessionId, model.getId(), response);
-            if (permissionResult != null) {
-                log.info("重试请求聊天权限验证失败，会话ID：{}，用户ID：{}", sessionId, userId);
+            String permissionError = validateChatPermission(userId, sessionId);
+            if (permissionError != null) {
+                log.info("重试请求聊天权限验证失败，会话ID：{}，用户ID：{}，原因：{}", sessionId, userId, permissionError);
+                try {
+                    writeErrorResponse(response, "Request failed. Please try again later.");
+                } catch (IOException e) {
+                    log.error("发送重试权限错误响应失败", e);
+                }
                 return;
             }
 
@@ -4160,9 +4183,14 @@ public class ChatServiceImpl implements ChatService {
             updateSessionModelIfNeeded(sessionId, modelId, chatSession.getModelId());
 
             // 验证用户聊天权限和套餐限制
-            ChatResponseDTO permissionResult = validateChatPermission(userId, sessionId, model.getId(), response);
-            if (permissionResult != null) {
-                log.info("编辑重发请求聊天权限验证失败，会话ID：{}，用户ID：{}", sessionId, userId);
+            String permissionError = validateChatPermission(userId, sessionId);
+            if (permissionError != null) {
+                log.info("编辑重发请求聊天权限验证失败，会话ID：{}，用户ID：{}，原因：{}", sessionId, userId, permissionError);
+                try {
+                    writeErrorResponse(response, "Request failed. Please try again later.");
+                } catch (IOException e) {
+                    log.error("发送编辑重发权限错误响应失败", e);
+                }
                 return;
             }
 

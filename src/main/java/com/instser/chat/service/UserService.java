@@ -85,4 +85,12 @@ public interface UserService extends IService<User> {
      * @return 更新后的用户信息
      */
     User updateProfile(Long userId, UpdateProfileRequest request);
+
+    /**
+     * 更新用户头像
+     *
+     * @param userId    用户ID
+     * @param avatarUrl 头像URL
+     */
+    void updateUserAvatar(Long userId, String avatarUrl);
 }

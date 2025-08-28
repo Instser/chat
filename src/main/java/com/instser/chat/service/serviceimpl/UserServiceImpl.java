@@ -285,4 +285,21 @@ public class UserServiceImpl extends ServiceImpl<UserDao, User> implements UserS
             throw new BusinessException("资料更新失败", e);
         }
     }
+
+    @Override
+    public void updateUserAvatar(Long userId, String avatarUrl) {
+        LogUtils.logUserDebug(log, userId, "头像更新", "更新用户头像：{}", avatarUrl);
+        try {
+            User user = new User();
+            user.setId(userId);
+            user.setAvatar(avatarUrl);
+            user.setUpdateTime(LocalDateTime.now());
+
+            this.updateById(user);
+            LogUtils.logUserDebug(log, userId, "头像更新", "用户头像更新成功");
+        } catch (Exception e) {
+            LogUtils.logUserError(log, userId, "头像更新", "用户头像更新失败，错误：{}", e, e.getMessage());
+            // 头像更新失败不抛出异常，避免影响主流程
+        }
+    }
 }
