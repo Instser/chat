@@ -1,6 +1,7 @@
 package com.instser.chat.service;
 
 import com.instser.chat.entity.UserOrder;
+import com.instser.chat.strategy.PaymentStrategy;
 import com.instser.chat.vo.PaymentRequestVO;
 import com.instser.chat.vo.PaymentResponseVO;
 import com.instser.chat.vo.PaymentMethodVO;
@@ -112,4 +113,12 @@ public interface PaymentService {
      * @return 支付方式列表
      */
     List<PaymentMethodVO> getAvailablePaymentMethods();
+
+    /**
+     * 获取指定的支付策略
+     *
+     * @param paymentMethod 支付方式
+     * @return 支付策略
+     */
+    PaymentStrategy getPaymentStrategy(String paymentMethod);
 }

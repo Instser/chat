@@ -104,6 +104,9 @@ public class PaymentServiceImpl implements PaymentService {
                 case "yipay":
                     paymentMethod.setName("YiPay");
                     break;
+                case "stripe":
+                    paymentMethod.setName("Stripe");
+                    break;
                 default:
                     paymentMethod.setName(method);
                     break;
@@ -1269,6 +1272,16 @@ public class PaymentServiceImpl implements PaymentService {
         java.util.concurrent.CompletableFuture.runAsync(() -> {
             processPaymentCallbackInternal(notifyParams);
         }, getPaymentCallbackExecutor());
+    }
+
+    @Override
+    public PaymentStrategy getPaymentStrategy(String paymentMethod) {
+        try {
+            return paymentStrategyFactory.getStrategy(paymentMethod);
+        } catch (Exception e) {
+            log.warn("获取支付策略失败，支付方式: {}, 错误: {}", paymentMethod, e.getMessage());
+            return null;
+        }
     }
 
     /**

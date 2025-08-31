@@ -463,6 +463,29 @@ payment:
       recovery-timeout: ${PAYMENT_CACHE_RECOVERY_TIMEOUT:30000}      # 恢复超时时间（毫秒）
       success-threshold: ${PAYMENT_CACHE_SUCCESS_THRESHOLD:2}        # 成功阈值
       health-check-interval: ${PAYMENT_CACHE_HEALTH_CHECK_INTERVAL:10000} # 健康检查间隔（毫秒）
+      
+  # Stripe支付配置
+  stripe:
+    # Stripe公钥（可发布密钥）- 测试环境
+    public-key: ${STRIPE_PUBLIC_KEY:pk_test_your_stripe_key}
+    # Stripe私钥（密钥）- 测试环境  
+    secret-key: ${STRIPE_SECRET_KEY:sk_test_your_stripe_key}
+    # Webhook签名密钥（从Stripe CLI获取）
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_your_webhook_secret}
+    # 默认货币
+    currency: ${STRIPE_CURRENCY:usd}
+    # 是否沙箱模式（测试环境设为true）
+    sandbox: ${STRIPE_SANDBOX:true}
+    # 支持的货币列表
+    supported-currencies: ${STRIPE_SUPPORTED_CURRENCIES:usd,eur,gbp,jpy,cad,aud,chf,sek,nok,dkk}
+    # API版本
+    api-version: ${STRIPE_API_VERSION:2024-06-20}
+    # 连接超时时间（毫秒）
+    connect-timeout: ${STRIPE_CONNECT_TIMEOUT:30000}
+    # 读取超时时间（毫秒）
+    read-timeout: ${STRIPE_READ_TIMEOUT:80000}
+    # 最大网络重试次数
+    max-network-retries: ${STRIPE_MAX_NETWORK_RETRIES:2}
 
 # Google Gemini API配置
 gemini:

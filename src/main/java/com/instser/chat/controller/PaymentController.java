@@ -13,8 +13,8 @@ import com.instser.chat.service.PaymentService;
 import com.instser.chat.service.PaymentSecurityEnhancer;
 import com.instser.chat.service.PaymentStatusSyncService;
 import com.instser.chat.service.PaymentSyncService;
-import com.instser.chat.service.PackageActivationService;
 import com.instser.chat.service.UserPaymentStatusService;
+import com.instser.chat.service.StripeService;
 
 import com.instser.chat.vo.*;
 import com.instser.chat.vo.converter.VOConverter;
@@ -63,6 +63,7 @@ public class PaymentController {
     private final ExchangeRateService exchangeRateService;
     private final UserPaymentStatusService userPaymentStatusService;
     private final PaymentStatusSyncService paymentStatusSyncService;
+    private final StripeService stripeService;
 
     /**
      * 根据用户支付状态过滤套餐列表
@@ -556,6 +557,90 @@ public class PaymentController {
         } catch (Exception e) {
             log.error("手动同步订单状态失败，订单号: {}", orderNo, e);
             return Result.failed("同步失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Stripe Webhook回调处理端点
+     * 处理Stripe支付事件通知
+     * 采用快速响应 + 异步处理策略，避免重试风暴
+     */
+    @PostMapping("/stripe/webhook")
+    public ResponseEntity<String> stripeWebhook(
+            @RequestBody String payload,
+            @RequestHeader("Stripe-Signature") String signature) {
+        
+        try {
+            log.info("收到Stripe Webhook事件，签名: {}", signature);
+            log.debug("Stripe Webhook载荷长度: {}", payload != null ? payload.length() : 0);
+
+            // 验证签名并解析事件
+            com.stripe.model.Event event = stripeService.handleWebhookEvent(payload, signature);
+
+            // 异步处理事件，立即返回成功
+            processStripeWebhookAsync(event, payload);
+
+            log.info("Stripe Webhook已提交异步处理，事件ID: {}", event.getId());
+            return ResponseEntity.ok("success");
+
+        } catch (Exception e) {
+            log.error("处理Stripe Webhook异常", e);
+            // 即使异常也返回success，避免Stripe重试风暴
+            return ResponseEntity.ok("success");
+        }
+    }
+
+    /**
+     * 异步处理Stripe Webhook事件
+     */
+    private void processStripeWebhookAsync(com.stripe.model.Event event, String payload) {
+        // 使用CompletableFuture异步处理，避免阻塞回调响应
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            processStripeWebhookInternal(event, payload);
+        }, getStripeWebhookExecutor());
+    }
+
+    /**
+     * 内部异步处理Stripe Webhook逻辑
+     */
+    private void processStripeWebhookInternal(com.stripe.model.Event event, String payload) {
+        String eventId = event.getId();
+        String eventType = event.getType();
+        
+        try {
+            log.info("开始异步处理Stripe Webhook事件，ID: {}, 类型: {}", eventId, eventType);
+
+            // 使用支付策略处理回调
+            com.instser.chat.strategy.PaymentStrategy stripeStrategy = 
+                paymentService.getPaymentStrategy("stripe");
+            
+            if (stripeStrategy != null) {
+                boolean success = stripeStrategy.handleCallback(payload);
+                
+                if (success) {
+                    log.info("异步处理Stripe Webhook成功，事件ID: {}", eventId);
+                } else {
+                    log.error("异步处理Stripe Webhook失败，事件ID: {}", eventId);
+                }
+            } else {
+                log.error("未找到Stripe支付策略，无法处理Webhook事件");
+            }
+
+        } catch (Exception e) {
+            log.error("异步处理Stripe Webhook异常，事件ID: {}", eventId, e);
+        }
+    }
+
+    /**
+     * 获取Stripe Webhook处理线程池
+     */
+    private java.util.concurrent.Executor getStripeWebhookExecutor() {
+        try {
+            return (java.util.concurrent.Executor)
+                com.instser.chat.util.ApplicationContextProvider.getBean("stripeWebhookExecutor");
+        } catch (Exception e) {
+            log.warn("获取Stripe Webhook线程池失败，使用默认线程池: {}", e.getMessage());
+            return java.util.concurrent.ForkJoinPool.commonPool();
         }
     }
 
