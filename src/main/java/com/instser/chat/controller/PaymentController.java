@@ -15,6 +15,7 @@ import com.instser.chat.service.PaymentStatusSyncService;
 import com.instser.chat.service.PaymentSyncService;
 import com.instser.chat.service.UserPaymentStatusService;
 import com.instser.chat.service.StripeService;
+import org.springframework.context.ApplicationContext;
 
 import com.instser.chat.vo.*;
 import com.instser.chat.vo.converter.VOConverter;
@@ -594,10 +595,20 @@ public class PaymentController {
      * 异步处理Stripe Webhook事件
      */
     private void processStripeWebhookAsync(com.stripe.model.Event event, String payload) {
+        log.debug("开始提交Stripe Webhook异步处理，事件ID: {}", event.getId());
+        
         // 使用CompletableFuture异步处理，避免阻塞回调响应
+        java.util.concurrent.Executor executor = getStripeWebhookExecutor();
+        log.debug("使用的线程池类型: {}", executor.getClass().getSimpleName());
+        
         java.util.concurrent.CompletableFuture.runAsync(() -> {
             processStripeWebhookInternal(event, payload);
-        }, getStripeWebhookExecutor());
+        }, executor).exceptionally(throwable -> {
+            log.error("异步处理Stripe Webhook异常，事件ID: {}", event.getId(), throwable);
+            return null;
+        });
+        
+        log.debug("Stripe Webhook异步任务已提交，事件ID: {}", event.getId());
     }
 
     /**
@@ -636,10 +647,14 @@ public class PaymentController {
      */
     private java.util.concurrent.Executor getStripeWebhookExecutor() {
         try {
-            return (java.util.concurrent.Executor)
-                com.instser.chat.util.ApplicationContextProvider.getBean("stripeWebhookExecutor");
+            ApplicationContext context = com.instser.chat.util.ApplicationContextProvider.getApplicationContext();
+            if (context != null) {
+                return (java.util.concurrent.Executor) context.getBean("stripeWebhookExecutor");
+            }
+            log.warn("ApplicationContext为null，使用默认线程池");
+            return java.util.concurrent.ForkJoinPool.commonPool();
         } catch (Exception e) {
-            log.warn("获取Stripe Webhook线程池失败，使用默认线程池: {}", e.getMessage());
+            log.error("获取Stripe Webhook线程池失败，使用默认线程池: {}", e.getMessage(), e);
             return java.util.concurrent.ForkJoinPool.commonPool();
         }
     }

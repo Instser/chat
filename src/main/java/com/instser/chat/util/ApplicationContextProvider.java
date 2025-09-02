@@ -1,5 +1,6 @@
 package com.instser.chat.util;
 
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeansException;
 import org.springframework.context.ApplicationContext;
 import org.springframework.context.ApplicationContextAware;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Component;
  * @author instser
  * @since 2025-07-29
  */
+@Slf4j
 @Component
 public class ApplicationContextProvider implements ApplicationContextAware {
 
@@ -20,6 +22,7 @@ public class ApplicationContextProvider implements ApplicationContextAware {
     @Override
     public void setApplicationContext(ApplicationContext context) throws BeansException {
         applicationContext = context;
+        log.info("ApplicationContextProvider初始化成功，上下文ID: {}", context.getId());
     }
 
     /**
@@ -33,6 +36,9 @@ public class ApplicationContextProvider implements ApplicationContextAware {
      * 根据名称获取Bean
      */
     public static Object getBean(String name) {
+        if (applicationContext == null) {
+            throw new IllegalStateException("ApplicationContext尚未初始化");
+        }
         return applicationContext.getBean(name);
     }
 
