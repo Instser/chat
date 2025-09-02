@@ -97,11 +97,12 @@ public class ChatRateLimitServiceImpl implements ChatRateLimitService {
 
             // 根据套餐的限制类型进行检查
             if ("daily".equals(packageInfo.getLimitType())) {
-                // 每日限制模式：使用现有的UserDailyUsageService
-                boolean canChat = userDailyUsageService.canChatToday(userId, userAccount.getPackageId());
+                // 每日限制模式：使用现有的UserDailyUsageService，默认使用模型ID 1
+                String modelId = "1"; // 默认使用模型ID 1 (STANDARD模型)
+                boolean canChat = userDailyUsageService.canChatWithModel(userId, userAccount.getPackageId(), modelId);
                 if (!canChat) {
-                    int remaining = userDailyUsageService.getRemainingChatsToday(userId, userAccount.getPackageId());
-                    log.warn("用户{}每日聊天次数已达到套餐限制，剩余次数: {}", userId, remaining);
+                    int remaining = userDailyUsageService.getRemainingModelChats(userId, userAccount.getPackageId(), modelId);
+                    log.warn("用户{}每日聊天次数已达到套餐限制，模型ID: {}, 剩余次数: {}", userId, modelId, remaining);
                 }
                 return canChat;
             } else if ("total".equals(packageInfo.getLimitType())) {

@@ -38,19 +38,19 @@ public interface ChatLimitService {
      * 验证用户是否可以使用指定模型进行聊天
      *
      * @param userId    用户ID
-     * @param modelName 模型名称
+     * @param modelId   模型ID
      * @return 验证结果
      */
-    ChatLimitVO validateModelChatPermission(Long userId, String modelName);
+    ChatLimitVO validateModelChatPermission(Long userId, String modelId);
 
     /**
      * 记录用户模型聊天使用
      *
      * @param userId    用户ID
-     * @param modelName 模型名称
+     * @param modelId   模型ID
      * @return true-记录成功，false-记录失败
      */
-    boolean recordModelChatUsage(Long userId, String modelName);
+    boolean recordModelChatUsage(Long userId, String modelId);
 
     /**
      * 记录Token使用量（仅统计，不扣减余额）

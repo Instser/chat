@@ -151,7 +151,6 @@ public interface UserAccountService extends IService<UserAccount> {
 
     /**
      * 检查用户是否可以聊天（总次数限制模式专用）
-     * 注意：每日限制模式请使用UserDailyUsageService.canChatToday()
      *
      * @param userId 用户ID
      * @return true-可以聊天，false-不能聊天

@@ -280,7 +280,7 @@ public class ChatServiceImpl implements ChatService {
                     if ("PACKAGE_EXPIRED".equals(chatPermissionError)) {
                         writeCustomErrorResponse(response, "Your package has expired.", 0);
                     } else if ("MODEL_LIMIT_EXCEEDED".equals(chatPermissionError)) {
-                        writeCustomErrorResponse(response, "The usage limit for this model has been reached. Please try another model.", 0);
+                        writeCustomErrorResponse(response, "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.", 0);
                     } else {
                         writeErrorResponse(response, "Request failed. Please try again later.");
                     }
@@ -456,7 +456,7 @@ public class ChatServiceImpl implements ChatService {
                 if ("PACKAGE_EXPIRED".equals(chatPermissionError)) {
                     customErrorMessage = "Your package has expired.";
                 } else if ("MODEL_LIMIT_EXCEEDED".equals(chatPermissionError)) {
-                    customErrorMessage = "The usage limit for this model has been reached. Please try another model.";
+                    customErrorMessage = "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.";
                 } else {
                     customErrorMessage = "Request failed. Please try again later.";
                 }
@@ -479,6 +479,17 @@ public class ChatServiceImpl implements ChatService {
             return null; // 验证通过
         } catch (Exception e) {
             log.error("前置验证异常", e);
+            
+            // 检查异常是否在权限验证阶段发生，如果是则尝试进行错误码转换
+            String exceptionMessage = e.getMessage();
+            if (exceptionMessage != null) {
+                if (exceptionMessage.contains("PACKAGE_EXPIRED") || exceptionMessage.contains("套餐已过期")) {
+                    return saveErrorResponseAndReturn(response, "Your package has expired.", request, model);
+                } else if (exceptionMessage.contains("MODEL_LIMIT_EXCEEDED") || exceptionMessage.contains("模型使用次数已达上限")) {
+                    return saveErrorResponseAndReturn(response, "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.", request, model);
+                }
+            }
+            
             String errorContent = "Request failed. Please try again later.";
             return saveErrorResponseAndReturn(response, errorContent, request, model);
         }
@@ -567,7 +578,7 @@ public class ChatServiceImpl implements ChatService {
             // 检查用户每日聊天限制
             if (!chatRateLimitService.checkDailyChatLimit(userId)) {
                 log.warn("用户每日聊天次数超限，用户ID: {}", userId);
-                String errorContent = "The request frequency is too high. Please try again later.";
+                String errorContent = "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.";
                 return saveErrorResponseAndReturn(response, errorContent, request, model);
             }
 
@@ -603,12 +614,16 @@ public class ChatServiceImpl implements ChatService {
             if (modelId != null) {
                 // 获取模型信息
                 AiModel model = aiModelService.getById(modelId);
-                if (model != null && model.getModelCode() != null) {
-                    ChatLimitVO modelLimitCheck = chatLimitService.validateModelChatPermission(userId, model.getModelCode());
+                if (model != null) {
+                    ChatLimitVO modelLimitCheck = chatLimitService.validateModelChatPermission(userId, modelId.toString());
                     if (!modelLimitCheck.isCanChat()) {
                         String reason = modelLimitCheck.getLimitReason();
-                        log.info("【权限验证】模型权限验证失败，用户ID：{}，会话ID：{}，模型：{}，原因：{}", 
-                                userId, sessionId, model.getModelCode(), reason);
+                        log.info("【权限验证】模型权限验证失败，用户ID：{}，会话ID：{}，模型ID：{}，模型代码：{}，原因：{}", 
+                                userId, sessionId, modelId, model.getModelCode(), reason);
+                        // 检查是否是模型限制超限错误
+                        if ("MODEL_LIMIT_EXCEEDED".equals(reason)) {
+                            return "MODEL_LIMIT_EXCEEDED";
+                        }
                         return reason; // 返回失败原因
                     }
                 }
@@ -622,6 +637,21 @@ public class ChatServiceImpl implements ChatService {
             return null; // 验证通过
         } catch (Exception e) {
             log.error("【权限验证】验证异常，用户ID：{}，会话ID：{}", userId, sessionId, e);
+            
+            // 检查异常消息中是否包含模型限制相关的关键词
+            String exceptionMessage = e.getMessage();
+            if (exceptionMessage != null) {
+                if (exceptionMessage.contains("模型使用次数已达上限") || 
+                    exceptionMessage.contains("模型使用超限") ||
+                    exceptionMessage.contains("每日聊天次数已达到套餐限制") ||
+                    exceptionMessage.contains("MODEL_LIMIT_EXCEEDED") ||
+                    exceptionMessage.contains("使用限制")) {
+                    return "MODEL_LIMIT_EXCEEDED";
+                } else if (exceptionMessage.contains("PACKAGE_EXPIRED") || exceptionMessage.contains("套餐已过期")) {
+                    return "PACKAGE_EXPIRED";
+                }
+            }
+            
             return "Request failed. Please try again later."; // 返回通用错误
         }
     }
@@ -1840,13 +1870,13 @@ public class ChatServiceImpl implements ChatService {
                     finalContentToSave = contentToSave;
                 }
 
-                // 记录模型使用次数（使用实际模型名称）
-                String modelName = model.getModelName();
-                boolean modelRecordSuccess = chatLimitService.recordModelChatUsage(request.getUserId(), modelName);
+                // 记录模型使用次数（使用模型ID）
+                String modelIdStr = model.getId().toString();
+                boolean modelRecordSuccess = chatLimitService.recordModelChatUsage(request.getUserId(), modelIdStr);
                 if (modelRecordSuccess) {
-                    log.info("用户{}模型{}使用记录成功", request.getUserId(), modelName);
+                    log.info("用户{}模型ID{}使用记录成功", request.getUserId(), modelIdStr);
                 } else {
-                    log.warn("用户{}模型{}使用记录失败", request.getUserId(), modelName);
+                    log.warn("用户{}模型ID{}使用记录失败", request.getUserId(), modelIdStr);
                 }
             } else {
                 finalContentToSave = null;
@@ -4169,7 +4199,14 @@ public class ChatServiceImpl implements ChatService {
             if (permissionError != null) {
                 log.info("重试请求聊天权限验证失败，会话ID：{}，用户ID：{}，原因：{}", sessionId, userId, permissionError);
                 try {
-                    writeErrorResponse(response, "Request failed. Please try again later.");
+                    // 根据错误码返回相应的错误消息
+                    if ("PACKAGE_EXPIRED".equals(permissionError)) {
+                        writeErrorResponse(response, "Your package has expired.");
+                    } else if ("MODEL_LIMIT_EXCEEDED".equals(permissionError)) {
+                        writeErrorResponse(response, "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.");
+                    } else {
+                        writeErrorResponse(response, "Request failed. Please try again later.");
+                    }
                 } catch (IOException e) {
                     log.error("发送重试权限错误响应失败", e);
                 }
@@ -4429,7 +4466,14 @@ public class ChatServiceImpl implements ChatService {
             if (permissionError != null) {
                 log.info("编辑重发请求聊天权限验证失败，会话ID：{}，用户ID：{}，原因：{}", sessionId, userId, permissionError);
                 try {
-                    writeErrorResponse(response, "Request failed. Please try again later.");
+                    // 根据错误码返回相应的错误消息
+                    if ("PACKAGE_EXPIRED".equals(permissionError)) {
+                        writeErrorResponse(response, "Your package has expired.");
+                    } else if ("MODEL_LIMIT_EXCEEDED".equals(permissionError)) {
+                        writeErrorResponse(response, "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.");
+                    } else {
+                        writeErrorResponse(response, "Request failed. Please try again later.");
+                    }
                 } catch (IOException e) {
                     log.error("发送编辑重发权限错误响应失败", e);
                 }
@@ -4625,7 +4669,7 @@ public class ChatServiceImpl implements ChatService {
             // 检查用户每日聊天限制
             if (!chatRateLimitService.checkDailyChatLimit(userId)) {
                 log.warn("用户每日聊天次数超限，用户ID: {}", userId);
-                String errorContent = "The request frequency is too high. Please try again later.";
+                String errorContent = "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.";
                 return handleErrorResponse(response, errorContent, sessionId, userId, modelId);
             }
 

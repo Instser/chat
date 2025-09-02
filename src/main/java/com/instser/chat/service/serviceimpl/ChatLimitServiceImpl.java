@@ -129,8 +129,8 @@ public class ChatLimitServiceImpl implements ChatLimitService {
             }
 
             if ("daily".equals(packageInfo.getLimitType())) {
-                // 每日限制模式
-                return userDailyUsageService.recordChatUsage(userId, userAccount.getPackageId());
+                // 每日限制模式，使用模型ID 1
+                return userDailyUsageService.recordModelChatUsage(userId, userAccount.getPackageId(), "1");
             } else if ("total".equals(packageInfo.getLimitType())) {
                 // 总次数限制模式
                 return recordTotalUsage(userAccount);
@@ -154,18 +154,18 @@ public class ChatLimitServiceImpl implements ChatLimitService {
      * 验证每日限制
      */
     private ChatLimitVO validateDailyLimit(Long userId, Long packageId, Package packageInfo, ChatLimitVO result) {
-        // 注意：现在使用模型维度的限制检查，这里为了向后兼容使用STANDARD模型
-        if (!userDailyUsageService.canChatWithModel(userId, packageId, "STANDARD")) {
+        // 注意：现在使用模型维度的限制检查，这里为了向后兼容使用模型ID 1（STANDARD模型）
+        if (!userDailyUsageService.canChatWithModel(userId, packageId, "1")) {
             result.setCanChat(false);
-            result.setLimitReason("今日聊天次数已达到限制");
+            result.setLimitReason("MODEL_LIMIT_EXCEEDED");
         }
 
-        int remaining = userDailyUsageService.getRemainingModelChats(userId, packageId, "STANDARD");
-        UserDailyUsage todayUsage = userDailyUsageService.getTodayModelUsage(userId, packageId, "STANDARD");
+        int remaining = userDailyUsageService.getRemainingModelChats(userId, packageId, "1");
+        UserDailyUsage todayUsage = userDailyUsageService.getTodayModelUsage(userId, packageId, "1");
 
-        // 从模型权限配置中获取STANDARD模型的限制
+        // 从模型权限配置中获取模型ID 1的限制
         Map<String, Package.ModelPermission> modelPermissions = packageInfo.getModelPermissionsMap();
-        Package.ModelPermission standardPermission = modelPermissions.get("STANDARD");
+        Package.ModelPermission standardPermission = modelPermissions.get("1");
         int dailyLimit = standardPermission != null ? standardPermission.getDailyLimit() : 0;
 
         result.setDailyLimit(dailyLimit);
@@ -189,7 +189,7 @@ public class ChatLimitServiceImpl implements ChatLimitService {
 
         if (remaining <= 0) {
             result.setCanChat(false);
-            result.setLimitReason("套餐聊天次数已用完");
+            result.setLimitReason("PACKAGE_EXPIRED");
         }
 
         result.setTotalRemaining(remaining);
@@ -221,7 +221,7 @@ public class ChatLimitServiceImpl implements ChatLimitService {
     }
 
     @Override
-    public ChatLimitVO validateModelChatPermission(Long userId, String modelName) {
+    public ChatLimitVO validateModelChatPermission(Long userId, String modelId) {
         try {
             // 1. 基础权限检查
             ChatLimitVO baseResult = validateChatPermission(userId);
@@ -236,33 +236,31 @@ public class ChatLimitServiceImpl implements ChatLimitService {
             }
 
             // 3. 模型权限检查
-            if (!userDailyUsageService.canChatWithModel(userId, userAccount.getPackageId(), modelName)) {
-
-
+            if (!userDailyUsageService.canChatWithModel(userId, userAccount.getPackageId(), modelId)) {
                 return ChatLimitVO.failed("MODEL_LIMIT_EXCEEDED");
             }
 
             // 4. 构建成功响应，包含模型使用信息
             ChatLimitVO result = baseResult; // 复用基础检查结果
-            result.setModelName(modelName);
+            result.setModelName(modelId);
 
-            int remaining = userDailyUsageService.getRemainingModelChats(userId, userAccount.getPackageId(), modelName);
+            int remaining = userDailyUsageService.getRemainingModelChats(userId, userAccount.getPackageId(), modelId);
             result.setModelRemainingToday(remaining);
 
             // 获取今日模型使用情况
-            UserDailyUsage todayModelUsage = userDailyUsageService.getTodayModelUsage(userId, userAccount.getPackageId(), modelName);
+            UserDailyUsage todayModelUsage = userDailyUsageService.getTodayModelUsage(userId, userAccount.getPackageId(), modelId);
             result.setModelUsedToday(todayModelUsage != null ? todayModelUsage.getChatCountUsed() : 0);
 
             return result;
 
         } catch (Exception e) {
-            LogUtils.logUserError(log, userId, "模型权限验证", "验证模型{}聊天权限异常", e, modelName);
+            LogUtils.logUserError(log, userId, "模型权限验证", "验证模型ID{}聊天权限异常", e, modelId);
             return ChatLimitVO.failed("权限验证失败，请稍后重试");
         }
     }
 
     @Override
-    public boolean recordModelChatUsage(Long userId, String modelName) {
+    public boolean recordModelChatUsage(Long userId, String modelId) {
         try {
             // 1. 获取用户账户信息
             UserAccount userAccount = userAccountService.getUserAccount(userId);
@@ -272,18 +270,18 @@ public class ChatLimitServiceImpl implements ChatLimitService {
             }
 
             // 2. 记录模型使用
-            boolean success = userDailyUsageService.recordModelChatUsage(userId, userAccount.getPackageId(), modelName);
+            boolean success = userDailyUsageService.recordModelChatUsage(userId, userAccount.getPackageId(), modelId);
 
             if (success) {
-                LogUtils.logUserOperation(log, userId, "记录模型使用", "模型{}使用记录成功", modelName);
+                LogUtils.logUserOperation(log, userId, "记录模型使用", "模型ID{}使用记录成功", modelId);
             } else {
-                LogUtils.logUserWarning(log, userId, "记录模型使用", "模型{}使用记录失败，可能已达到限制", modelName);
+                LogUtils.logUserWarning(log, userId, "记录模型使用", "模型ID{}使用记录失败，可能已达到限制", modelId);
             }
 
             return success;
 
         } catch (Exception e) {
-            LogUtils.logUserError(log, userId, "记录模型使用", "记录模型{}使用异常", e, modelName);
+            LogUtils.logUserError(log, userId, "记录模型使用", "记录模型ID{}使用异常", e, modelId);
             return false;
         }
     }

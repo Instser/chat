@@ -60,28 +60,6 @@ public class UserDailyUsageServiceImpl extends ServiceImpl<UserDailyUsageDao, Us
     }
 
     @Override
-    public boolean canChatToday(Long userId, Long packageId) {
-        // 注意：这个方法现在已经被模型维度的方法替代
-        // 为了向后兼容，默认使用STANDARD模型
-        return canChatWithModel(userId, packageId, "STANDARD");
-    }
-
-    @Override
-    public int getRemainingChatsToday(Long userId, Long packageId) {
-        // 注意：这个方法现在已经被模型维度的方法替代
-        // 为了向后兼容，默认使用STANDARD模型
-        return getRemainingModelChats(userId, packageId, "STANDARD");
-    }
-
-    @Override
-    @Transactional
-    public boolean recordChatUsage(Long userId, Long packageId) {
-        // 注意：这个方法现在已经被模型维度的方法替代
-        // 为了向后兼容，默认使用STANDARD模型
-        return recordModelChatUsage(userId, packageId, "STANDARD");
-    }
-
-    @Override
     public UserDailyUsage getTodayUsage(Long userId, Long packageId) {
         return baseMapper.selectByUserAndDate(userId, packageId, getBusinessDate());
     }
@@ -152,7 +130,7 @@ public class UserDailyUsageServiceImpl extends ServiceImpl<UserDailyUsageDao, Us
     // ==================== 模型维度的使用限制方法实现 ====================
 
     @Override
-    public boolean canChatWithModel(Long userId, Long packageId, String modelName) {
+    public boolean canChatWithModel(Long userId, Long packageId, String modelId) {
         // 1. 获取套餐信息和模型权限配置
         Package packageInfo = packageService.getPackageById(packageId);
         if (packageInfo == null) {
@@ -161,10 +139,10 @@ public class UserDailyUsageServiceImpl extends ServiceImpl<UserDailyUsageDao, Us
         }
 
         Map<String, Package.ModelPermission> modelPermissions = packageInfo.getModelPermissionsMap();
-        Package.ModelPermission permission = modelPermissions.get(modelName);
+        Package.ModelPermission permission = modelPermissions.get(modelId);
 
         if (permission == null) {
-            log.warn("套餐{}不支持模型{}", packageId, modelName);
+            log.warn("套餐{}不支持模型ID{}", packageId, modelId);
             return false;
         }
 
@@ -174,7 +152,7 @@ public class UserDailyUsageServiceImpl extends ServiceImpl<UserDailyUsageDao, Us
         }
 
         // 3. 检查今日使用情况
-        UserDailyUsage todayUsage = getTodayModelUsage(userId, modelName);
+        UserDailyUsage todayUsage = getTodayModelUsage(userId, modelId);
         if (todayUsage == null) {
             return true; // 今日未使用
         }
@@ -184,7 +162,7 @@ public class UserDailyUsageServiceImpl extends ServiceImpl<UserDailyUsageDao, Us
 
     @Override
     @Transactional
-    public boolean recordModelChatUsage(Long userId, Long packageId, String modelName) {
+    public boolean recordModelChatUsage(Long userId, Long packageId, String modelId) {
         // 1. 获取套餐模型权限配置
         Package packageInfo = packageService.getPackageById(packageId);
         if (packageInfo == null) {
@@ -193,19 +171,19 @@ public class UserDailyUsageServiceImpl extends ServiceImpl<UserDailyUsageDao, Us
         }
 
         Map<String, Package.ModelPermission> modelPermissions = packageInfo.getModelPermissionsMap();
-        Package.ModelPermission permission = modelPermissions.get(modelName);
+        Package.ModelPermission permission = modelPermissions.get(modelId);
 
         if (permission == null) {
-            log.error("套餐{}不支持模型{}", packageId, modelName);
+            log.error("套餐{}不支持模型ID{}", packageId, modelId);
             return false;
         }
 
         // 2. 检查当前使用情况（非无限制套餐）
         if (permission.getDailyLimit() != -1) {
-            UserDailyUsage todayUsage = getTodayModelUsage(userId, modelName);
+            UserDailyUsage todayUsage = getTodayModelUsage(userId, modelId);
             if (todayUsage != null && todayUsage.getChatCountUsed() >= permission.getDailyLimit()) {
-                log.warn("用户{}模型{}今日使用次数已达限制：{}/{}",
-                        userId, modelName, todayUsage.getChatCountUsed(), permission.getDailyLimit());
+                log.warn("用户{}模型ID{}今日使用次数已达限制：{}/{}",
+                        userId, modelId, todayUsage.getChatCountUsed(), permission.getDailyLimit());
                 return false;
             }
         }
@@ -215,25 +193,25 @@ public class UserDailyUsageServiceImpl extends ServiceImpl<UserDailyUsageDao, Us
         LocalDateTime businessDateTime = getBusinessDateTime();
         int dailyLimit = permission.getDailyLimit();
 
-        int updated = baseMapper.insertOrIncrementModelUsage(userId, modelName, businessDate, businessDateTime);
+        int updated = baseMapper.insertOrIncrementModelUsage(userId, modelId, businessDate, businessDateTime);
 
         if (updated > 0) {
             // 重新获取更新后的记录用于日志
-            UserDailyUsage updatedUsage = getTodayModelUsage(userId, modelName);
+            UserDailyUsage updatedUsage = getTodayModelUsage(userId, modelId);
             if (updatedUsage != null) {
-                log.info("用户{}模型{}使用记录成功，当前使用：{}/{}，业务日期：{}",
-                        userId, modelName, updatedUsage.getChatCountUsed(),
+                log.info("用户{}模型ID{}使用记录成功，当前使用：{}/{}，业务日期：{}",
+                        userId, modelId, updatedUsage.getChatCountUsed(),
                         dailyLimit, businessDate);
             }
             return true;
         }
 
-        log.error("用户{}模型{}使用记录失败", userId, modelName);
+        log.error("用户{}模型ID{}使用记录失败", userId, modelId);
         return false;
     }
 
     @Override
-    public int getRemainingModelChats(Long userId, Long packageId, String modelName) {
+    public int getRemainingModelChats(Long userId, Long packageId, String modelId) {
         // 1. 获取套餐模型权限配置
         Package packageInfo = packageService.getPackageById(packageId);
         if (packageInfo == null) {
@@ -241,7 +219,7 @@ public class UserDailyUsageServiceImpl extends ServiceImpl<UserDailyUsageDao, Us
         }
 
         Map<String, Package.ModelPermission> modelPermissions = packageInfo.getModelPermissionsMap();
-        Package.ModelPermission permission = modelPermissions.get(modelName);
+        Package.ModelPermission permission = modelPermissions.get(modelId);
 
         if (permission == null) {
             return 0;
@@ -253,7 +231,7 @@ public class UserDailyUsageServiceImpl extends ServiceImpl<UserDailyUsageDao, Us
         }
 
         // 3. 计算剩余次数
-        UserDailyUsage todayUsage = getTodayModelUsage(userId, modelName);
+        UserDailyUsage todayUsage = getTodayModelUsage(userId, modelId);
         if (todayUsage == null) {
             return permission.getDailyLimit();
         }
@@ -262,16 +240,16 @@ public class UserDailyUsageServiceImpl extends ServiceImpl<UserDailyUsageDao, Us
     }
 
     @Override
-    public UserDailyUsage getTodayModelUsage(Long userId, Long packageId, String modelName) {
+    public UserDailyUsage getTodayModelUsage(Long userId, Long packageId, String modelId) {
         // 注意：packageId参数已废弃，但为了向后兼容保留此方法
-        return getTodayModelUsage(userId, modelName);
+        return getTodayModelUsage(userId, modelId);
     }
 
     /**
      * 获取用户今日模型使用记录（新方法，不依赖packageId）
      */
-    public UserDailyUsage getTodayModelUsage(Long userId, String modelName) {
-        return baseMapper.selectByUserModelDate(userId, modelName, getBusinessDate());
+    public UserDailyUsage getTodayModelUsage(Long userId, String modelId) {
+        return baseMapper.selectByUserModelDate(userId, modelId, getBusinessDate());
     }
 
     @Override

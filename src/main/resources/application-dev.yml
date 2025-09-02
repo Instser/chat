@@ -1,0 +1,524 @@
+# ========================================
+# 开发环境配置文件 (application-dev.yml)
+# 使用说明：
+# 1. 通过VM参数启动：-Dspring.profiles.active=dev
+# 2. 或者在IDE中设置Active profiles为：dev
+# 3. 或者通过环境变量：SPRING_PROFILES_ACTIVE=dev
+# 
+# 主要变更：
+# - Redis配置改为本地默认端口 (localhost:6379)
+# - 其他配置保持与生产环境一致
+# ========================================
+
+server:
+  port: 8080
+  servlet:
+    context-path: /api
+  # Tomcat服务器优化配置 (8核8G服务器)
+  tomcat:
+    # 线程配置优化
+    threads:
+      max: 400                    # 最大工作线程数 (8核 * 50)
+      min-spare: 50              # 最小空闲线程数
+    # 连接配置优化
+    max-connections: 2000         # 最大连接数
+    accept-count: 200            # 等待队列长度
+    connection-timeout: 20000    # 连接超时时间 (20秒)
+    # 性能优化
+    max-http-post-size: 10MB     # 最大POST请求大小
+    uri-encoding: UTF-8          # URI编码
+    # Keep-Alive优化
+    keep-alive-timeout: 60000    # Keep-Alive超时时间 (60秒)
+    max-keep-alive-requests: 1000 # 最大Keep-Alive请求数
+
+spring:
+  application:
+    name: jinyu-chat
+  main:
+    allow-bean-definition-overriding: true
+  autoconfigure:
+    exclude:
+      - com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration$DdlApplicationRunner
+
+  # Redis配置 - 开发环境使用本地Redis
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    username: ${REDIS_USERNAME:}
+    password: ${REDIS_PASSWORD:}
+    database: ${REDIS_DATABASE:0}
+    timeout: 3000ms
+    lettuce:
+      pool:
+        max-active: 20
+        max-idle: 10
+        min-idle: 5
+        max-wait: 1000ms
+
+  # 缓存配置
+  cache:
+    type: redis
+    redis:
+      time-to-live: 1800000  # 30分钟
+
+  # 数据源配置
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://your-db-host.example.com:32232/chat?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&connectionTimeZone=Asia/Shanghai
+    username: root
+    password: wsq54wg4
+    # 数据库连接初始化SQL，设置会话时区为上海时区
+    hikari:
+      connection-init-sql: SET time_zone = '+08:00'
+
+    # Druid 连接池配置 (8核8G服务器优化)
+    druid:
+      # 基础连接池配置
+      initial-size: 15                    # 初始连接数 (提升到15)
+      min-idle: 20                        # 最小空闲连接数 (提升到20)
+      max-active: 80                      # 最大连接数 (提升到80，支持更高并发)
+      max-wait: 15000                     # 获取连接等待超时 (降低到15秒)
+
+      # 连接检测和回收配置
+      time-between-eviction-runs-millis: 30000    # 检测空闲连接间隔 (30秒)
+      min-evictable-idle-time-millis: 180000      # 连接最小空闲时间 (3分钟)
+      max-evictable-idle-time-millis: 600000      # 连接最大空闲时间 (10分钟)
+      # 连接验证配置
+      validation-query: SELECT 1                  # 验证查询语句 (MySQL优化)
+      test-while-idle: true                       # 空闲时检测连接有效性
+      test-on-borrow: false                       # 获取连接时不检测 (性能优化)
+      test-on-return: false                       # 归还连接时不检测 (性能优化)
+      validation-query-timeout: 3                 # 验证查询超时时间 (3秒)
+
+      # 预编译语句缓存优化
+      pool-prepared-statements: true              # 开启预编译语句缓存
+      max-pool-prepared-statement-per-connection-size: 50  # 每连接最大缓存数 (提升到50)
+
+      # 监控配置
+      stat-view-servlet:
+        enabled: true                             # 开启监控页面
+        url-pattern: /druid/*                     # 监控页面URL
+        reset-enable: false                       # 禁用重置按钮
+        login-username: admin                     # 监控页面用户名
+        login-password: admin123                  # 监控页面密码
+        allow: 127.0.0.1                        # 允许访问的IP (本地)
+
+      # 过滤器配置
+      web-stat-filter:
+        enabled: true                             # 开启Web监控
+        url-pattern: /*                           # 监控所有URL
+        exclusions: "*.js,*.gif,*.jpg,*.png,*.css,*.ico,/druid/*"  # 排除静态资源
+
+      # SQL监控配置
+      filter:
+        stat:
+          enabled: true                           # 开启SQL监控
+          log-slow-sql: true                      # 记录慢SQL
+          slow-sql-millis: 2000                   # 慢SQL阈值 (2秒)
+          merge-sql: true                         # 合并SQL统计
+        wall:
+          enabled: true                           # 开启防火墙
+          config:
+            multi-statement-allow: true           # 允许多语句执行
+            none-base-statement-allow: true       # 允许非基础语句
+
+  # Jackson配置
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: GMT+8
+    serialization:
+      write-dates-as-timestamps: false
+    deserialization:
+      fail-on-unknown-properties: false
+
+  # 文件上传配置
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+# 性能监控配置
+performance:
+  monitor:
+    # 监控间隔配置
+    interval:
+      basic: 300000      # 基础监控间隔（毫秒），默认5分钟
+      detailed: 3600000  # 详细报告间隔（毫秒），默认1小时
+    # 告警阈值配置
+    threshold:
+      cpu-usage: 80.0              # CPU使用率告警阈值（百分比）
+      heap-memory-usage: 85.0      # 堆内存使用率告警阈值（百分比）
+      thread-count: 500            # 线程数告警阈值
+      connection-pool-usage: 90.0  # 数据库连接池使用率告警阈值（百分比）
+    # 服务器信息配置
+    server:
+      description: ""      # 服务器描述信息，为空时自动检测
+      auto-detect: true    # 是否启用自动检测服务器信息
+
+
+
+# MyBatis-Plus配置
+mybatis-plus:
+  # 配置扫描通用枚举
+  type-enums-package: com.instser.chat.common.enums
+  configuration:
+    # 是否开启自动驼峰命名规则映射
+    map-underscore-to-camel-case: true
+    # 开启Mybatis二级缓存 (性能优化)
+    cache-enabled: true
+    # 延迟加载配置 (性能优化)
+    lazy-loading-enabled: true
+    aggressive-lazy-loading: false
+    # 批量操作优化
+    default-executor-type: REUSE
+    # 当查询数据为空时字段返回为null，不加这个查询数据为空时，字段将被隐藏
+    call-setters-on-nulls: true
+    # 使用SLF4J日志实现，只在错误时记录SQL
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
+  global-config:
+    # 关闭MyBatis-Plus的banner和ddl runner
+    banner: false
+    enable-sql-runner: false
+    # 禁用DDL自动执行
+    ddl-auto: none
+    db-config:
+      # 主键类型
+      id-type: ASSIGN_ID
+      # 逻辑删除配置
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+      # 数据库表前缀
+      table-prefix: t_
+  # mapper xml文件路径
+  mapper-locations: classpath*:/mapper/**/*.xml
+
+# 支付宝配置
+alipay:
+  # 应用ID（客户端ID）- 需要在支付宝开放平台申请
+  client-id: ${ALIPAY_CLIENT_ID:}
+  # 商户私钥 - 需要生成RSA密钥对
+  private-key: ${ALIPAY_PRIVATE_KEY:}
+  # 支付宝公钥 - 从支付宝开放平台获取
+  public-key: ${ALIPAY_PUBLIC_KEY:}
+  # 是否沙箱环境
+  sandbox: ${ALIPAY_SANDBOX:true}
+
+  # 支付回调通知URL
+  notify-url: ${ALIPAY_NOTIFY_URL:https://api.example.com/api/payment/alipay/notify}
+  # 网关地址（可选，默认使用新加坡网关）
+  gateway-url: ${ALIPAY_GATEWAY_URL:}
+
+# 易支付配置
+yipay:
+  # 商户ID
+  pid: ${YIPAY_PID:1674}
+  # 商户密钥
+  key: ${YIPAY_KEY:your-yipay-merchant-key}
+  # 易支付网关地址
+  url: ${YIPAY_URL:https://your-pay-gateway.example.com}
+
+  # 支付回调通知URL
+  notify-url: ${YIPAY_NOTIFY_URL:https://api.example.com/api/payment/yipay/notify}
+  # 默认支付方式（alipay、wxpay、qqpay等）
+  default-type: ${YIPAY_DEFAULT_TYPE:alipay}
+
+
+
+# JWT配置
+jwt:
+  # JWT密钥（生产环境请使用环境变量）
+  secret: ${JWT_SECRET:change-me-jwt-secret-key}
+  # Token过期时间（秒）- 7天
+  expiration: ${JWT_EXPIRATION:604800}
+  # Cookie名称
+  cookie-name: ${JWT_COOKIE_NAME:auth-token}
+  # Cookie是否HttpOnly
+  http-only: ${JWT_HTTP_ONLY:false}
+  # Cookie是否Secure（HTTPS）
+  secure: ${JWT_SECURE:false}
+  # Cookie SameSite策略
+  same-site: ${JWT_SAME_SITE:Lax}
+  # Cookie路径
+  path: ${JWT_PATH:/api}
+  # Token前缀
+  token-prefix: ${JWT_TOKEN_PREFIX:Bearer }
+  # 请求头名称
+  header-name: ${JWT_HEADER_NAME:Authorization}
+
+# OAuth2配置
+oauth2:
+  # 安全配置
+  security:
+    max-login-attempts: 5 # 最大登录尝试次数
+    rate-limit-window: 3600 # 频率限制窗口(秒)
+    encryption-key: ${OAUTH2_ENCRYPTION_KEY:change-me-32-char-encryption-key} # AES加密密钥
+
+  # 提供商配置
+  providers:
+    google:
+      name: "Google"
+      icon: "google"
+      enabled: true
+      client-id: ${GOOGLE_CLIENT_ID:334016856445-jlpdr73dr7jr0mrtdn0iu4082rh987gm.apps.googleusercontent.com}
+      client-secret: ${GOOGLE_CLIENT_SECRET:your-google-client-secret}
+      token-uri: ${GOOGLE_TOKEN_URI:https://oauth2.googleapis.com/token}
+      user-info-uri: ${GOOGLE_USER_INFO_URI:https://www.googleapis.com/oauth2/v3/userinfo}
+      scope: ${GOOGLE_SCOPE:openid,email,profile}
+      redirect-uri: ${GOOGLE_REDIRECT_URI:https://chat.example.com/auth/callback/google}
+    github:
+      name: "GitHub"
+      icon: "github"
+      enabled: true
+      client-id: ${GITHUB_CLIENT_ID:Ov23li7fEzHfvRyIT53F}
+      client-secret: ${GITHUB_CLIENT_SECRET:your-github-oauth-client-secret}
+      token-uri: ${GITHUB_TOKEN_URI:https://github.com/login/oauth/access_token}
+      user-info-uri: ${GITHUB_USER_INFO_URI:https://api.github.com/user}
+      scope: ${GITHUB_SCOPE:user:email}
+      redirect-uri: ${GITHUB_REDIRECT_URI:https://chat.example.com/auth/callback/github}
+
+
+
+# 文件上传配置
+file:
+  upload:
+    path: ${FILE_UPLOAD_PATH:src/main/resources/file}
+    max-size: ${FILE_UPLOAD_MAX_SIZE:10485760}  # 5MB 5242880
+
+# Swagger/OpenAPI 配置
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html
+    tags-sorter: alpha
+    operations-sorter: alpha
+    display-request-duration: true
+    show-extensions: true
+    show-common-extensions: true
+  show-actuator: false
+  group-configs:
+    - group: 'auth'
+      display-name: '认证模块'
+      paths-to-match: '/auth/**'
+    - group: 'chat'
+      display-name: '聊天模块'
+      paths-to-match: '/chat/**'
+    - group: 'payment'
+      display-name: '支付模块'
+      paths-to-match: '/payment/**'
+
+# 日志配置 - 使用logback-spring.xml进行详细配置
+logging:
+  config: classpath:logback-spring.xml
+  level:
+    com.instser.chat: DEBUG
+  # 日志文件配置
+  file:
+    path: logs
+  # 日志管理配置
+  management:
+    # 日志文件总大小限制（MB）
+    max-total-size: 2048
+    # 日志文件保留天数
+    max-days: 15
+    # 磁盘使用率告警阈值（%）
+    disk-warning-threshold: 80
+    # 磁盘使用率严重告警阈值（%）
+    disk-critical-threshold: 90
+  # 监控日志配置
+  monitor:
+    # 是否启用监控日志分离
+    enabled: true
+    # 监控日志文件路径
+    path: logs
+    # 监控日志文件名前缀
+    file-prefix: jinyu-chat-monitor
+    # 监控日志保留天数
+    max-days: 7
+    # 监控日志文件最大大小（MB）
+    max-file-size: 100
+    # 监控日志总大小限制（MB）
+    max-total-size: 1024
+    # 是否在控制台显示监控日志
+    show-in-console: false
+    # 是否在主日志文件中显示监控日志
+    show-in-main-log: false
+
+# 汇率服务配置
+exchange:
+  api:
+    # 汇率API地址 - 使用新的API，一次获取所有汇率
+    url: ${EXCHANGE_API_URL:https://v2.xxapi.cn/api/allrates}
+    # 是否启用汇率API
+    enabled: ${EXCHANGE_API_ENABLED:true}
+    # API密钥（如需要）
+    key: ${EXCHANGE_API_KEY:}
+    # 请求超时时间（毫秒）
+    timeout: ${EXCHANGE_API_TIMEOUT:5000}
+    # 重试次数
+    retry-count: ${EXCHANGE_RETRY_COUNT:3}
+
+  # 缓存配置
+  cache:
+    # 缓存过期时间（分钟）
+    expire-minutes: ${EXCHANGE_CACHE_EXPIRE:30}
+    # 缓存前缀
+    key-prefix: ${EXCHANGE_CACHE_PREFIX:exchange_rate}
+
+  # 默认汇率配置（当API不可用时使用）
+  default-rates:
+    # 主要货币对CNY的汇率
+    USD_CNY: ${EXCHANGE_DEFAULT_USD_CNY:7.20}
+    EUR_CNY: ${EXCHANGE_DEFAULT_EUR_CNY:7.85}
+    GBP_CNY: ${EXCHANGE_DEFAULT_GBP_CNY:9.10}
+    JPY_CNY: ${EXCHANGE_DEFAULT_JPY_CNY:0.048}
+    KRW_CNY: ${EXCHANGE_DEFAULT_KRW_CNY:0.0055}
+    HKD_CNY: ${EXCHANGE_DEFAULT_HKD_CNY:0.92}
+    SGD_CNY: ${EXCHANGE_DEFAULT_SGD_CNY:5.35}
+    AUD_CNY: ${EXCHANGE_DEFAULT_AUD_CNY:4.80}
+    CAD_CNY: ${EXCHANGE_DEFAULT_CAD_CNY:5.25}
+    # 反向汇率
+    CNY_USD: ${EXCHANGE_DEFAULT_CNY_USD:0.139}
+    CNY_EUR: ${EXCHANGE_DEFAULT_CNY_EUR:0.127}
+    CNY_GBP: ${EXCHANGE_DEFAULT_CNY_GBP:0.110}
+    CNY_JPY: ${EXCHANGE_DEFAULT_CNY_JPY:20.83}
+    CNY_KRW: ${EXCHANGE_DEFAULT_CNY_KRW:181.82}
+    CNY_HKD: ${EXCHANGE_DEFAULT_CNY_HKD:1.09}
+    CNY_SGD: ${EXCHANGE_DEFAULT_CNY_SGD:0.187}
+    CNY_AUD: ${EXCHANGE_DEFAULT_CNY_AUD:0.208}
+    CNY_CAD: ${EXCHANGE_DEFAULT_CNY_CAD:0.190}
+
+# 应用配置
+app:
+  # CORS配置 - 允许localhost、局域网和生产域名访问
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:*,https://localhost:*,http://127.0.0.1:*,https://127.0.0.1:*,http://192.168.1.100:*,https://192.168.1.100:*,http://192.168.1.101:*,https://192.168.1.101:*,https://chat.example.com,http://chat.example.com,http://203.0.113.16:3000}
+    allowed-methods: ${CORS_ALLOWED_METHODS:*}
+    allowed-headers: ${CORS_ALLOWED_HEADERS:*}
+    allow-credentials: ${CORS_ALLOW_CREDENTIALS:true}
+    max-age: ${CORS_MAX_AGE:3600}
+
+  # 定时任务配置
+  scheduled:
+    # 聊天中断清理任务配置（默认禁用，已整合到OptimizedScheduledTaskService）
+    chat-interrupt:
+      enabled: false
+    # 支付状态同步任务配置（默认禁用，已整合到OptimizedScheduledTaskService）
+    payment-status-sync:
+      enabled: false
+
+# ========================================
+# 性能优化配置 (8核8G服务器)
+# ========================================
+
+# 管理端点配置
+management:
+  endpoints:
+    web:
+      exposure:
+        # 暴露日志管理端点和其他监控端点
+        include: health,info,metrics,prometheus,loggers
+      # 只允许localhost访问
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: when-authorized
+    # 日志级别管理端点配置
+    loggers:
+      enabled: true
+  # 安全配置 - 只允许localhost访问
+  server:
+    address: 127.0.0.1
+    port: 8081
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+
+# 异步任务配置优化
+async:
+  # 核心线程池大小 (CPU核数)
+  core-pool-size: 8
+  # 最大线程池大小 (CPU核数 * 2)
+  max-pool-size: 16
+  # 队列容量
+  queue-capacity: 200
+  # 线程名前缀
+  thread-name-prefix: "ChatAsync-"
+  # 线程存活时间 (秒)
+  keep-alive-seconds: 60
+
+
+
+# 支付安全配置
+payment:
+  security:
+    # 支付频率限制
+    frequency:
+      max-count: ${PAYMENT_FREQUENCY_MAX_COUNT:5}      # 时间窗口内最大支付次数
+      time-window: ${PAYMENT_FREQUENCY_TIME_WINDOW:10} # 时间窗口（分钟）
+    # 回调安全配置
+    callback:
+      expire-time: ${PAYMENT_CALLBACK_EXPIRE_TIME:60}  # 回调过期时间（分钟）
+    # 可疑行为配置
+    suspicious:
+      threshold: ${PAYMENT_SUSPICIOUS_THRESHOLD:3}     # 可疑行为阈值
+      expire-days: ${PAYMENT_SUSPICIOUS_EXPIRE_DAYS:7} # 记录保存天数
+  # 缓存熔断器配置
+  cache:
+    circuit-breaker:
+      failure-threshold: ${PAYMENT_CACHE_FAILURE_THRESHOLD:3}        # 失败阈值
+      recovery-timeout: ${PAYMENT_CACHE_RECOVERY_TIMEOUT:30000}      # 恢复超时时间（毫秒）
+      success-threshold: ${PAYMENT_CACHE_SUCCESS_THRESHOLD:2}        # 成功阈值
+      health-check-interval: ${PAYMENT_CACHE_HEALTH_CHECK_INTERVAL:10000} # 健康检查间隔（毫秒）
+      
+  # Stripe支付配置
+  stripe:
+    # Stripe公钥（可发布密钥）- 测试环境
+    public-key: ${STRIPE_PUBLIC_KEY:pk_test_your_stripe_key}
+    # Stripe私钥（密钥）- 测试环境  
+    secret-key: ${STRIPE_SECRET_KEY:sk_test_your_stripe_key}
+    # Webhook签名密钥（从Stripe CLI获取）
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_your_webhook_secret}
+    # 默认货币
+    currency: ${STRIPE_CURRENCY:usd}
+    # 是否沙箱模式（测试环境设为true）
+    sandbox: ${STRIPE_SANDBOX:true}
+    # 支持的货币列表
+    supported-currencies: ${STRIPE_SUPPORTED_CURRENCIES:usd,eur,gbp,jpy,cad,aud,chf,sek,nok,dkk}
+    # API版本
+    api-version: ${STRIPE_API_VERSION:2024-06-20}
+    # 连接超时时间（毫秒）
+    connect-timeout: ${STRIPE_CONNECT_TIMEOUT:30000}
+    # 读取超时时间（毫秒）
+    read-timeout: ${STRIPE_READ_TIMEOUT:80000}
+    # 最大网络重试次数
+    max-network-retries: ${STRIPE_MAX_NETWORK_RETRIES:2}
+
+# Google Gemini API配置
+gemini:
+  api:
+    # Gemini API密钥
+    key: ${GEMINI_API_KEY:your-gemini-api-key}
+
+    # Gemini API基础URL
+    base-url: ${GEMINI_BASE_URL:http://your-gemini-proxy.example.com:5321/v1beta}
+
+    # 请求超时时间（毫秒）
+    timeout: ${GEMINI_TIMEOUT:10000}
+
+    # 重试次数
+    retry-count: ${GEMINI_RETRY_COUNT:3}
+
+# 缓存管理配置 - 整合到现有的management端口8081
+cache:
+  management:
+    enabled: true          # 启用缓存管理功能
+    # 使用现有的management端口8081，不需要额外端口配置
+    api-key:
+      enabled: true        # 启用API密钥认证
+      master: ${CACHE_API_KEY:}  # 主API密钥，建议通过环境变量设置

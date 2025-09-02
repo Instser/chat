@@ -74,17 +74,17 @@ public class ModelUsageController {
     public ResponseEntity<?> checkModelPermission(
             @Parameter(description = "用户ID", required = true)
             @RequestParam Long userId,
-            @Parameter(description = "模型名称", required = true)
-            @RequestParam String modelName) {
+            @Parameter(description = "模型ID", required = true)
+            @RequestParam String modelId) {
         try {
-            LogUtils.logUserOperation(log, userId, "权限检查", "检查模型{}使用权限", modelName);
+            LogUtils.logUserOperation(log, userId, "权限检查", "检查模型ID{}使用权限", modelId);
 
-            ChatLimitVO result = chatLimitService.validateModelChatPermission(userId, modelName);
+            ChatLimitVO result = chatLimitService.validateModelChatPermission(userId, modelId);
 
             return ResponseEntity.ok(Result.success(result, "权限检查完成"));
 
         } catch (Exception e) {
-            LogUtils.logUserError(log, userId, "权限检查", "检查模型{}权限异常", e, modelName);
+            LogUtils.logUserError(log, userId, "权限检查", "检查模型ID{}权限异常", e, modelId);
             return ResponseEntity.ok(Result.failed("权限检查失败，请稍后重试"));
         }
     }
@@ -99,8 +99,8 @@ public class ModelUsageController {
     })
     @PostMapping("/record-usage")
     public ResponseEntity<?> recordModelUsage(
-            @Parameter(description = "模型名称", required = true)
-            @RequestParam String modelName,
+            @Parameter(description = "模型ID", required = true)
+            @RequestParam String modelId,
             Authentication authentication) {
         try {
             // 从认证信息中获取用户ID
@@ -109,9 +109,9 @@ public class ModelUsageController {
                 return ResponseEntity.ok(Result.unauthorized("用户未认证"));
             }
 
-            LogUtils.logUserOperation(log, userId, "使用记录", "记录模型{}使用", modelName);
+            LogUtils.logUserOperation(log, userId, "使用记录", "记录模型ID{}使用", modelId);
 
-            boolean success = chatLimitService.recordModelChatUsage(userId, modelName);
+            boolean success = chatLimitService.recordModelChatUsage(userId, modelId);
 
             if (success) {
                 return ResponseEntity.ok(Result.success(null, "使用记录成功"));
@@ -120,7 +120,7 @@ public class ModelUsageController {
             }
 
         } catch (Exception e) {
-            LogUtils.logUserError(log, getCurrentUserId(authentication), "使用记录", "记录模型{}使用异常", e, modelName);
+            LogUtils.logUserError(log, getCurrentUserId(authentication), "使用记录", "记录模型ID{}使用异常", e, modelId);
             return ResponseEntity.ok(Result.failed("使用记录失败，请稍后重试"));
         }
     }
@@ -135,8 +135,8 @@ public class ModelUsageController {
     })
     @GetMapping("/remaining-usage")
     public ResponseEntity<?> getRemainingUsage(
-            @Parameter(description = "模型名称", required = true)
-            @RequestParam String modelName,
+            @Parameter(description = "模型ID", required = true)
+            @RequestParam String modelId,
             Authentication authentication) {
         try {
             // 从认证信息中获取用户ID
@@ -145,15 +145,15 @@ public class ModelUsageController {
                 return ResponseEntity.ok(Result.unauthorized("用户未认证"));
             }
 
-            LogUtils.logUserOperation(log, userId, "查询剩余次数", "查询模型{}剩余使用次数", modelName);
+            LogUtils.logUserOperation(log, userId, "查询剩余次数", "查询模型ID{}剩余使用次数", modelId);
 
             // 获取用户账户信息
-            ChatLimitVO limitInfo = chatLimitService.validateModelChatPermission(userId, modelName);
+            ChatLimitVO limitInfo = chatLimitService.validateModelChatPermission(userId, modelId);
 
             return ResponseEntity.ok(Result.success(limitInfo, "查询成功"));
 
         } catch (Exception e) {
-            LogUtils.logUserError(log, getCurrentUserId(authentication), "查询剩余次数", "查询模型{}剩余次数异常", e, modelName);
+            LogUtils.logUserError(log, getCurrentUserId(authentication), "查询儉余次数", "查询模型ID{}儉余次数异常", e, modelId);
             return ResponseEntity.ok(Result.failed("查询失败，请稍后重试"));
         }
     }

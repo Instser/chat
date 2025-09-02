@@ -46,7 +46,7 @@ public class AiModelServiceImpl extends ServiceImpl<AiModelDao, AiModel> impleme
         // 初始化默认模型
         AiModel gpt4 = new AiModel();
         gpt4.setModelCode("gpt-4");
-        gpt4.setModelName("GPT-4");
+        gpt4.setModelName("PERFORMANCE");
         gpt4.setDescription("OpenAI最先进的语言模型");
         gpt4.setProvider("OpenAI");
         gpt4.setVersion("1.0");
@@ -59,7 +59,7 @@ public class AiModelServiceImpl extends ServiceImpl<AiModelDao, AiModel> impleme
 
         AiModel gpt35 = new AiModel();
         gpt35.setModelCode("gpt-3.5-turbo");
-        gpt35.setModelName("GPT-3.5 Turbo");
+        gpt35.setModelName("STANDARD");
         gpt35.setDescription("快速且经济的语言模型");
         gpt35.setProvider("OpenAI");
         gpt35.setVersion("1.0");
@@ -72,7 +72,7 @@ public class AiModelServiceImpl extends ServiceImpl<AiModelDao, AiModel> impleme
 
         AiModel qwen = new AiModel();
         qwen.setModelCode("qwen3-235b-a22b");
-        qwen.setModelName("通义千问");
+        qwen.setModelName("STANDARD");
         qwen.setDescription("阿里云通义千问大语言模型");
         qwen.setProvider("Alibaba");
         qwen.setVersion("3.0");
@@ -84,6 +84,6 @@ public class AiModelServiceImpl extends ServiceImpl<AiModelDao, AiModel> impleme
         qwen.setUpdateTime(LocalDateTime.now());
 
         this.saveBatch(List.of(gpt4, gpt35, qwen));
-        log.info("默认AI模型初始化完成");
+        log.info("默认AI模型初始化完成 - GPT-4(PERFORMANCE), GPT-3.5(STANDARD), 通义千问(STANDARD)");
     }
 }

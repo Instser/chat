@@ -14,33 +14,6 @@ import java.util.List;
 public interface UserDailyUsageService {
 
     /**
-     * 检查用户今日是否还能聊天
-     *
-     * @param userId    用户ID
-     * @param packageId 套餐ID
-     * @return true-可以聊天，false-已达到限制
-     */
-    boolean canChatToday(Long userId, Long packageId);
-
-    /**
-     * 获取用户今日剩余聊天次数
-     *
-     * @param userId    用户ID
-     * @param packageId 套餐ID
-     * @return 剩余次数
-     */
-    int getRemainingChatsToday(Long userId, Long packageId);
-
-    /**
-     * 记录用户聊天使用
-     *
-     * @param userId    用户ID
-     * @param packageId 套餐ID
-     * @return true-记录成功，false-已达到限制
-     */
-    boolean recordChatUsage(Long userId, Long packageId);
-
-    /**
      * 获取用户今日使用记录
      *
      * @param userId    用户ID
@@ -83,40 +56,40 @@ public interface UserDailyUsageService {
      *
      * @param userId    用户ID
      * @param packageId 套餐ID
-     * @param modelName 模型名称
+     * @param modelId   模型ID
      * @return true-可以使用，false-已达到限制
      */
-    boolean canChatWithModel(Long userId, Long packageId, String modelName);
+    boolean canChatWithModel(Long userId, Long packageId, String modelId);
 
     /**
      * 记录用户模型使用
      *
      * @param userId    用户ID
      * @param packageId 套餐ID
-     * @param modelName 模型名称
+     * @param modelId   模型ID
      * @return true-记录成功，false-已达到限制
      */
-    boolean recordModelChatUsage(Long userId, Long packageId, String modelName);
+    boolean recordModelChatUsage(Long userId, Long packageId, String modelId);
 
     /**
      * 获取用户模型剩余使用次数
      *
      * @param userId    用户ID
      * @param packageId 套餐ID
-     * @param modelName 模型名称
+     * @param modelId   模型ID
      * @return 剩余次数，-1表示无限制
      */
-    int getRemainingModelChats(Long userId, Long packageId, String modelName);
+    int getRemainingModelChats(Long userId, Long packageId, String modelId);
 
     /**
      * 获取用户今日模型使用记录
      *
      * @param userId    用户ID
      * @param packageId 套餐ID
-     * @param modelName 模型名称
+     * @param modelId   模型ID
      * @return 使用记录
      */
-    UserDailyUsage getTodayModelUsage(Long userId, Long packageId, String modelName);
+    UserDailyUsage getTodayModelUsage(Long userId, Long packageId, String modelId);
 
     /**
      * 获取用户所有模型的今日使用情况

@@ -224,17 +224,17 @@ public class Package implements Serializable {
             case "basic":
                 defaults.put("STANDARD", new ModelPermission(300, "标准模型"));
                 defaults.put("PERFORMANCE", new ModelPermission(20, "性能模型"));
-                defaults.put("BETA_MODEL", new ModelPermission(5, "测试模型"));
+                defaults.put("BEST_MODEL", new ModelPermission(5, "顶级模型"));
                 break;
             case "medium":
                 defaults.put("STANDARD", new ModelPermission(500, "标准模型"));
                 defaults.put("PERFORMANCE", new ModelPermission(300, "性能模型"));
-                defaults.put("BETA_MODEL", new ModelPermission(20, "测试模型"));
+                defaults.put("BEST_MODEL", new ModelPermission(20, "顶级模型"));
                 break;
             case "high":
                 defaults.put("STANDARD", new ModelPermission(-1, "标准模型"));
                 defaults.put("PERFORMANCE", new ModelPermission(-1, "性能模型"));
-                defaults.put("BETA_MODEL", new ModelPermission(-1, "测试模型"));
+                defaults.put("BEST_MODEL", new ModelPermission(-1, "顶级模型"));
                 break;
             default:
                 // 默认无权限
@@ -274,7 +274,7 @@ public class Package implements Serializable {
                 break;
             case "high":
                 defaults.add("Premium AI chat functionality");
-                defaults.add("All model access including Beta models");
+                defaults.add("All model access including Best models");
                 defaults.add("Unlimited daily usage");
                 defaults.add("24/7 priority support");
                 defaults.add("Advanced chat history management");

@@ -74,10 +74,8 @@ public class RedissonConfig {
         log.info("配置Redisson连接地址: {}, 超时时间: {}ms", redisAddress, timeoutMs);
 
         // 配置单节点模式
-        config.useSingleServer()
+        var singleServerConfig = config.useSingleServer()
                 .setAddress(redisAddress)
-                .setUsername(redisUsername)
-                .setPassword(redisPassword)
                 .setDatabase(redisDatabase)
                 .setConnectTimeout(timeoutMs)
                 .setTimeout(timeoutMs)
@@ -90,6 +88,15 @@ public class RedissonConfig {
                 .setKeepAlive(true)
                 // 设置DNS监控间隔
                 .setDnsMonitoringInterval(5000);
+
+        // 只有在用户名和密码不为空时才设置认证信息
+        if (redisUsername != null && !redisUsername.trim().isEmpty() && 
+            redisPassword != null && !redisPassword.trim().isEmpty()) {
+            log.info("配置Redis认证信息，用户名: {}", redisUsername);
+            singleServerConfig.setUsername(redisUsername).setPassword(redisPassword);
+        } else {
+            log.info("未配置Redis认证信息，使用无密码连接");
+        }
 
         // 设置编解码器
         config.setCodec(new org.redisson.codec.JsonJacksonCodec());
