@@ -19,16 +19,16 @@ import lombok.extern.slf4j.Slf4j;
 @Configuration
 public class RedissonConfig {
 
-    @Value("${spring.redis.host:your-db-host.example.com}")
+    @Value("${spring.redis.host:redis-13095.crce178.ap-east-1-1.ec2.redns.redis-cloud.com}")
     private String redisHost;
 
-    @Value("${spring.redis.port:31122}")
+    @Value("${spring.redis.port:13095}")
     private int redisPort;
 
     @Value("${spring.redis.username:default}")
     private String redisUsername;
 
-    @Value("${spring.redis.password:pt7tv2k4}")
+    @Value("${spring.redis.password:eIEWBI0I5hhi8DgVLIydW5FEF6pHU70d}")
     private String redisPassword;
 
     @Value("${spring.redis.database:0}")

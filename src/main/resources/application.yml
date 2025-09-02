@@ -30,10 +30,10 @@ spring:
 
   # Redis配置
   redis:
-    host: ${REDIS_HOST:your-db-host.example.com}
-    port: ${REDIS_PORT:31122}
+    host: ${REDIS_HOST:redis-13095.crce178.ap-east-1-1.ec2.redns.redis-cloud.com}
+    port: ${REDIS_PORT:13095}
     username: ${REDIS_USERNAME:default}
-    password: ${REDIS_PASSWORD:pt7tv2k4}
+    password: ${REDIS_PASSWORD:eIEWBI0I5hhi8DgVLIydW5FEF6pHU70d}
     database: ${REDIS_DATABASE:0}
     timeout: 3000ms
     lettuce:
