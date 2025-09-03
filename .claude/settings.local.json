@@ -4,7 +4,9 @@
       "Bash(find:*)",
       "Bash(mvn clean:*)",
       "Bash(curl:*)",
-      "Bash(stripe trigger:*)"
+      "Bash(stripe trigger:*)",
+      "Bash(mvn compile:*)",
+      "Bash(git restore:*)"
     ],
     "deny": [],
     "ask": []
