@@ -1,12 +1,7 @@
 {
   "permissions": {
     "allow": [
-      "Bash(find:*)",
-      "Bash(mvn clean:*)",
-      "Bash(curl:*)",
-      "Bash(stripe trigger:*)",
-      "Bash(mvn compile:*)",
-      "Bash(git restore:*)"
+      "WebFetch(domain:time.is)"
     ],
     "deny": [],
     "ask": []

@@ -6,14 +6,18 @@ import com.instser.chat.entity.Package;
 import com.instser.chat.entity.UserAccount;
 import com.instser.chat.service.PackageService;
 import com.instser.chat.service.UserAccountService;
+import com.instser.chat.service.cache.HybridCacheManager;
+import com.instser.chat.event.UserPackageChangeEvent;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.Duration;
 
 import com.instser.chat.common.util.LogUtils;
 /**
@@ -36,6 +40,16 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
     @Autowired
     private PackageService packageService;
 
+    @Autowired
+    private HybridCacheManager hybridCacheManager;
+
+    @Autowired
+    private ApplicationEventPublisher eventPublisher;
+
+    private static final String USER_ACCOUNT_CACHE_PREFIX = "user:account:";
+    private static final String PACKAGE_CONFIG_CACHE_PREFIX = "package:config:";
+    private static final Duration USER_ACCOUNT_TTL = Duration.ofMinutes(15);
+
     /**
      * 获取业务时间（上海时区）
      */
@@ -48,7 +62,15 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
         if (userId == null) {
             return null;
         }
-        return baseMapper.selectByUserId(userId);
+        
+        String cacheKey = USER_ACCOUNT_CACHE_PREFIX + userId;
+        return hybridCacheManager.get(cacheKey, () -> {
+            UserAccount account = baseMapper.selectByUserId(userId);
+            if (account != null) {
+                LogUtils.logUserDebug(log, userId, "缓存未命中", "从数据库加载用户账户信息");
+            }
+            return account;
+        }, USER_ACCOUNT_TTL);
     }
 
     @Override
@@ -96,6 +118,12 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
             int updated = baseMapper.insertOrUpdateAccount(userId, packageId, expireTime, chatCount, membershipLevel, currentTime);
 
             if (updated > 0) {
+                // 激活成功后清除相关缓存
+                evictRelatedCaches(userId, packageId);
+                
+                // 发布套餐变更事件
+                eventPublisher.publishEvent(UserPackageChangeEvent.createActivateEvent(this, userId, packageId));
+                
                 LogUtils.logUserOperation(log, userId, "激活套餐", "套餐激活成功，套餐ID：{}，有效期：{}天，总次数：{}，限制类型：{}",
                         packageId, validityDays, chatCount, packageInfo.getLimitType());
                 return true;
@@ -118,23 +146,49 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
         }
 
         try {
-            LocalDateTime updateTime = getBusinessDateTime();
-            // 原子性减少剩余次数
-            int updated = baseMapper.decrementChatCount(userId, usedCount, updateTime);
-
-            if (updated > 0) {
-                // 增加总使用次数统计
-                baseMapper.incrementTotalChatCount(userId, usedCount, updateTime);
-                LogUtils.logUserDebug(log, userId, "更新使用次数", "使用次数更新成功，使用了{}次", usedCount);
-                return true;
+            boolean result = performDatabaseUpdate(userId, usedCount);
+            if (result) {
+                // 更新成功后清除相关缓存
+                evictUserAccountCache(userId);
+                LogUtils.logUserDebug(log, userId, "更新使用次数", "使用次数更新成功，已清除缓存");
             }
-
-            LogUtils.logUserWarning(log, userId, "更新使用次数", "使用次数更新失败，可能次数不足");
-            return false;
+            return result;
         } catch (Exception e) {
-            LogUtils.logUserError(log, userId, "更新使用次数", "更新使用次数异常: usedCount={}", e, usedCount);
+            LogUtils.logUserError(log, userId, "更新使用次数", "更新使用次数异常", e);
             return false;
         }
+    }
+
+    private boolean performDatabaseUpdate(Long userId, Integer usedCount) {
+        LocalDateTime updateTime = getBusinessDateTime();
+        // 原子性减少剩余次数
+        int updated = baseMapper.decrementChatCount(userId, usedCount, updateTime);
+
+        if (updated > 0) {
+            // 增加总使用次数统计
+            baseMapper.incrementTotalChatCount(userId, usedCount, updateTime);
+            return true;
+        }
+
+        LogUtils.logUserWarning(log, userId, "更新使用次数", "使用次数更新失败，可能次数不足");
+        return false;
+    }
+
+    private void evictUserAccountCache(Long userId) {
+        String cacheKey = USER_ACCOUNT_CACHE_PREFIX + userId;
+        hybridCacheManager.evict(cacheKey);
+    }
+
+    private void evictPackageConfigCache(Long packageId) {
+        if (packageId != null) {
+            String cacheKey = PACKAGE_CONFIG_CACHE_PREFIX + packageId;
+            hybridCacheManager.evict(cacheKey);
+        }
+    }
+
+    private void evictRelatedCaches(Long userId, Long packageId) {
+        evictUserAccountCache(userId);
+        evictPackageConfigCache(packageId);
     }
 
     @Override
@@ -197,6 +251,12 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
             int updated = baseMapper.updatePackageInfo(userId, packageId, newExpireTime, newRemaining, membershipLevel, getBusinessDateTime());
 
             if (updated > 0) {
+                // 续费成功后清除相关缓存
+                evictRelatedCaches(userId, packageId);
+                
+                // 发布套餐变更事件
+                eventPublisher.publishEvent(UserPackageChangeEvent.createRenewEvent(this, userId, packageId));
+                
                 LogUtils.logUserOperation(log, userId, "续费套餐", "套餐续费成功，延长{}天，增加{}次聊天",
                         validityDays, additionalChatCount);
                 return true;
@@ -312,6 +372,8 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
             if (updated > 0) {
                 // 增加已使用Token统计
                 baseMapper.incrementTokenUsed(userId, tokenCount.longValue(), updateTime);
+                // Token使用后清除缓存
+                evictUserAccountCache(userId);
                 LogUtils.logUserDebug(log, userId, "更新Token使用量", "Token使用量更新成功，使用了{}个Token", tokenCount);
                 return true;
             }
@@ -380,6 +442,8 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
             int updated = baseMapper.incrementTokenBalance(userId, tokenCount, updateTime);
 
             if (updated > 0) {
+                // Token余额增加后清除缓存
+                evictUserAccountCache(userId);
                 LogUtils.logUserOperation(log, userId, "增加Token余额", "Token余额增加成功，增加了{}个Token", tokenCount);
                 return true;
             }
@@ -419,6 +483,24 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
                 return "vip";
             default:
                 return "free";
+        }
+    }
+
+    @Override
+    public java.util.List<Long> getActiveUserIds(int limit) {
+        try {
+            // 由于Mapper方法可能不存在，先使用简单的查询获取有有效套餐的用户
+            // 实际应该在UserAccountDao中添加selectActiveUserIds方法
+            return baseMapper.selectList(
+                com.baomidou.mybatisplus.core.toolkit.Wrappers.<UserAccount>lambdaQuery()
+                    .isNotNull(UserAccount::getPackageId)
+                    .gt(UserAccount::getPackageExpireTime, getBusinessDateTime())
+                    .orderByDesc(UserAccount::getUpdateTime)
+                    .last("LIMIT " + limit)
+            ).stream().map(UserAccount::getUserId).collect(java.util.stream.Collectors.toList());
+        } catch (Exception e) {
+            LogUtils.logUserError(log, null, "获取活跃用户", "获取活跃用户列表异常", e);
+            return java.util.Collections.emptyList();
         }
     }
 

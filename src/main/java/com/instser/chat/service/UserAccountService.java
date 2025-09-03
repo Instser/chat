@@ -156,4 +156,12 @@ public interface UserAccountService extends IService<UserAccount> {
      * @return true-可以聊天，false-不能聊天
      */
     boolean canChatWithTotalLimit(Long userId);
+
+    /**
+     * 获取活跃用户ID列表（缓存预热用）
+     *
+     * @param limit 限制数量
+     * @return 活跃用户ID列表
+     */
+    java.util.List<Long> getActiveUserIds(int limit);
 }

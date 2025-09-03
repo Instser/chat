@@ -511,3 +511,16 @@ cache:
       enabled: true        # 启用API密钥认证
       master: ${CACHE_API_KEY:}  # 主API密钥，建议通过环境变量设置
 
+# 自定义缓存配置
+custom:
+  cache:
+    user-account:
+      ttl: 15m
+      max-size: 5000
+    package-config:
+      ttl: 1h
+      max-size: 1000
+    model-permission:
+      ttl: 30m
+      max-size: 10000
+

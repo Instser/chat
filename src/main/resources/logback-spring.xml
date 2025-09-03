@@ -137,12 +137,12 @@
     <logger name="org.springframework.web" level="INFO"/>
     <logger name="org.springframework.security" level="INFO"/>
 
-    <!-- Redisson日志配置 - 将连接相关日志设置为DEBUG级别 -->
-    <logger name="org.redisson" level="DEBUG"/>
-    <logger name="org.redisson.connection" level="DEBUG"/>
-    <logger name="org.redisson.connection.DNSMonitor" level="DEBUG"/>
-    <logger name="org.redisson.connection.SingleEntry" level="DEBUG"/>
-    <logger name="org.redisson.connection.pool" level="DEBUG"/>
+    <!-- Redisson日志配置 - 隐藏连接相关的DEBUG日志 -->
+    <logger name="org.redisson" level="INFO"/>
+    <logger name="org.redisson.connection" level="WARN"/>
+    <logger name="org.redisson.connection.DNSMonitor" level="WARN"/>
+    <logger name="org.redisson.connection.SingleEntry" level="WARN"/>
+    <logger name="org.redisson.connection.pool" level="WARN"/>
 
     <!-- MyBatis SQL日志配置 - 可通过logging.level.com.instser.chat.dao=DEBUG开启SQL日志 -->
     <logger name="com.instser.chat.dao" level="ERROR"/>

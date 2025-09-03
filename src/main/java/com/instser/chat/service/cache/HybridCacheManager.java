@@ -8,6 +8,9 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
+import java.util.Set;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 
@@ -31,10 +34,30 @@ public class HybridCacheManager {
     // L1缓存：本地内存缓存（Caffeine）
     private final Cache<String, Object> l1Cache;
 
+    // 缓存命中日志限制
+    private static final Map<String, Long> lastLogTime = new ConcurrentHashMap<>();
+    private static final long LOG_INTERVAL_MS = 30000; // 30秒内相同key只记录一次日志
+
     // 缓存配置
     private static final int L1_MAX_SIZE = 1000;
     private static final int L1_EXPIRE_MINUTES = 5;
     private static final int L2_EXPIRE_MINUTES = 30;
+
+    /**
+     * 判断是否应该记录缓存命中日志，避免日志刷屏
+     */
+    private boolean shouldLogCacheHit(String key) {
+        // 对频繁命中的缓存key进行日志限制
+        long now = System.currentTimeMillis();
+        Long lastLog = lastLogTime.get(key);
+        
+        if (lastLog == null || now - lastLog > LOG_INTERVAL_MS) {
+            lastLogTime.put(key, now);
+            return true;
+        }
+        
+        return false;
+    }
 
     public HybridCacheManager() {
         this.l1Cache = Caffeine.newBuilder()
@@ -54,11 +77,28 @@ public class HybridCacheManager {
      */
     @SuppressWarnings("unchecked")
     public <T> T get(String key, Supplier<T> fallbackSupplier) {
+        return get(key, fallbackSupplier, Duration.ofMinutes(L2_EXPIRE_MINUTES));
+    }
+
+    /**
+     * 获取缓存值，使用多层缓存策略，支持自定义TTL
+     * 
+     * @param key 缓存键
+     * @param fallbackSupplier 数据库回退供应商
+     * @param ttl 缓存过期时间
+     * @param <T> 值类型
+     * @return 缓存值
+     */
+    @SuppressWarnings("unchecked")
+    public <T> T get(String key, Supplier<T> fallbackSupplier, Duration ttl) {
         try {
             // L1缓存：内存缓存
             Object l1Value = l1Cache.getIfPresent(key);
             if (l1Value != null) {
-                log.debug("L1缓存命中，key: {}", key);
+                // 只在特定条件下记录调试日志，避免日志刷屏
+                if (log.isDebugEnabled() && shouldLogCacheHit(key)) {
+                    log.debug("L1缓存命中，key: {}", key);
+                }
                 return (T) l1Value;
             }
 
@@ -67,7 +107,9 @@ public class HybridCacheManager {
                 try {
                     Object l2Value = redisTemplate.opsForValue().get(key);
                     if (l2Value != null) {
-                        log.debug("L2缓存命中，key: {}", key);
+                        if (log.isDebugEnabled() && shouldLogCacheHit(key)) {
+                            log.debug("L2缓存命中，key: {}", key);
+                        }
                         // 回填L1缓存
                         l1Cache.put(key, l2Value);
                         return (T) l2Value;
@@ -85,8 +127,8 @@ public class HybridCacheManager {
             T dbValue = fallbackSupplier.get();
             
             if (dbValue != null) {
-                // 异步回填缓存
-                asyncFillCache(key, dbValue);
+                // 异步回填缓存，使用指定的TTL
+                asyncFillCache(key, dbValue, ttl);
             }
             
             return dbValue;
@@ -105,6 +147,17 @@ public class HybridCacheManager {
      * @param value 缓存值
      */
     public void put(String key, Object value) {
+        put(key, value, Duration.ofMinutes(L2_EXPIRE_MINUTES));
+    }
+
+    /**
+     * 设置缓存值到所有层级，支持自定义TTL
+     * 
+     * @param key 缓存键
+     * @param value 缓存值
+     * @param ttl 缓存过期时间
+     */
+    public void put(String key, Object value, Duration ttl) {
         if (value == null) {
             return;
         }
@@ -117,7 +170,7 @@ public class HybridCacheManager {
             // 设置L2缓存
             if (circuitBreaker.isAvailable()) {
                 try {
-                    redisTemplate.opsForValue().set(key, value, Duration.ofMinutes(L2_EXPIRE_MINUTES));
+                    redisTemplate.opsForValue().set(key, value, ttl);
                     log.debug("L2缓存设置成功，key: {}", key);
                     circuitBreaker.recordSuccess();
                 } catch (Exception e) {
@@ -199,10 +252,21 @@ public class HybridCacheManager {
      * @param value 缓存值
      */
     private void asyncFillCache(String key, Object value) {
+        asyncFillCache(key, value, Duration.ofMinutes(L2_EXPIRE_MINUTES));
+    }
+
+    /**
+     * 异步回填缓存，支持自定义TTL
+     * 
+     * @param key 缓存键
+     * @param value 缓存值
+     * @param ttl 缓存过期时间
+     */
+    private void asyncFillCache(String key, Object value, Duration ttl) {
         // 使用异步方式回填缓存，避免阻塞主线程
         new Thread(() -> {
             try {
-                put(key, value);
+                put(key, value, ttl);
                 log.debug("异步回填缓存完成，key: {}", key);
             } catch (Exception e) {
                 log.warn("异步回填缓存失败，key: {}, 错误: {}", key, e.getMessage());
@@ -241,9 +305,18 @@ public class HybridCacheManager {
             // 清空L2缓存（谨慎操作）
             if (circuitBreaker.isAvailable()) {
                 try {
-                    // 这里只清空支付相关的缓存，避免影响其他业务
-                    redisTemplate.delete(redisTemplate.keys("payment:*"));
-                    log.info("L2缓存（支付相关）已清空");
+                    // 清空用户账户相关缓存，修复序列化问题
+                    Set<String> keys = redisTemplate.keys("user:account:*");
+                    if (keys != null && !keys.isEmpty()) {
+                        redisTemplate.delete(keys);
+                        log.info("用户账户缓存已清空，共清除{}个key", keys.size());
+                    }
+                    // 清空支付相关缓存
+                    Set<String> paymentKeys = redisTemplate.keys("payment:*");
+                    if (paymentKeys != null && !paymentKeys.isEmpty()) {
+                        redisTemplate.delete(paymentKeys);
+                        log.info("支付缓存已清空，共清除{}个key", paymentKeys.size());
+                    }
                     circuitBreaker.recordSuccess();
                 } catch (Exception e) {
                     log.warn("L2缓存清空失败，错误: {}", e.getMessage());

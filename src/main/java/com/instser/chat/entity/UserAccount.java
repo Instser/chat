@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
@@ -99,9 +100,11 @@ public class UserAccount {
     /**
      * 检查套餐是否过期
      * 注意：过期时间为null表示永久有效
+     * 使用JsonIgnore避免Redis序列化问题
      *
      * @return true-已过期，false-未过期
      */
+    @JsonIgnore
     public boolean isPackageExpired() {
         // 过期时间为null表示永久有效，永远不过期
         return packageExpireTime != null && packageExpireTime.isBefore(LocalDateTime.now());
@@ -118,9 +121,11 @@ public class UserAccount {
 
     /**
      * 获取剩余天数
+     * 使用JsonIgnore避免Redis序列化问题
      *
      * @return 剩余天数，如果已过期返回0
      */
+    @JsonIgnore
     public long getRemainingDays() {
         if (packageExpireTime == null) {
             return 0;
@@ -136,9 +141,11 @@ public class UserAccount {
 
     /**
      * 检查会员是否过期
+     * 使用JsonIgnore避免Redis序列化问题
      *
      * @return true-已过期，false-未过期
      */
+    @JsonIgnore
     public boolean isMembershipExpired() {
         return membershipExpireTime != null && membershipExpireTime.isBefore(LocalDateTime.now());
     }

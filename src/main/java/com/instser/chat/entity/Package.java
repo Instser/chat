@@ -1,6 +1,7 @@
 package com.instser.chat.entity;
 
 import com.baomidou.mybatisplus.annotation.*;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -133,9 +134,11 @@ public class Package implements Serializable {
 
     /**
      * 获取模型权限配置映射
+     * 使用JsonIgnore避免Redis序列化问题
      *
      * @return 模型权限配置映射
      */
+    @JsonIgnore
     public Map<String, ModelPermission> getModelPermissionsMap() {
         if (!StringUtils.hasText(this.modelPermissions)) {
             return getDefaultModelPermissions();
@@ -155,9 +158,11 @@ public class Package implements Serializable {
     /**
      * 获取套餐总聊天次数
      * 兼容方法：根据限制类型返回相应的总次数
+     * 使用JsonIgnore避免Redis序列化问题
      *
      * @return 总聊天次数
      */
+    @JsonIgnore
     public Integer getChatCount() {
         // 如果是每日限制模式，总次数不限制
         if ("daily".equals(this.limitType)) {
@@ -178,9 +183,11 @@ public class Package implements Serializable {
     /**
      * 获取每日聊天次数限制
      * 兼容方法：从STANDARD模型权限配置获取
+     * 使用JsonIgnore避免Redis序列化问题
      *
      * @return 每日聊天次数限制
      */
+    @JsonIgnore
     public Integer getDailyChatLimit() {
         Map<String, ModelPermission> permissions = getModelPermissionsMap();
         ModelPermission standardPermission = permissions.get("STANDARD");
@@ -189,9 +196,11 @@ public class Package implements Serializable {
 
     /**
      * 获取套餐功能特性列表
+     * 使用JsonIgnore避免Redis序列化问题
      *
      * @return 功能特性列表
      */
+    @JsonIgnore
     public List<String> getFeaturesList() {
         if (!StringUtils.hasText(this.features)) {
             return getDefaultFeatures();
@@ -209,9 +218,11 @@ public class Package implements Serializable {
 
     /**
      * 获取默认模型权限配置
+     * 使用JsonIgnore避免Redis序列化问题
      *
      * @return 默认模型权限配置
      */
+    @JsonIgnore
     private Map<String, ModelPermission> getDefaultModelPermissions() {
         Map<String, ModelPermission> defaults = new HashMap<>();
 
@@ -246,9 +257,11 @@ public class Package implements Serializable {
 
     /**
      * 获取默认功能特性列表
+     * 使用JsonIgnore避免Redis序列化问题
      *
      * @return 默认功能特性列表
      */
+    @JsonIgnore
     private List<String> getDefaultFeatures() {
         List<String> defaults = new ArrayList<>();
 
