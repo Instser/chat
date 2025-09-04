@@ -756,8 +756,8 @@ public class ChatServiceImpl implements ChatService {
      */
     private List<Map<String, String>> buildAiRequestMessages(ChatRequestDTO request) {
         try {
-            // 从数据库获取完整的会话历史消息
-            List<ChatMessage> historyMessages = chatMessageService.getSessionMessages(request.getSessionId());
+            // 从数据库获取完整的会话历史消息（排除错误响应）
+            List<ChatMessage> historyMessages = chatMessageService.getSessionMessagesForAi(request.getSessionId());
             if (historyMessages.isEmpty()) {
                 return null;
             }
@@ -4072,8 +4072,8 @@ public class ChatServiceImpl implements ChatService {
 
             LogUtils.logUserSessionOperation(log, userId, sessionId, "重试执行", "成功删除{}条消息，消息删除安全完成，准备重新生成AI回复", deletedCount);
 
-            // 获取删除后的会话消息，构建新的聊天请求
-            List<ChatMessage> remainingMessages = chatMessageService.getSessionMessages(sessionId);
+            // 获取删除后的会话消息，构建新的聊天请求（排除错误响应）
+            List<ChatMessage> remainingMessages = chatMessageService.getSessionMessagesForAi(sessionId);
             if (remainingMessages.isEmpty()) {
                 LogUtils.logUserSessionError(log, userId, sessionId, "重试执行", "重试失败：会话中没有可用的消息，可能是数据异常或消息已被全部删除", null);
                 writeErrorResponse(response, "会话中没有可用的消息");
@@ -4384,8 +4384,8 @@ public class ChatServiceImpl implements ChatService {
                 }
             }
 
-            // 获取更新后的会话消息，构建新的聊天请求
-            List<ChatMessage> remainingMessages = chatMessageService.getSessionMessages(sessionId);
+            // 获取更新后的会话消息，构建新的聊天请求（排除错误响应）
+            List<ChatMessage> remainingMessages = chatMessageService.getSessionMessagesForAi(sessionId);
             if (remainingMessages.isEmpty()) {
                 LogUtils.logUserSessionError(log, userId, sessionId, "编辑重发", "编辑重发失败：会话中没有可用的消息，可能是数据异常或消息已被全部删除", null);
                 writeErrorResponse(response, "会话中没有可用的消息");

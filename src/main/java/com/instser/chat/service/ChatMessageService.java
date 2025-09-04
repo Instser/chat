@@ -92,6 +92,14 @@ public interface ChatMessageService extends IService<ChatMessage> {
     List<ChatMessage> getSessionMessages(String sessionId);
 
     /**
+     * 获取会话消息列表（用于AI上下文）
+     *
+     * @param sessionId 会话ID
+     * @return 消息列表（排除status=3的错误响应）
+     */
+    List<ChatMessage> getSessionMessagesForAi(String sessionId);
+
+    /**
      * 获取用户最近消息
      *
      * @param userId 用户ID

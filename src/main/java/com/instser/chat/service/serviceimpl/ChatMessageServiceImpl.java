@@ -126,6 +126,11 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
     }
 
     @Override
+    public List<ChatMessage> getSessionMessagesForAi(String sessionId) {
+        return baseMapper.selectBySessionIdForAiContext(sessionId);
+    }
+
+    @Override
     public List<ChatMessage> getRecentMessages(Long userId, Integer limit) {
         return baseMapper.selectRecentByUserId(userId, limit);
     }

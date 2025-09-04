@@ -55,4 +55,14 @@
         LIMIT 1
     </select>
 
+    <!-- 根据会话ID查询消息列表（用于AI上下文，排除错误响应） -->
+    <select id="selectBySessionIdForAiContext" resultMap="BaseResultMap">
+        SELECT <include refid="Base_Column_List" />
+        FROM t_chat_message
+        WHERE session_id = #{sessionId}
+          AND deleted = 0
+          AND status != 3
+        ORDER BY create_time ASC
+    </select>
+
 </mapper>

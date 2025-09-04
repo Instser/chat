@@ -40,4 +40,12 @@ public interface ChatMessageDao extends BaseMapper<ChatMessage> {
      * @return 消息信息
      */
     ChatMessage selectByMessageId(@Param("messageId") String messageId);
+
+    /**
+     * 根据会话ID查询消息列表（用于AI上下文，排除错误响应）
+     *
+     * @param sessionId 会话ID
+     * @return 消息列表（排除status=3的错误响应）
+     */
+    List<ChatMessage> selectBySessionIdForAiContext(@Param("sessionId") String sessionId);
 }
