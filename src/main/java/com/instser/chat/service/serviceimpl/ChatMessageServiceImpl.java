@@ -87,6 +87,40 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
     }
 
     @Override
+    public Long sendErrorResponseMessage(String sessionId, Long userId, Long modelId, String errorContent) {
+        LogUtils.logUserSessionDebug(log, userId, sessionId, "错误响应入库", "开始保存错误响应消息，模型ID：{}", modelId);
+
+        ChatMessage message = new ChatMessage();
+        message.setMessageId(java.util.UUID.randomUUID().toString().replace("-", ""));
+        message.setSessionId(sessionId);
+        message.setRole("assistant");
+        message.setContent(errorContent);
+        message.setMessageType("text");
+        message.setHasAttachments(0);
+        message.setHasWebSearch(0);
+        message.setUserId(userId);
+        message.setModelId(modelId != null ? modelId : 1L);
+        message.setTokenCount(calculateTokenCount(errorContent));
+        message.setStatus(3); // 错误响应状态设置为3
+        message.setCreatedTime(LocalDateTime.now());
+        message.setUpdateTime(LocalDateTime.now());
+
+        // 使用重试机制保存消息
+        boolean saved = saveMessageWithRetry(message, 3);
+        if (saved) {
+            LogUtils.logUserSessionOperation(log, userId, sessionId, "错误响应入库", "错误响应消息保存成功，消息ID：{}，内容长度：{}",
+                    message.getMessageId(), errorContent != null ? errorContent.length() : 0);
+            LogUtils.logUserSessionDebug(log, userId, sessionId, "错误响应入库", "详细信息 - 数据库ID：{}，模型ID：{}，状态：3，Token数：{}",
+                    message.getId(), modelId, message.getTokenCount());
+            return message.getId();
+        } else {
+            LogUtils.logUserSessionError(log, userId, sessionId, "错误响应入库", "错误响应消息保存失败，消息ID：{}", null,
+                    message.getMessageId());
+            return null;
+        }
+    }
+
+    @Override
     public List<ChatMessage> getSessionMessages(String sessionId) {
         return baseMapper.selectBySessionId(sessionId);
     }

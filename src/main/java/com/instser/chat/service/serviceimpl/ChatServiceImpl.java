@@ -783,7 +783,7 @@ public class ChatServiceImpl implements ChatService {
                 originalMessages.add(originalMsg);
             }
             request.setOriginalMessages(originalMessages);
-            log.debug("【标题生成】保存原始消息列表，消息数量：{}，只包含用户原始内容和AI响应", originalMessages.size());
+            log.debug("【消息准备】保存原始消息列表用于可能的标题生成，消息数量：{}，只包含用户原始内容和AI响应", originalMessages.size());
 
             // 处理文件内容并附加到用户消息中（仅用于AI处理）
             // 正常聊天使用request中的filesId参数，而不是从数据库查找
@@ -1153,8 +1153,8 @@ public class ChatServiceImpl implements ChatService {
     public void saveErrorResponse(String sessionId, Long userId, Long modelId, String errorContent) {
         try {
             if (sessionId != null && userId != null && modelId != null) {
-                chatMessageService.sendMessage(sessionId, "assistant", errorContent, userId, modelId);
-                log.info("错误响应已保存到数据库，会话ID：{}，用户ID：{}，模型ID：{}，内容：{}", sessionId, userId, modelId, errorContent);
+                chatMessageService.sendErrorResponseMessage(sessionId, userId, modelId, errorContent);
+                log.info("错误响应已保存到数据库，会话ID：{}，用户ID：{}，模型ID：{}，状态：3，内容：{}", sessionId, userId, modelId, errorContent);
             } else {
                 log.warn("无法保存错误响应到数据库，缺少必要参数：sessionId={}, userId={}, modelId={}",
                         sessionId, userId, modelId);
@@ -1903,7 +1903,8 @@ public class ChatServiceImpl implements ChatService {
                             List<Map<String, String>> messagesForTitle = buildTitleMessages(request, finalContentToSave);
                             return generateSessionTitle(request.getSessionId(), messagesForTitle);
                         } catch (Exception e) {
-                            log.error("后台标题生成失败", e);
+                            LogUtils.logUserError(log, null, "标题生成", "后台标题生成异常，会话ID: {}，异常类型: {}，异常消息: {}", e, 
+                                    request.getSessionId(), e.getClass().getSimpleName(), e.getMessage());
                             return null;
                         }
                     });
@@ -1915,16 +1916,19 @@ public class ChatServiceImpl implements ChatService {
                     if (generatedTitle != null && !generatedTitle.equals("New Chat")) {
                         log.info("标题生成成功: [{}], 耗时: {}ms", generatedTitle, titleDuration);
                     } else {
-                        log.warn("标题生成失败或返回默认标题: [{}], 耗时: {}ms", generatedTitle, titleDuration);
+                        LogUtils.logUserWarning(log, null, "标题生成", "标题生成失败或返回默认标题，会话ID: {}，返回标题: [{}]，耗时: {}ms，可能原因: AI返回了默认标题或空标题", 
+                                request.getSessionId(), generatedTitle, titleDuration);
                         generatedTitle = null;
                     }
                 } catch (TimeoutException e) {
                     long titleDuration = System.currentTimeMillis() - titleStartTime;
-                    log.warn("标题生成超时，耗时: {}ms，继续发送响应", titleDuration);
+                    LogUtils.logUserWarning(log, null, "标题生成", "标题生成超时，会话ID: {}，超时时长: {}ms，原因: 等待标题生成超过5秒限制", 
+                            request.getSessionId(), titleDuration);
                     generatedTitle = null;
                 } catch (Exception e) {
                     long titleDuration = System.currentTimeMillis() - titleStartTime;
-                    log.error("标题生成异常，耗时: {}ms", titleDuration, e);
+                    LogUtils.logUserError(log, null, "标题生成", "标题生成异常，会话ID: {}，耗时: {}ms，异常类型: {}，异常消息: {}", e, 
+                            request.getSessionId(), titleDuration, e.getClass().getSimpleName(), e.getMessage());
                     generatedTitle = null;
                 }
                 log.info("=== 标题生成流程结束，最终标题: [{}] ===", generatedTitle);
@@ -3300,7 +3304,7 @@ public class ChatServiceImpl implements ChatService {
                     log.info("标题将返回给前端: [{}]", generatedTitle.trim());
                 } else {
                     completionMap.put("title", false);
-                    log.warn("标题生成失败或为空，返回false给前端");
+                    LogUtils.logUserWarning(log, null, "标题生成", "标题生成失败或为空，返回false给前端，原因: 生成的标题为null或空字符串");
                 }
             } else {
                 completionMap.put("title", false);
@@ -3413,7 +3417,8 @@ public class ChatServiceImpl implements ChatService {
             // 获取固定的标题生成模型（ID为4L）
             AiModel titleModel = aiModelService.getById(4L);
             if (titleModel == null || titleModel.getIsAvailable() != 1) {
-                log.error("标题生成模型（ID=4L）不可用，跳过标题生成");
+                LogUtils.logUserError(log, null, "标题生成", "标题生成模型（ID=4L）不可用，会话ID: {}，模型状态: {}，跳过标题生成", null, 
+                        sessionId, titleModel != null ? titleModel.getIsAvailable() : "null");
                 return null;
             }
             log.info("标题生成模型: {}", titleModel.getModelName());
@@ -3421,7 +3426,8 @@ public class ChatServiceImpl implements ChatService {
             // 构建对话内容（使用原始消息，不包含联网搜索结果）
             String conversationContent = buildConversationContent(messages);
             if (conversationContent == null || conversationContent.trim().isEmpty()) {
-                log.warn("无法构建对话内容，跳过标题生成");
+                LogUtils.logUserWarning(log, null, "标题生成", "无法构建对话内容，会话ID: {}，消息数量: {}，跳过标题生成", 
+                        sessionId, messages.size());
                 return null;
             }
             log.info("对话内容构建成功，长度: {}字符", conversationContent.length());
@@ -3433,7 +3439,8 @@ public class ChatServiceImpl implements ChatService {
             // 调用AI服务生成标题
             String rawTitle = callAiForTitleWithHttpClient(titlePrompt, titleModel);
             if (rawTitle == null || rawTitle.trim().isEmpty()) {
-                log.warn("AI服务返回空标题");
+                LogUtils.logUserWarning(log, null, "标题生成", "AI服务返回空标题，会话ID: {}，模型: {}，可能原因: AI模型无响应或网络异常", 
+                        sessionId, titleModel.getModelName());
                 return null;
             }
             log.info("AI服务返回原始标题: [{}]", rawTitle);
@@ -3448,10 +3455,12 @@ public class ChatServiceImpl implements ChatService {
                 if (saved) {
                     log.info("标题保存到数据库成功: {}", cleanedTitle);
                 } else {
-                    log.error("标题保存到数据库失败: {}", cleanedTitle);
+                    LogUtils.logUserError(log, null, "标题生成", "标题保存到数据库失败，会话ID: {}，标题: [{}]", null, 
+                            sessionId, cleanedTitle);
                 }
             } else {
-                log.warn("标题为空或为默认标题，不保存到数据库: [{}]", cleanedTitle);
+                LogUtils.logUserWarning(log, null, "标题生成", "标题为空或为默认标题，不保存到数据库，会话ID: {}，清理后标题: [{}]", 
+                        sessionId, cleanedTitle);
             }
 
             log.info("=== 后台同步标题生成流程完成，最终标题: [{}] ===", cleanedTitle);
@@ -3599,7 +3608,8 @@ public class ChatServiceImpl implements ChatService {
             log.info("收到AI服务响应，响应长度: {}字符", responseBody != null ? responseBody.length() : 0);
 
             if (responseBody == null || responseBody.trim().isEmpty()) {
-                log.warn("AI服务返回空响应");
+                LogUtils.logUserWarning(log, null, "标题生成", "AI服务返回空响应，模型: {}，URL: {}，可能原因: 网络异常或API不可用", 
+                        model.getModelName(), model.getBaseUrl());
                 return null;
             }
 
@@ -3616,17 +3626,19 @@ public class ChatServiceImpl implements ChatService {
                     log.info("AI服务返回标题: [{}]", title);
                     return title;
                 } else {
-                    log.warn("message节点不存在或没有content字段");
+                    LogUtils.logUserWarning(log, null, "标题生成", "AI响应中message节点不存在或没有content字段，模型: {}，响应结构可能不符合预期", model.getModelName());
                 }
             } else {
-                log.warn("choices节点为空或不是数组");
+                LogUtils.logUserWarning(log, null, "标题生成", "AI响应中choices节点为空或不是数组，模型: {}，响应结构异常", model.getModelName());
             }
 
-            log.warn("AI服务响应格式异常，完整响应: {}", responseBody);
+            LogUtils.logUserWarning(log, null, "标题生成", "AI服务响应格式异常，模型: {}，URL: {}，完整响应内容: {}", 
+                    model.getModelName(), model.getBaseUrl(), responseBody);
             return null;
 
         } catch (Exception e) {
-            log.error("使用HTTP客户端调用AI服务生成标题失败", e);
+            LogUtils.logUserError(log, null, "标题生成", "使用HTTP客户端调用AI服务生成标题失败，模型: {}，URL: {}，异常类型: {}，异常消息: {}", e, 
+                    model.getModelName(), model.getBaseUrl(), e.getClass().getSimpleName(), e.getMessage());
             return null;
         }
     }
@@ -4042,7 +4054,7 @@ public class ChatServiceImpl implements ChatService {
 
             Long userId = validation.getUserId();
             ChatSession chatSession = validation.getChatSession();
-            log.info("【重试验证】验证通过，用户ID：{}，会话ID：{}", userId, sessionId);
+            LogUtils.logUserSessionOperation(log, userId, sessionId, "重试验证", "所有权限验证通过，准备删除消息，用户ID: {}，消息ID: {}", userId, messageId);
 
             // 检查聊天频率限制
             ChatResponseDTO rateLimitResult = validateChatRateLimit(userId, sessionId, modelId, response);
@@ -4053,15 +4065,17 @@ public class ChatServiceImpl implements ChatService {
             // 删除指定AI消息及之后的所有消息
             int deletedCount = chatMessageService.deleteMessagesFromPoint(messageId, sessionId);
             if (deletedCount == 0) {
+                LogUtils.logUserSessionError(log, userId, sessionId, "重试执行", "删除消息失败，没有找到指定的消息或删除操作失败，消息ID: {}", null, messageId);
                 writeErrorResponse(response, "删除消息失败");
                 return;
             }
 
-            log.info("成功删除{}条消息，准备重新生成AI回复", deletedCount);
+            LogUtils.logUserSessionOperation(log, userId, sessionId, "重试执行", "成功删除{}条消息，消息删除安全完成，准备重新生成AI回复", deletedCount);
 
             // 获取删除后的会话消息，构建新的聊天请求
             List<ChatMessage> remainingMessages = chatMessageService.getSessionMessages(sessionId);
             if (remainingMessages.isEmpty()) {
+                LogUtils.logUserSessionError(log, userId, sessionId, "重试执行", "重试失败：会话中没有可用的消息，可能是数据异常或消息已被全部删除", null);
                 writeErrorResponse(response, "会话中没有可用的消息");
                 return;
             }
@@ -4198,17 +4212,30 @@ public class ChatServiceImpl implements ChatService {
             String permissionError = validateChatPermission(userId, sessionId, modelId);
             if (permissionError != null) {
                 log.info("重试请求聊天权限验证失败，会话ID：{}，用户ID：{}，原因：{}", sessionId, userId, permissionError);
+                
+                String errorContent;
                 try {
                     // 根据错误码返回相应的错误消息
                     if ("PACKAGE_EXPIRED".equals(permissionError)) {
-                        writeErrorResponse(response, "Your package has expired.");
+                        errorContent = "Your package has expired.";
+                        writeErrorResponse(response, errorContent);
                     } else if ("MODEL_LIMIT_EXCEEDED".equals(permissionError)) {
-                        writeErrorResponse(response, "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.");
+                        errorContent = "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.";
+                        writeErrorResponse(response, errorContent);
                     } else {
-                        writeErrorResponse(response, "Request failed. Please try again later.");
+                        errorContent = "Request failed. Please try again later.";
+                        writeErrorResponse(response, errorContent);
                     }
+                    
+                    // 保存错误响应到数据库
+                    saveErrorResponse(sessionId, userId, model.getId(), errorContent);
+                    log.info("重试请求聊天权限验证失败错误响应已保存到数据库，会话ID：{}，用户ID：{}，原因：{}", 
+                            sessionId, userId, permissionError);
+                    
                 } catch (IOException e) {
                     log.error("发送重试权限错误响应失败", e);
+                } catch (Exception e) {
+                    log.error("保存重试权限错误响应失败", e);
                 }
                 return;
             }
@@ -4277,7 +4304,7 @@ public class ChatServiceImpl implements ChatService {
 
             Long userId = validation.getUserId();
             ChatSession chatSession = validation.getChatSession();
-            log.info("编辑重发请求 - 验证通过，用户ID：{}，会话ID：{}", userId, sessionId);
+            LogUtils.logUserSessionOperation(log, userId, sessionId, "编辑重发", "所有权限验证通过，用户ID: {}，消息ID: {}", userId, messageId);
 
             // 检查聊天频率限制
             ChatResponseDTO rateLimitResult = validateChatRateLimit(userId, sessionId, modelId, response);
@@ -4360,6 +4387,7 @@ public class ChatServiceImpl implements ChatService {
             // 获取更新后的会话消息，构建新的聊天请求
             List<ChatMessage> remainingMessages = chatMessageService.getSessionMessages(sessionId);
             if (remainingMessages.isEmpty()) {
+                LogUtils.logUserSessionError(log, userId, sessionId, "编辑重发", "编辑重发失败：会话中没有可用的消息，可能是数据异常或消息已被全部删除", null);
                 writeErrorResponse(response, "会话中没有可用的消息");
                 return;
             }
@@ -4465,17 +4493,30 @@ public class ChatServiceImpl implements ChatService {
             String permissionError = validateChatPermission(userId, sessionId, modelId);
             if (permissionError != null) {
                 log.info("编辑重发请求聊天权限验证失败，会话ID：{}，用户ID：{}，原因：{}", sessionId, userId, permissionError);
+                
+                String errorContent;
                 try {
                     // 根据错误码返回相应的错误消息
                     if ("PACKAGE_EXPIRED".equals(permissionError)) {
-                        writeErrorResponse(response, "Your package has expired.");
+                        errorContent = "Your package has expired.";
+                        writeErrorResponse(response, errorContent);
                     } else if ("MODEL_LIMIT_EXCEEDED".equals(permissionError)) {
-                        writeErrorResponse(response, "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.");
+                        errorContent = "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.";
+                        writeErrorResponse(response, errorContent);
                     } else {
-                        writeErrorResponse(response, "Request failed. Please try again later.");
+                        errorContent = "Request failed. Please try again later.";
+                        writeErrorResponse(response, errorContent);
                     }
+                    
+                    // 保存错误响应到数据库
+                    saveErrorResponse(sessionId, userId, model.getId(), errorContent);
+                    log.info("编辑重发请求聊天权限验证失败错误响应已保存到数据库，会话ID：{}，用户ID：{}，原因：{}", 
+                            sessionId, userId, permissionError);
+                    
                 } catch (IOException e) {
                     log.error("发送编辑重发权限错误响应失败", e);
+                } catch (Exception e) {
+                    log.error("保存编辑重发权限错误响应失败", e);
                 }
                 return;
             }

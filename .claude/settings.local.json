@@ -1,7 +1,13 @@
 {
   "permissions": {
     "allow": [
-      "WebFetch(domain:time.is)"
+      "WebFetch(domain:time.is)",
+      "Read(/C:\\Users\\10276\\Desktop\\chat后端沟通\\chat后端沟通\\chat\\src\\main\\java\\com\\instser\\chat\\service\\serviceimpl/**)",
+      "Read(/C:\\Users\\10276\\Desktop\\chat后端沟通\\chat后端沟通\\chat\\src\\main\\java\\com\\instser\\chat\\service\\serviceimpl/**)",
+      "Read(/C:\\Users\\10276\\Desktop\\chat后端沟通\\chat后端沟通\\chat\\src\\main\\java\\com\\instser\\chat\\service\\serviceimpl/**)",
+      "Read(/C:\\Users\\10276\\Desktop\\chat后端沟通\\chat后端沟通\\chat\\src\\main\\java\\com\\instser\\chat\\service\\serviceimpl/**)",
+      "Read(/C:\\Users\\10276\\Desktop\\chat后端沟通\\chat后端沟通\\chat\\src\\main\\java\\com\\instser\\chat\\service\\serviceimpl/**)",
+      "Read(/C:\\Users\\10276\\Desktop\\chat后端沟通\\chat后端沟通\\chat\\src\\main\\java\\com\\instser\\chat\\service\\serviceimpl/**)"
     ],
     "deny": [],
     "ask": []

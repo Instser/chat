@@ -61,6 +61,17 @@ public interface ChatMessageService extends IService<ChatMessage> {
     Long sendMessage(String sessionId, String role, String content, Long userId, Long modelId, Integer hasAttachments);
 
     /**
+     * 发送错误响应消息（状态为3）
+     *
+     * @param sessionId 会话ID
+     * @param userId    用户ID
+     * @param modelId   模型ID
+     * @param errorContent 错误响应内容
+     * @return 消息ID
+     */
+    Long sendErrorResponseMessage(String sessionId, Long userId, Long modelId, String errorContent);
+
+    /**
      * 发送消息并返回Token信息（优化版本，避免额外数据库查询）
      *
      * @param sessionId 会话ID
