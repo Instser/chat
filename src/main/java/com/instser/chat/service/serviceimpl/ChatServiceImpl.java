@@ -1870,23 +1870,24 @@ public class ChatServiceImpl implements ChatService {
                     finalContentToSave = contentToSave;
                 }
 
-                // 记录模型使用次数（使用模型ID）
-                String modelIdStr = model.getId().toString();
-                boolean modelRecordSuccess = chatLimitService.recordModelChatUsage(request.getUserId(), modelIdStr);
-                if (modelRecordSuccess) {
-                    log.info("用户{}模型ID{}使用记录成功", request.getUserId(), modelIdStr);
+                // 先检查是否为错误响应，再决定是否记录使用次数
+                if (finalContentToSave != null && finalContentToSave.contains("Request failed")) {
+                    // 处理错误响应
+                    log.warn("用户{}收到错误响应，保存错误信息到数据库", request.getUserId());
+                    saveErrorResponse(request.getSessionId(), request.getUserId(), model.getId(), finalContentToSave);
+                    log.info("错误响应已保存到数据库，会话ID：{}，用户ID：{} - 不计入使用次数", request.getSessionId(), request.getUserId());
                 } else {
-                    log.warn("用户{}模型ID{}使用记录失败", request.getUserId(), modelIdStr);
+                    // 非错误响应才记录模型使用次数（使用模型ID）
+                    String modelIdStr = model.getId().toString();
+                    boolean modelRecordSuccess = chatLimitService.recordModelChatUsage(request.getUserId(), modelIdStr);
+                    if (modelRecordSuccess) {
+                        log.info("用户{}模型ID{}使用记录成功", request.getUserId(), modelIdStr);
+                    } else {
+                        log.warn("用户{}模型ID{}使用记录失败", request.getUserId(), modelIdStr);
+                    }
                 }
             } else {
                 finalContentToSave = null;
-            }
-
-            if (finalContentToSave != null && finalContentToSave.contains("Request failed")) {
-                // 处理错误响应
-                log.warn("用户{}收到错误响应，保存错误信息到数据库", request.getUserId());
-                saveErrorResponse(request.getSessionId(), request.getUserId(), model.getId(), finalContentToSave);
-                log.info("错误响应已保存到数据库，会话ID：{}，用户ID：{}", request.getSessionId(), request.getUserId());
             }
 
             // 如果需要生成标题且是真实AI响应，等待标题生成完成

@@ -2,6 +2,8 @@ package com.instser.chat.dao;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import com.instser.chat.entity.UserAccount;
+import com.instser.chat.dto.UserAccountWithVersion;
+import com.instser.chat.dto.UsageUpdateRequest;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Param;
 
@@ -137,4 +139,20 @@ public interface UserAccountDao extends BaseMapper<UserAccount> {
      * @return 影响行数
      */
     int incrementTokenBalance(@Param("userId") Long userId, @Param("tokenCount") Long tokenCount, @Param("updateTime") LocalDateTime updateTime);
+
+    // =================== 简化版乐观锁支持方法 ===================
+    
+    /**
+     * 使用版本控制的原子更新（乐观锁）- 简化版
+     *
+     * @param userId         用户ID
+     * @param count          使用次数
+     * @param currentVersion 当前版本号
+     * @param updateTime     更新时间
+     * @return 影响行数
+     */
+    int decrementChatCountWithVersion(@Param("userId") Long userId, 
+                                    @Param("count") Integer count, 
+                                    @Param("currentVersion") Long currentVersion,
+                                    @Param("updateTime") LocalDateTime updateTime);
 }

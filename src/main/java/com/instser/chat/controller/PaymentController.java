@@ -10,7 +10,6 @@ import com.instser.chat.service.ExchangeRateService;
 import com.instser.chat.service.PackageService;
 import com.instser.chat.service.PackageActivationService;
 import com.instser.chat.service.PaymentService;
-import com.instser.chat.service.PaymentSecurityEnhancer;
 import com.instser.chat.service.PaymentStatusSyncService;
 import com.instser.chat.service.PaymentSyncService;
 import com.instser.chat.service.UserPaymentStatusService;
@@ -60,7 +59,6 @@ public class PaymentController {
     private final PackageService packageService;
     private final PaymentSyncService paymentSyncService;
     private final PackageActivationService packageActivationService;
-    private final PaymentSecurityEnhancer paymentSecurityEnhancer;
     private final ExchangeRateService exchangeRateService;
     private final UserPaymentStatusService userPaymentStatusService;
     private final PaymentStatusSyncService paymentStatusSyncService;
@@ -449,12 +447,6 @@ public class PaymentController {
             if ("GET".equalsIgnoreCase(request.getMethod())) {
                 String queryString = request.getQueryString();
                 log.info("易支付回调原始请求 URL: {}{}", request.getRequestURL(), (queryString != null ? "?" + queryString : ""));
-            }
-
-            // 验证回调IP
-            if (!paymentSecurityEnhancer.validateCallbackIP(request, "yipay")) {
-                log.error("易支付回调IP验证失败");
-                return ResponseEntity.status(HttpStatus.FORBIDDEN).body("IP not allowed");
             }
 
             // 获取所有参数

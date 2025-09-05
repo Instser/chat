@@ -347,15 +347,16 @@ exchange:
     key: ${EXCHANGE_API_KEY:}
     # 请求超时时间（毫秒）
     timeout: ${EXCHANGE_API_TIMEOUT:5000}
-    # 重试次数
-    retry-count: ${EXCHANGE_RETRY_COUNT:3}
-
+    
   # 缓存配置
   cache:
     # 缓存过期时间（分钟）
     expire-minutes: ${EXCHANGE_CACHE_EXPIRE:30}
     # 缓存前缀
     key-prefix: ${EXCHANGE_CACHE_PREFIX:exchange_rate}
+    
+  # 重试次数
+  retry-count: ${EXCHANGE_RETRY_COUNT:3}
 
   # 默认汇率配置（当API不可用时使用）
   default-rates:

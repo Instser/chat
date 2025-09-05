@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.FieldFill;
+import com.baomidou.mybatisplus.annotation.Version;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -96,6 +97,12 @@ public class UserAccount {
      * 逻辑删除标志（0-未删除，1-已删除）
      */
     private Integer deleted;
+
+    /**
+     * 版本号（支持乐观锁，v2.0新增）
+     */
+    @Version
+    private Long version;
 
     /**
      * 检查套餐是否过期

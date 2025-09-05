@@ -22,7 +22,17 @@
       "Read(/C:\\Users\\10276\\Desktop\\chat后端沟通\\chat后端沟通\\chat\\src\\main\\java\\com\\instser\\chat\\service\\serviceimpl/**)",
       "Read(/C:\\Users\\10276\\Desktop\\chat后端沟通\\chat后端沟通\\chat\\src\\main\\java\\com\\instser\\chat\\service\\serviceimpl/**)",
       "WebFetch(domain:worldtimeapi.org)",
-      "Bash(dir \"C:\\Users\\10276\\Desktop\\chat后端沟通\\chat后端沟通\\chat\\docs\")"
+      "Bash(dir \"C:\\Users\\10276\\Desktop\\chat后端沟通\\chat后端沟通\\chat\\docs\")",
+      "Read(/C:\\Users\\10276\\Desktop\\chat后端沟通\\chat后端沟通\\chat\\src\\main\\java\\com\\instser\\chat\\controller/**)",
+      "Read(/C:\\Users\\10276\\Desktop\\chat后端沟通\\chat后端沟通\\chat\\src\\main\\java\\com\\instser\\chat\\dao/**)",
+      "Read(/C:\\Users\\10276\\Desktop\\chat后端沟通\\chat后端沟通\\chat\\docs/**)",
+      "Read(/C:\\Users\\10276\\Desktop\\chat后端沟通\\chat后端沟通\\chat\\src\\main\\java\\com\\instser\\chat\\service\\serviceimpl/**)",
+      "Read(/C:\\Users\\10276\\Desktop\\chat后端沟通\\chat后端沟通\\chat\\src\\main\\java\\com\\instser\\chat\\dao/**)",
+      "Read(/C:\\Users\\10276\\Desktop\\chat后端沟通\\chat后端沟通\\chat\\src\\main\\java\\com\\instser\\chat\\entity/**)",
+      "Read(/C:\\Users\\10276\\Desktop\\chat后端沟通\\chat后端沟通\\chat\\src\\main\\resources\\mapper/**)",
+      "Read(/C:\\Users\\10276\\Desktop\\chat后端沟通\\chat后端沟通\\chat\\src\\main\\resources/**)",
+      "Read(/C:\\Users\\10276\\Desktop\\chat后端沟通\\chat后端沟通\\chat\\src\\main\\resources/**)",
+      "Bash(time:*)"
     ],
     "deny": [],
     "ask": []

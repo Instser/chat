@@ -1,7 +1,6 @@
 package com.instser.chat.controller;
 
 import com.instser.chat.common.result.Result;
-import com.instser.chat.service.PaymentSecurityEnhancer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.CrossOrigin;
@@ -35,8 +34,6 @@ import java.util.Map;
     "http://203.0.113.16:3000"
 }, allowedHeaders = "*", allowCredentials = "true")
 public class TestController {
-
-    private final PaymentSecurityEnhancer paymentSecurityEnhancer;
 
     /**
      * 健康检查接口
@@ -78,36 +75,6 @@ public class TestController {
         } catch (Exception e) {
             log.error("支付安全测试失败", e);
             return Result.failed("支付安全测试失败: " + e.getMessage());
-        }
-    }
-
-    /**
-     * 测试支付安全验证
-     */
-    @GetMapping("/payment-security-detailed")
-    public Result<Map<String, Object>> testPaymentSecurityDetailed(
-            @RequestParam(defaultValue = "1") Long userId,
-            HttpServletRequest request) {
-        try {
-            Map<String, Object> data = new HashMap<>();
-
-            // 测试支付频率检查
-            boolean frequencyCheck = paymentSecurityEnhancer.checkPaymentFrequency(userId);
-            data.put("frequencyCheck", frequencyCheck);
-
-            // 测试IP验证
-            boolean ipCheck = paymentSecurityEnhancer.validateCallbackIP(request, "alipay");
-            data.put("ipCheck", ipCheck);
-
-            data.put("userId", userId);
-            data.put("clientIP", getClientIP(request));
-            data.put("timestamp", LocalDateTime.now());
-
-            log.info("支付安全验证测试，用户ID: {}, 频率检查: {}, IP检查: {}", userId, frequencyCheck, ipCheck);
-            return Result.success(data, "支付安全验证测试完成");
-        } catch (Exception e) {
-            log.error("支付安全验证测试失败", e);
-            return Result.failed("支付安全验证测试失败: " + e.getMessage());
         }
     }
 

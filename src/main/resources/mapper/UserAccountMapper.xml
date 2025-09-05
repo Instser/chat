@@ -18,13 +18,14 @@
         <result column="create_time" property="createTime" />
         <result column="update_time" property="updateTime" />
         <result column="deleted" property="deleted" />
+        <result column="version" property="version" />
     </resultMap>
 
     <!-- 通用查询结果列 -->
     <sql id="Base_Column_List">
         id, user_id, package_id, chat_count_remaining, package_expire_time, total_chat_count,
         total_amount_spent, token_balance, token_used, membership_level, membership_expire_time,
-        create_time, update_time, deleted
+        create_time, update_time, deleted, version
     </sql>
 
     <!-- 根据用户ID获取账户信息 -->
@@ -137,6 +138,21 @@
         SET token_balance = COALESCE(token_balance, 0) + #{tokenCount},
             update_time = #{updateTime}
         WHERE user_id = #{userId}
+          AND deleted = 0
+    </update>
+
+    <!-- =================== 简化版乐观锁支持SQL =================== -->
+    
+    <!-- 使用版本控制的原子更新（乐观锁）- 简化版 -->
+    <update id="decrementChatCountWithVersion">
+        UPDATE t_user_account 
+        SET chat_count_remaining = chat_count_remaining - #{count},
+            version = version + 1,
+            update_time = #{updateTime}
+        WHERE user_id = #{userId}
+          AND version = #{currentVersion}
+          AND chat_count_remaining >= #{count}
+          AND (package_expire_time IS NULL OR package_expire_time &gt; #{updateTime})
           AND deleted = 0
     </update>
 

@@ -17,7 +17,6 @@ import com.instser.chat.service.PaymentService;
 
 
 import com.instser.chat.service.PackageActivationService;
-import com.instser.chat.service.PaymentSecurityEnhancer;
 import com.instser.chat.service.RedisPaymentSecurityService;
 import com.instser.chat.strategy.PaymentStrategy;
 import com.instser.chat.strategy.PaymentStrategyFactory;
@@ -60,7 +59,6 @@ public class PaymentServiceImpl implements PaymentService {
     private final YiPayConfig yiPayConfig;
     private final PaymentSecurityUtil paymentSecurityUtil;
     private final PackageActivationService packageActivationService;
-    private final PaymentSecurityEnhancer paymentSecurityEnhancer;
     private final RedisPaymentSecurityService redisPaymentSecurityService;
 
     // 创建ObjectMapper实例，避免依赖注入问题
@@ -235,17 +233,6 @@ public class PaymentServiceImpl implements PaymentService {
             if (redisPaymentSecurityService.hasActivePaymentSession(userId)) {
                 log.info("用户{}有活跃的支付会话，将自动释放旧会话以创建新订单", userId);
                 redisPaymentSecurityService.releasePaymentSession(userId);
-            }
-
-            // 6. 检查支付频率限制（Redis分布式验证）
-            if (!paymentSecurityEnhancer.checkPaymentFrequency(userId)) {
-                throw new PaymentException("支付频率过高，请稍后再试");
-            }
-
-            // 7. 检测异常支付行为
-            if (!paymentSecurityEnhancer.detectAbnormalPayment(paymentRequest)) {
-                paymentSecurityEnhancer.recordSuspiciousBehavior(userId, "异常支付检测失败");
-                throw new PaymentException("检测到异常支付行为，请联系客服");
             }
 
             log.info("用户{}支付安全验证通过，请求ID: {}", userId, requestId);

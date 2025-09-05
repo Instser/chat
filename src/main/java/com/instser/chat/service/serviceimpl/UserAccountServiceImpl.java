@@ -146,7 +146,8 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
         }
 
         try {
-            boolean result = performDatabaseUpdate(userId, usedCount);
+            // 简化版乐观锁重试机制
+            boolean result = performOptimisticLockUpdate(userId, usedCount);
             if (result) {
                 // 更新成功后清除相关缓存
                 evictUserAccountCache(userId);
@@ -159,18 +160,57 @@ public class UserAccountServiceImpl extends ServiceImpl<UserAccountDao, UserAcco
         }
     }
 
-    private boolean performDatabaseUpdate(Long userId, Integer usedCount) {
+    /**
+     * 简化版乐观锁更新 - 重试机制
+     */
+    private boolean performOptimisticLockUpdate(Long userId, Integer usedCount) {
+        int maxRetries = 3;
         LocalDateTime updateTime = getBusinessDateTime();
-        // 原子性减少剩余次数
-        int updated = baseMapper.decrementChatCount(userId, usedCount, updateTime);
-
-        if (updated > 0) {
-            // 增加总使用次数统计
-            baseMapper.incrementTotalChatCount(userId, usedCount, updateTime);
-            return true;
+        
+        for (int attempt = 0; attempt < maxRetries; attempt++) {
+            try {
+                // 获取当前用户账户（包含版本号）
+                UserAccount currentAccount = baseMapper.selectByUserId(userId);
+                if (currentAccount == null) {
+                    LogUtils.logUserWarning(log, userId, "乐观锁更新", "用户账户不存在");
+                    return false;
+                }
+                
+                // 使用版本控制进行原子更新
+                int updated = baseMapper.decrementChatCountWithVersion(
+                    userId, usedCount, currentAccount.getVersion(), updateTime);
+                
+                if (updated > 0) {
+                    // 更新成功，增加总次数统计
+                    baseMapper.incrementTotalChatCount(userId, usedCount, updateTime);
+                    LogUtils.logUserDebug(log, userId, "乐观锁更新", 
+                        "第{}次尝试成功，版本号：{}", attempt + 1, currentAccount.getVersion());
+                    return true;
+                }
+                
+                // 版本号冲突或其他原因导致更新失败
+                if (attempt < maxRetries - 1) {
+                    LogUtils.logUserDebug(log, userId, "乐观锁更新", 
+                        "第{}次尝试失败，准备重试", attempt + 1);
+                    // 短暂等待后重试
+                    Thread.sleep(10 + attempt * 5); // 10ms, 15ms, 20ms
+                }
+                
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                LogUtils.logUserError(log, userId, "乐观锁更新", "重试被中断", e);
+                return false;
+            } catch (Exception e) {
+                LogUtils.logUserError(log, userId, "乐观锁更新", 
+                    "第{}次尝试异常", e, attempt + 1);
+                if (attempt == maxRetries - 1) {
+                    throw e; // 最后一次重试失败时抛出异常
+                }
+            }
         }
-
-        LogUtils.logUserWarning(log, userId, "更新使用次数", "使用次数更新失败，可能次数不足");
+        
+        LogUtils.logUserWarning(log, userId, "乐观锁更新", 
+            "经过{}次重试仍然失败，可能并发冲突严重", maxRetries);
         return false;
     }
 
