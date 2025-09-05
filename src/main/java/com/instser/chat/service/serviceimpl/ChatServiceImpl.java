@@ -17,6 +17,7 @@ import com.instser.chat.entity.GeminiTextSegment;
 import com.instser.chat.entity.WebSearchResult;
 
 import com.instser.chat.service.*;
+import com.instser.chat.service.cache.RequestValidationCache;
 import com.instser.chat.util.ChatSessionManager;
 import com.instser.chat.vo.ChatLimitVO;
 import jakarta.servlet.http.HttpServletResponse;
@@ -29,6 +30,7 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -73,6 +75,10 @@ public class ChatServiceImpl implements ChatService {
 
     @Qualifier("continuationExecutor")
     private final Executor continuationExecutor;
+
+    // 可选的请求级缓存组件（仅在启用时注入）
+    @Autowired(required = false)
+    private RequestValidationCache requestValidationCache;
 
     // 智能分块响应配置
     private static final boolean ENABLE_SMART_CHUNKING = true;
@@ -449,8 +455,15 @@ public class ChatServiceImpl implements ChatService {
                 return saveErrorResponseAndReturn(response, permissionError, request, model);
             }
 
-            // 验证用户聊天权限（套餐、次数等）
-            String chatPermissionError = validateChatPermission(request.getUserId(), request.getSessionId(), request.getModelId());
+            // 验证用户聊天权限（套餐、次数等）- 使用优化版本（如果缓存可用）
+            String chatPermissionError;
+            if (requestValidationCache != null) {
+                // 使用优化版本，带缓存
+                chatPermissionError = validateChatPermissionOptimized(request.getUserId(), request.getSessionId(), request.getModelId());
+            } else {
+                // 使用原有版本，无缓存
+                chatPermissionError = validateChatPermission(request.getUserId(), request.getSessionId(), request.getModelId());
+            }
             if (chatPermissionError != null) {
                 String customErrorMessage;
                 if ("PACKAGE_EXPIRED".equals(chatPermissionError)) {
@@ -587,6 +600,98 @@ public class ChatServiceImpl implements ChatService {
             log.error("验证聊天频率限制时发生异常，用户ID: {}", userId, e);
             String errorContent = "Request failed. Please try again later.";
             return saveErrorResponseAndReturn(response, errorContent, request, model);
+        }
+    }
+
+    /**
+     * 验证用户聊天权限和套餐限制（优化版本，使用缓存）
+     *
+     * @param userId 用户ID
+     * @param sessionId 会话ID（用于日志）
+     * @param modelId 模型ID（用于模型特定权限检查）
+     * @return 如果验证失败返回错误原因，验证通过返回null
+     */
+    private String validateChatPermissionOptimized(Long userId, String sessionId, Long modelId) {
+        log.debug("【权限验证-优化】开始验证聊天权限，用户ID：{}，会话ID：{}，模型ID：{}", userId, sessionId, modelId);
+
+        try {
+            // 基础权限检查（套餐、过期等）- 使用缓存避免重复查询
+            ChatLimitVO limitCheck;
+            if (requestValidationCache != null) {
+                String cacheKey = "chat_permission:" + userId;
+                limitCheck = requestValidationCache.getOrCompute(cacheKey, 
+                    () -> chatLimitService.validateChatPermission(userId));
+            } else {
+                // 缓存未启用时，使用原有逻辑
+                limitCheck = chatLimitService.validateChatPermission(userId);
+            }
+            
+            if (!limitCheck.isCanChat()) {
+                String reason = limitCheck.getLimitReason();
+                log.info("【权限验证-优化】基础权限验证失败，用户ID：{}，会话ID：{}，原因：{}", userId, sessionId, reason);
+                return reason; // 返回失败原因
+            }
+
+            // 模型权限检查
+            if (modelId != null) {
+                // 获取模型信息 - 使用缓存
+                AiModel model;
+                if (requestValidationCache != null) {
+                    String modelCacheKey = "ai_model:" + modelId;
+                    model = requestValidationCache.getOrCompute(modelCacheKey, 
+                        () -> aiModelService.getById(modelId));
+                } else {
+                    model = aiModelService.getById(modelId);
+                }
+                
+                if (model != null) {
+                    // 模型权限验证 - 使用缓存
+                    ChatLimitVO modelLimitCheck;
+                    if (requestValidationCache != null) {
+                        String modelPermissionCacheKey = "model_permission:" + userId + ":" + modelId;
+                        modelLimitCheck = requestValidationCache.getOrCompute(modelPermissionCacheKey,
+                            () -> chatLimitService.validateModelChatPermission(userId, modelId.toString()));
+                    } else {
+                        modelLimitCheck = chatLimitService.validateModelChatPermission(userId, modelId.toString());
+                    }
+                    
+                    if (!modelLimitCheck.isCanChat()) {
+                        String reason = modelLimitCheck.getLimitReason();
+                        log.info("【权限验证-优化】模型权限验证失败，用户ID：{}，会话ID：{}，模型ID：{}，模型代码：{}，原因：{}", 
+                                userId, sessionId, modelId, model.getModelCode(), reason);
+                        // 检查是否是模型限制超限错误
+                        if ("MODEL_LIMIT_EXCEEDED".equals(reason)) {
+                            return "MODEL_LIMIT_EXCEEDED";
+                        }
+                        return reason; // 返回失败原因
+                    }
+                }
+            }
+
+            log.info("【权限验证-优化】验证通过，用户ID：{}，套餐：{}，限制类型：{}",
+                    userId, limitCheck.getPackageName(), limitCheck.getLimitType());
+            log.debug("【权限验证-优化】详细信息 - 会话ID：{}，剩余次数：{}，每日限制：{}",
+                    sessionId, limitCheck.getRemainingToday(), limitCheck.getDailyLimit());
+
+            return null; // 验证通过
+        } catch (Exception e) {
+            log.error("【权限验证-优化】验证异常，用户ID：{}，会话ID：{}", userId, sessionId, e);
+            
+            // 检查异常消息中是否包含模型限制相关的关键词
+            String exceptionMessage = e.getMessage();
+            if (exceptionMessage != null) {
+                if (exceptionMessage.contains("模型使用次数已达上限") || 
+                    exceptionMessage.contains("模型使用超限") ||
+                    exceptionMessage.contains("每日聊天次数已达到套餐限制") ||
+                    exceptionMessage.contains("MODEL_LIMIT_EXCEEDED") ||
+                    exceptionMessage.contains("使用限制")) {
+                    return "MODEL_LIMIT_EXCEEDED";
+                } else if (exceptionMessage.contains("PACKAGE_EXPIRED") || exceptionMessage.contains("套餐已过期")) {
+                    return "PACKAGE_EXPIRED";
+                }
+            }
+            
+            return "Request failed. Please try again later."; // 返回通用错误
         }
     }
 

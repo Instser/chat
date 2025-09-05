@@ -497,6 +497,16 @@ gemini:
     # Gemini API基础URL
     base-url: ${GEMINI_BASE_URL:http://your-gemini-proxy.example.com:5321/v1beta}
 
+# 聊天系统优化配置
+chat:
+  optimization:
+    # 请求级缓存配置
+    request-cache:
+      # 是否启用请求级缓存（默认关闭，需要手动开启）
+      enabled: ${CHAT_REQUEST_CACHE_ENABLED:true}
+      # 缓存统计日志级别
+      stats-log-level: ${CHAT_REQUEST_CACHE_STATS_LOG_LEVEL:DEBUG}
+
     # 请求超时时间（毫秒）
     timeout: ${GEMINI_TIMEOUT:10000}
 
