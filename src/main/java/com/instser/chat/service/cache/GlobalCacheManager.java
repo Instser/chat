@@ -71,8 +71,8 @@ public class GlobalCacheManager {
         registerCache("websearch", "websearch:permission", CacheType.LOCAL, "网络搜索权限缓存", Duration.ofMinutes(5));
 
         // 4. 用户账户缓存（潜在优化点）
-        registerCache("user", "user:account", CacheType.POTENTIAL, "用户账户信息缓存", Duration.ofMinutes(15));
-        registerCache("user", "user:package", CacheType.POTENTIAL, "用户套餐信息缓存", Duration.ofMinutes(30));
+        registerCache("user", "user:account", CacheType.POTENTIAL, "用户账户信息缓存", Duration.ofMinutes(3));
+        registerCache("user", "user:package", CacheType.POTENTIAL, "用户套餐信息缓存", Duration.ofMinutes(3));
 
         // 5. 聊天相关缓存（潜在优化点）
         registerCache("chat", "chat:session", CacheType.POTENTIAL, "聊天会话缓存", Duration.ofMinutes(30));
@@ -81,11 +81,11 @@ public class GlobalCacheManager {
 
         // 6. AI模型缓存（潜在优化点）
         registerCache("ai", "ai:models", CacheType.POTENTIAL, "AI模型配置缓存", Duration.ofHours(1));
-        registerCache("ai", "ai:permissions", CacheType.POTENTIAL, "AI模型权限缓存", Duration.ofMinutes(30));
+        registerCache("ai", "ai:permissions", CacheType.POTENTIAL, "AI模型权限缓存", Duration.ofMinutes(3));
 
         // 7. 套餐管理缓存（潜在优化点）
         registerCache("package", "package:config", CacheType.POTENTIAL, "套餐配置缓存", Duration.ofHours(1));
-        registerCache("package", "package:permissions", CacheType.POTENTIAL, "套餐权限缓存", Duration.ofMinutes(30));
+        registerCache("package", "package:permissions", CacheType.POTENTIAL, "套餐权限缓存", Duration.ofMinutes(3));
 
         // 8. 订单管理缓存
         registerCache("order", "order:recent_pending", CacheType.HYBRID, "近期未支付订单缓存", Duration.ofMinutes(5));
