@@ -162,17 +162,11 @@ public class VOConverter {
         if (chatMessageVO != null && webSearchContentService != null) {
             // 检查是否有网络搜索结果
             if (chatMessage.getHasWebSearch() != null && chatMessage.getHasWebSearch() == 1) {
-                System.out.println("【调试】消息ID: " + chatMessage.getMessageId() + " 有网络搜索标记，开始查询网络内容");
                 com.instser.chat.entity.WebSearchContent webSearchContent =
                     webSearchContentService.getByMessageId(chatMessage.getMessageId());
                 if (webSearchContent != null && webSearchContent.getContent() != null) {
-                    System.out.println("【调试】找到网络搜索内容，长度: " + webSearchContent.getContent().length());
                     chatMessageVO.setNetworkResult(webSearchContent.getContent());
-                } else {
-                    System.out.println("【调试】未找到网络搜索内容或内容为空，webSearchContent: " + webSearchContent);
                 }
-            } else {
-                System.out.println("【调试】消息ID: " + chatMessage.getMessageId() + " hasWebSearch值: " + chatMessage.getHasWebSearch());
             }
         }
         return chatMessageVO;
