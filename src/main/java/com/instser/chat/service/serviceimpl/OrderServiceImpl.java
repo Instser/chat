@@ -444,6 +444,31 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
         }
     }
 
+    @Override
+    public UserOrder getOrderByTransactionId(String transactionId) {
+        try {
+            if (transactionId == null || transactionId.trim().isEmpty()) {
+                log.warn("查询订单失败：交易ID为空");
+                return null;
+            }
+            
+            log.debug("根据交易ID查询订单：{}", transactionId);
+            UserOrder order = baseMapper.selectByTransactionId(transactionId);
+            
+            if (order != null) {
+                log.debug("找到订单：订单号={}，用户ID={}，状态={}",
+                    order.getOrderNo(), order.getUserId(), order.getPaymentStatus());
+            } else {
+                log.debug("未找到交易ID对应的订单：{}", transactionId);
+            }
+            
+            return order;
+        } catch (Exception e) {
+            log.error("根据交易ID查询订单异常，交易ID：{}", transactionId, e);
+            return null;
+        }
+    }
+
     /**
      * 生成支付请求ID
      */

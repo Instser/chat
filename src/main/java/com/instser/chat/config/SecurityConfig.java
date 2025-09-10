@@ -181,7 +181,7 @@ public class SecurityConfig {
                 .requestMatchers("/oauth2/login/**", "/oauth2/bind/**", "/oauth2/providers").permitAll()
 
                 // 支付回调接口 - 允许第三方支付平台回调（无需JWT认证）
-                .requestMatchers("/payment/alipay/notify", "/payment/yipay/notify", "/payment/stripe/webhook").permitAll()
+                .requestMatchers("/payment/alipay/notify", "/payment/yipay/notify", "/payment/stripe/webhook", "/payment/paypal/webhook").permitAll()
 
                 // Gemini API密钥管理接口 - 仅允许localhost访问（在Controller中验证）
                 .requestMatchers("/admin/gemini/**").permitAll()

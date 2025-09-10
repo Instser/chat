@@ -635,6 +635,109 @@ public class PaymentController {
     }
 
     /**
+     * PayPal Webhook回调处理端点
+     * 处理PayPal支付事件通知
+     * 采用快速响应 + 异步处理策略，避免重试风暴
+     */
+    @PostMapping("/paypal/webhook")
+    public ResponseEntity<String> paypalWebhook(
+            @RequestBody String payload,
+            HttpServletRequest request) {
+        
+        try {
+            log.info("收到PayPal Webhook事件");
+            log.debug("PayPal Webhook载荷长度: {}", payload != null ? payload.length() : 0);
+
+            // 获取请求头用于签名验证
+            Map<String, String> headers = new HashMap<>();
+            java.util.Enumeration<String> headerNames = request.getHeaderNames();
+            while (headerNames.hasMoreElements()) {
+                String headerName = headerNames.nextElement();
+                if (headerName.toLowerCase().startsWith("paypal-")) {
+                    headers.put(headerName.toLowerCase(), request.getHeader(headerName));
+                }
+            }
+
+            // 异步处理事件，立即返回成功
+            processPayPalWebhookAsync(payload, headers);
+
+            log.info("PayPal Webhook已提交异步处理");
+            return ResponseEntity.ok("success");
+
+        } catch (Exception e) {
+            log.error("处理PayPal Webhook异常", e);
+            // 即使异常也返回success，避免PayPal重试风暴
+            return ResponseEntity.ok("success");
+        }
+    }
+
+    /**
+     * 异步处理PayPal Webhook事件
+     */
+    private void processPayPalWebhookAsync(String payload, Map<String, String> headers) {
+        log.debug("开始提交PayPal Webhook异步处理");
+        
+        // 使用CompletableFuture异步处理，避免阻塞回调响应
+        java.util.concurrent.Executor executor = getPayPalWebhookExecutor();
+        log.debug("使用的线程池类型: {}", executor.getClass().getSimpleName());
+        
+        java.util.concurrent.CompletableFuture.runAsync(() -> {
+            processPayPalWebhookInternal(payload, headers);
+        }, executor).exceptionally(throwable -> {
+            log.error("异步处理PayPal Webhook异常", throwable);
+            return null;
+        });
+        
+        log.debug("PayPal Webhook异步任务已提交");
+    }
+
+    /**
+     * 内部异步处理PayPal Webhook逻辑
+     */
+    private void processPayPalWebhookInternal(String payload, Map<String, String> headers) {
+        try {
+            log.info("开始异步处理PayPal Webhook事件");
+
+            // 使用支付策略处理回调
+            com.instser.chat.strategy.PaymentStrategy paypalStrategy = 
+                paymentService.getPaymentStrategy("paypal");
+            
+            if (paypalStrategy != null) {
+                boolean success = paypalStrategy.handleCallback(payload);
+                
+                if (success) {
+                    log.info("异步处理PayPal Webhook成功");
+                } else {
+                    log.error("异步处理PayPal Webhook失败");
+                }
+            } else {
+                log.error("未找到PayPal支付策略，无法处理Webhook事件");
+            }
+
+        } catch (Exception e) {
+            log.error("异步处理PayPal Webhook异常", e);
+        }
+    }
+
+    /**
+     * 获取PayPal Webhook处理线程池
+     */
+    private java.util.concurrent.Executor getPayPalWebhookExecutor() {
+        try {
+            ApplicationContext context = com.instser.chat.util.ApplicationContextProvider.getApplicationContext();
+            if (context != null) {
+                // 复用Stripe的webhook线程池，或者创建专用的PayPal线程池
+                return (java.util.concurrent.Executor) context.getBean("stripeWebhookExecutor");
+            }
+            log.warn("ApplicationContext为null，使用默认线程池");
+            return java.util.concurrent.ForkJoinPool.commonPool();
+        } catch (Exception e) {
+            log.error("获取PayPal Webhook线程池失败，使用默认线程池: {}", e.getMessage(), e);
+            return java.util.concurrent.ForkJoinPool.commonPool();
+        }
+    }
+
+    /**
      * 获取Stripe Webhook处理线程池
      */
     private java.util.concurrent.Executor getStripeWebhookExecutor() {

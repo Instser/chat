@@ -57,6 +57,15 @@ public interface UserOrderDao extends BaseMapper<UserOrder> {
     UserOrder selectByPaymentRequestId(String paymentRequestId);
 
     /**
+     * 根据交易流水号查询订单
+     *
+     * @param transactionId 交易流水号
+     * @return 订单信息
+     */
+    @Select("SELECT * FROM t_user_order WHERE transaction_id = #{transactionId} AND deleted = 0 LIMIT 1")
+    UserOrder selectByTransactionId(String transactionId);
+
+    /**
      * 更新订单支付状态（总是设置支付时间）
      *
      * @param orderNo 订单号

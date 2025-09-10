@@ -27,7 +27,7 @@ public class PaymentRequestVO {
     private String currency;
 
     /**
-     * 支付方式（alipay-支付宝SDK，yipay-易支付）
+     * 支付方式（alipay-支付宝SDK，yipay-易支付，stripe-Stripe支付，paypal-PayPal支付）
      */
     @NotBlank(message = "支付方式不能为空")
     private String paymentMethod;

@@ -180,4 +180,12 @@ public interface OrderService extends IService<UserOrder> {
      * @return 待支付订单列表
      */
     List<UserOrder> getPendingOrdersInTimeRange(int startMinutesAgo, int endMinutesAgo);
+
+    /**
+     * 根据交易ID获取订单
+     *
+     * @param transactionId 交易ID（PayPal订单ID等）
+     * @return 订单信息
+     */
+    UserOrder getOrderByTransactionId(String transactionId);
 }

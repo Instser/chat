@@ -33,7 +33,8 @@
       "Read(/C:\\Users\\10276\\Desktop\\chat后端沟通\\chat后端沟通\\chat\\src\\main\\resources/**)",
       "Read(/C:\\Users\\10276\\Desktop\\chat后端沟通\\chat后端沟通\\chat\\src\\main\\resources/**)",
       "Bash(time:*)",
-      "Bash(powershell:*)"
+      "Bash(powershell:*)",
+      "Bash(python:*)"
     ],
     "deny": [],
     "ask": []

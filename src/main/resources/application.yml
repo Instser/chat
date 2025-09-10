@@ -212,7 +212,81 @@ yipay:
   # 默认支付方式（alipay、wxpay、qqpay等）
   default-type: ${YIPAY_DEFAULT_TYPE:alipay}
 
+# 支付配置
+payment:
+  # PayPal配置
+  paypal:
+    # 是否启用PayPal支付
+    enabled: ${PAYPAL_ENABLED:true}
+    # PayPal客户端ID（沙箱：以AQ开头，生产：以AT开头）
+    client-id: ${PAYPAL_CLIENT_ID:AWOEmds5ycR4hKla3G1fNSCw08cF74oGA_AKhETP1vDGy6AU0tv_GN9NiQZngO7AVE3vU8xBMpUunkAQ}
+    # PayPal客户端密钥（沙箱和生产环境不同）
+    client-secret: ${PAYPAL_CLIENT_SECRET:your-paypal-client-secret}
+    # PayPal环境模式（sandbox=沙箱环境，live=生产环境）
+    mode: ${PAYPAL_MODE:sandbox}
+    # PayPal API基础URL（自动根据mode设置，无需手动配置）
+    base-url: ${PAYPAL_BASE_URL:}
+    # 默认货币类型
+    currency: ${PAYPAL_CURRENCY:USD}
+    # 支持的货币列表
+    supported-currencies: ${PAYPAL_SUPPORTED_CURRENCIES:USD,EUR,GBP,CAD,AUD,JPY,CHF,SEK,NOK,DKK,CNY}
+    # API连接超时时间（秒）
+    connect-timeout: ${PAYPAL_CONNECT_TIMEOUT:30}
+    # API读取超时时间（秒）
+    read-timeout: ${PAYPAL_READ_TIMEOUT:80}
+    # API请求最大重试次数
+    max-retries: ${PAYPAL_MAX_RETRIES:3}
+    # Webhook验证ID（用于验证PayPal webhook签名，可选）
+    webhook-id: ${PAYPAL_WEBHOOK_ID:}
+    # 支付成功后跳转URL
+    return-url: ${PAYPAL_RETURN_URL:https://chat.example.com/payment/success}
+    # 支付取消后跳转URL
+    cancel-url: ${PAYPAL_CANCEL_URL:https://chat.example.com/payment/cancel}
 
+  # Stripe配置
+  stripe:
+    # Stripe公钥 (pk_test_xxx 或 pk_live_xxx)
+    public-key: ${STRIPE_PUBLIC_KEY:pk_test_your_stripe_key}
+    # Stripe私钥 (sk_test_xxx 或 sk_live_xxx)
+    secret-key: ${STRIPE_SECRET_KEY:sk_test_your_stripe_key}
+    # Webhook签名密钥 (whsec_xxx)
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_your_webhook_secret}
+    # 默认货币
+    currency: ${STRIPE_CURRENCY:usd}
+    # 是否沙箱模式
+    sandbox: ${STRIPE_SANDBOX:true}
+    # 支持的货币列表
+    supported-currencies: ${STRIPE_SUPPORTED_CURRENCIES:usd,eur,gbp,jpy,cad,aud,chf,sek,nok,dkk}
+    # API版本
+    api-version: ${STRIPE_API_VERSION:2024-06-20}
+    # 连接超时时间（毫秒）
+    connect-timeout: ${STRIPE_CONNECT_TIMEOUT:30000}
+    # 读取超时时间（毫秒）
+    read-timeout: ${STRIPE_READ_TIMEOUT:80000}
+    # 最大网络重试次数
+    max-network-retries: ${STRIPE_MAX_RETRIES:2}
+
+  # 支付安全配置
+  security:
+    # 支付频率限制
+    frequency:
+      max-count: ${PAYMENT_FREQUENCY_MAX_COUNT:5}      # 时间窗口内最大支付次数
+      time-window: ${PAYMENT_FREQUENCY_TIME_WINDOW:10} # 时间窗口（分钟）
+    # 回调安全配置
+    callback:
+      expire-time: ${PAYMENT_CALLBACK_EXPIRE_TIME:60}  # 回调过期时间（分钟）
+    # 可疑行为配置
+    suspicious:
+      threshold: ${PAYMENT_SUSPICIOUS_THRESHOLD:3}     # 可疑行为阈值
+      expire-days: ${PAYMENT_SUSPICIOUS_EXPIRE_DAYS:7} # 记录保存天数
+
+  # 缓存熔断器配置
+  cache:
+    circuit-breaker:
+      failure-threshold: ${PAYMENT_CACHE_FAILURE_THRESHOLD:3}        # 失败阈值
+      recovery-timeout: ${PAYMENT_CACHE_RECOVERY_TIMEOUT:30000}      # 恢复超时时间（毫秒）
+      success-threshold: ${PAYMENT_CACHE_SUCCESS_THRESHOLD:2}        # 成功阈值
+      health-check-interval: ${PAYMENT_CACHE_HEALTH_CHECK_INTERVAL:10000} # 健康检查间隔（毫秒）
 
 # JWT配置
 jwt:
@@ -442,51 +516,6 @@ async:
   keep-alive-seconds: 60
 
 
-
-# 支付安全配置
-payment:
-  security:
-    # 支付频率限制
-    frequency:
-      max-count: ${PAYMENT_FREQUENCY_MAX_COUNT:5}      # 时间窗口内最大支付次数
-      time-window: ${PAYMENT_FREQUENCY_TIME_WINDOW:10} # 时间窗口（分钟）
-    # 回调安全配置
-    callback:
-      expire-time: ${PAYMENT_CALLBACK_EXPIRE_TIME:60}  # 回调过期时间（分钟）
-    # 可疑行为配置
-    suspicious:
-      threshold: ${PAYMENT_SUSPICIOUS_THRESHOLD:3}     # 可疑行为阈值
-      expire-days: ${PAYMENT_SUSPICIOUS_EXPIRE_DAYS:7} # 记录保存天数
-  # 缓存熔断器配置
-  cache:
-    circuit-breaker:
-      failure-threshold: ${PAYMENT_CACHE_FAILURE_THRESHOLD:3}        # 失败阈值
-      recovery-timeout: ${PAYMENT_CACHE_RECOVERY_TIMEOUT:30000}      # 恢复超时时间（毫秒）
-      success-threshold: ${PAYMENT_CACHE_SUCCESS_THRESHOLD:2}        # 成功阈值
-      health-check-interval: ${PAYMENT_CACHE_HEALTH_CHECK_INTERVAL:10000} # 健康检查间隔（毫秒）
-      
-  # Stripe支付配置
-  stripe:
-    # Stripe公钥（可发布密钥）- 测试环境
-    public-key: ${STRIPE_PUBLIC_KEY:pk_test_your_stripe_key}
-    # Stripe私钥（密钥）- 测试环境  
-    secret-key: ${STRIPE_SECRET_KEY:sk_test_your_stripe_key}
-    # Webhook签名密钥（从Stripe CLI获取）
-    webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_your_webhook_secret}
-    # 默认货币
-    currency: ${STRIPE_CURRENCY:usd}
-    # 是否沙箱模式（测试环境设为true）
-    sandbox: ${STRIPE_SANDBOX:true}
-    # 支持的货币列表
-    supported-currencies: ${STRIPE_SUPPORTED_CURRENCIES:usd,eur,gbp,jpy,cad,aud,chf,sek,nok,dkk}
-    # API版本
-    api-version: ${STRIPE_API_VERSION:2024-06-20}
-    # 连接超时时间（毫秒）
-    connect-timeout: ${STRIPE_CONNECT_TIMEOUT:30000}
-    # 读取超时时间（毫秒）
-    read-timeout: ${STRIPE_READ_TIMEOUT:80000}
-    # 最大网络重试次数
-    max-network-retries: ${STRIPE_MAX_NETWORK_RETRIES:2}
 
 # Google Gemini API配置
 gemini:
