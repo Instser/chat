@@ -3,8 +3,7 @@
 
 ## 指导原则
 
-- memory bank文件夹，下面是productContext.md：记录项目目的、解决的问题和工作方式activeContext.md：记录当前工作内容、最近变更和下一步计划systemPatterns.md：记录系统构建方式、关键技术决策和架构模式techContext.md：记录使用的技术、开发环境设置和技术约束progress.md：记录已完成的功能、待建设项目和进度状态
-文件，你在进行项目修改时，根据这些文件进行参考，同时在做出改动时同步更新这些文件
+- memory bank文件夹，下面是productContext.md：记录项目目的、解决的问题和工作方式activeContext.md：记录当前工作内容、最近变更和下一步计划systemPatterns.md：记录系统构建方式、关键技术决策和架构模式techContext.md：记录使用的技术、开发环境设置和技术约束progress.md：记录已完成的功能、待建设项目和进度状态文件，你在进行项目修改时，根据这些文件进行参考，同时在做出改动时同步更新这些文件。
 - 使用中文进行回答
 - 在进行代码修改时检查是否导致引用问题并修复
 - 需要进行数据库改动时，将sql文件生成在根目录下的sql文件夹中

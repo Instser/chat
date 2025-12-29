@@ -79,17 +79,17 @@ public class StripeConfig {
      * 配置完整性检查
      */
     public boolean isConfigComplete() {
-        boolean complete = StringUtils.hasText(publicKey) && 
-                          StringUtils.hasText(secretKey) && 
+        boolean complete = StringUtils.hasText(publicKey) &&
+                          StringUtils.hasText(secretKey) &&
                           StringUtils.hasText(webhookSecret);
-        
+
         if (!complete) {
-            log.warn("Stripe配置不完整：publicKey={}, secretKey={}, webhookSecret={}", 
+            log.warn("Stripe配置不完整：publicKey={}, secretKey={}, webhookSecret={}",
                 StringUtils.hasText(publicKey) ? "已配置" : "未配置",
-                StringUtils.hasText(secretKey) ? "已配置" : "未配置", 
+                StringUtils.hasText(secretKey) ? "已配置" : "未配置",
                 StringUtils.hasText(webhookSecret) ? "已配置" : "未配置");
         }
-        
+
         return complete;
     }
 
@@ -116,6 +116,8 @@ public class StripeConfig {
     @PostConstruct
     public void initStripe() {
         if (isConfigComplete()) {
+            validateKeyEnvironment();
+
             // 设置API密钥
             Stripe.apiKey = secretKey;
             
@@ -134,13 +136,45 @@ public class StripeConfig {
             log.info("- 支持货币: {}", supportedCurrencies);
             log.info("- 连接超时: {}ms", connectTimeout);
             log.info("- 读取超时: {}ms", readTimeout);
-            
         } else {
             log.warn("Stripe配置不完整，跳过初始化");
             log.warn("请检查以下配置项：");
             log.warn("- payment.stripe.public-key: Stripe公钥");
-            log.warn("- payment.stripe.secret-key: Stripe私钥");  
+            log.warn("- payment.stripe.secret-key: Stripe私钥");
             log.warn("- payment.stripe.webhook-secret: Webhook签名密钥");
+        }
+    }
+
+    /**
+     * 防呆：校验环境与密钥前缀一致
+     */
+    private void validateKeyEnvironment() {
+        if (!StringUtils.hasText(publicKey) || !StringUtils.hasText(secretKey)) {
+            return;
+        }
+
+        boolean publicTest = publicKey.startsWith("pk_test_");
+        boolean publicLive = publicKey.startsWith("pk_live_");
+        boolean secretTest = secretKey.startsWith("sk_test_");
+        boolean secretLive = secretKey.startsWith("sk_live_");
+
+        boolean publicKnown = publicTest || publicLive;
+        boolean secretKnown = secretTest || secretLive;
+        if (!publicKnown || !secretKnown) {
+            log.warn("Stripe密钥前缀无法识别，跳过环境一致性校验");
+            return;
+        }
+
+        if ((publicTest && !secretTest) || (publicLive && !secretLive)) {
+            throw new IllegalStateException("Stripe公钥与私钥环境不一致，请检查pk/sk前缀");
+        }
+
+        if (sandbox && (publicLive || secretLive)) {
+            throw new IllegalStateException("STRIPE_SANDBOX=true 但使用了Live密钥");
+        }
+
+        if (!sandbox && (publicTest || secretTest)) {
+            throw new IllegalStateException("STRIPE_SANDBOX=false 但使用了Test密钥");
         }
     }
 }

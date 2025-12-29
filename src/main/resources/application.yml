@@ -246,15 +246,15 @@ payment:
   # Stripe配置
   stripe:
     # Stripe公钥 (pk_test_xxx 或 pk_live_xxx)
-    public-key: ${STRIPE_PUBLIC_KEY:pk_test_your_stripe_key}
+    public-key: ${STRIPE_PUBLIC_KEY:pk_live_your_stripe_public_key}
     # Stripe私钥 (sk_test_xxx 或 sk_live_xxx)
-    secret-key: ${STRIPE_SECRET_KEY:sk_test_your_stripe_key}
+    secret-key: ${STRIPE_SECRET_KEY:rk_live_your_stripe_secret_key}
     # Webhook签名密钥 (whsec_xxx)
-    webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_your_webhook_secret}
+    webhook-secret: ${STRIPE_WEBHOOK_SECRET:whsec_your_stripe_webhook_secret}
     # 默认货币
     currency: ${STRIPE_CURRENCY:usd}
     # 是否沙箱模式
-    sandbox: ${STRIPE_SANDBOX:true}
+    sandbox: ${STRIPE_SANDBOX:false}
     # 支持的货币列表
     supported-currencies: ${STRIPE_SUPPORTED_CURRENCIES:usd,eur,gbp,jpy,cad,aud,chf,sek,nok,dkk}
     # API版本

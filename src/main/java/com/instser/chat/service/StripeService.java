@@ -10,6 +10,7 @@ import com.stripe.param.PaymentIntentCreateParams;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 
@@ -147,6 +148,14 @@ public class StripeService {
         try {
             if (!stripeConfig.isConfigComplete()) {
                 throw new PaymentException("Stripe配置不完整，无法处理Webhook事件");
+            }
+
+            if (!StringUtils.hasText(payload)) {
+                throw new PaymentException("Webhook载荷为空");
+            }
+
+            if (!StringUtils.hasText(signature)) {
+                throw new PaymentException("Webhook签名为空");
             }
 
             log.debug("处理Stripe Webhook事件，签名: {}", signature);

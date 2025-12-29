@@ -3,6 +3,7 @@ package com.instser.chat.controller;
 import com.instser.chat.common.result.Result;
 import com.instser.chat.common.util.ErrorResponseUtil;
 import com.instser.chat.common.util.LogUtils;
+import com.instser.chat.common.exception.PaymentException;
 import com.instser.chat.entity.Package;
 import com.instser.chat.entity.UserOrder;
 import com.instser.chat.service.OrderService;
@@ -25,6 +26,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
@@ -563,6 +565,15 @@ public class PaymentController {
             @RequestBody String payload,
             @RequestHeader("Stripe-Signature") String signature) {
         
+        if (!StringUtils.hasText(payload)) {
+            log.warn("Stripe Webhook载荷为空");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("empty payload");
+        }
+        if (!StringUtils.hasText(signature)) {
+            log.warn("Stripe Webhook签名为空");
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("empty signature");
+        }
+
         try {
             log.info("收到Stripe Webhook事件，签名: {}", signature);
             log.debug("Stripe Webhook载荷长度: {}", payload != null ? payload.length() : 0);
@@ -576,10 +587,12 @@ public class PaymentController {
             log.info("Stripe Webhook已提交异步处理，事件ID: {}", event.getId());
             return ResponseEntity.ok("success");
 
+        } catch (PaymentException e) {
+            log.warn("Stripe Webhook处理失败: {}", e.getMessage());
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body("invalid payload");
         } catch (Exception e) {
             log.error("处理Stripe Webhook异常", e);
-            // 即使异常也返回success，避免Stripe重试风暴
-            return ResponseEntity.ok("success");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("error");
         }
     }
 
