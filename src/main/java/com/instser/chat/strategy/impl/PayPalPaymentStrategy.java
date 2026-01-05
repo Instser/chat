@@ -65,14 +65,7 @@ public class PayPalPaymentStrategy implements PaymentStrategy {
                 throw ResourceNotFoundException.packageNotFound(request.getPackageId());
             }
 
-            // 3. 验证金额和货币
-            payPalService.validateAmount(packageInfo.getPrice(), request.getCurrency());
-
-            LogUtils.logUserDebug(log, request.getUserId(), "PayPal支付创建", 
-                "套餐验证通过，套餐名：{}，价格：{} {}", packageInfo.getPackageName(), 
-                packageInfo.getPrice(), request.getCurrency());
-
-            // 4. 创建订单记录
+            // 3. 创建订单记录（包含优惠价格选择逻辑）
             UserOrder order = orderService.createOrder(
                 request.getUserId(), 
                 request.getPackageId(), 
@@ -83,8 +76,15 @@ public class PayPalPaymentStrategy implements PaymentStrategy {
             LogUtils.logUserDebug(log, request.getUserId(), "PayPal支付创建", 
                 "订单创建成功，订单号：{}", order.getOrderNo());
 
+            // 4. 验证订单金额和货币
+            payPalService.validateAmount(order.getAmount(), order.getCurrency());
+
+            LogUtils.logUserDebug(log, request.getUserId(), "PayPal支付创建",
+                "订单金额验证通过，订单金额：{} {}，套餐原价：{} USD",
+                order.getAmount(), order.getCurrency(), packageInfo.getPrice());
+
             // 5. 创建PayPal订单
-            Map<String, Object> payPalOrderResult = payPalService.createPayPalOrder(order, request.getCurrency());
+            Map<String, Object> payPalOrderResult = payPalService.createPayPalOrder(order, order.getCurrency());
 
             String paypalOrderId = (String) payPalOrderResult.get("paypalOrderId");
             String approvalUrl = (String) payPalOrderResult.get("approvalUrl");
@@ -98,8 +98,8 @@ public class PayPalPaymentStrategy implements PaymentStrategy {
                 paypalOrderId,
                 approvalUrl,
                 payPalConfig.getClientId(), // 前端SDK需要
-                packageInfo.getPrice(),
-                request.getCurrency(),
+                order.getAmount(),
+                order.getCurrency(),
                 payPalConfig.getEnvironment()
             );
 
