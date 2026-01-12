@@ -232,7 +232,7 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
     @Override
     public boolean updatePaymentStatus(String orderNo, Integer paymentStatus, String transactionId, boolean setPaymentTime) {
         // 使用分布式锁保护订单状态更新
-        return distributedLockService.executeOrderLock(orderNo, () -> {
+        Boolean updated = distributedLockService.executeOrderLock(orderNo, () -> {
             try {
                 UserOrder order = getOrderByOrderNo(orderNo);
                 if (order == null) {
@@ -266,6 +266,7 @@ public class OrderServiceImpl extends ServiceImpl<UserOrderDao, UserOrder> imple
                 return false;
             }
         });
+        return Boolean.TRUE.equals(updated);
     }
 
     @Override

@@ -1,5 +1,6 @@
 package com.instser.chat.service;
 
+import com.instser.chat.common.exception.PaymentException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -40,6 +41,22 @@ public class RedisPaymentSecurityService {
     private int suspiciousExpireDays;
 
     /**
+     * Redis可用性检查（支付安全强依赖）
+     */
+    public void assertRedisAvailable() {
+        try {
+            redisTemplate.opsForValue().get("health_check");
+        } catch (Exception e) {
+            throw buildRedisUnavailableException("Redis健康检查", e);
+        }
+    }
+
+    private PaymentException buildRedisUnavailableException(String action, Exception e) {
+        log.error("Redis不可用，{}失败", action, e);
+        return new PaymentException("支付系统暂时不可用，请稍后再试");
+    }
+
+    /**
      * 检查支付频率限制
      * 使用Redis滑动窗口计数器实现
      *
@@ -76,9 +93,7 @@ public class RedisPaymentSecurityService {
             return allowed;
 
         } catch (Exception e) {
-            log.error("检查支付频率异常，用户ID: {}", userId, e);
-            // 异常情况下允许支付，避免影响正常业务
-            return true;
+            throw buildRedisUnavailableException("支付频率检查", e);
         }
     }
 
@@ -110,8 +125,7 @@ public class RedisPaymentSecurityService {
             return false; // 首次处理
 
         } catch (Exception e) {
-            log.error("防重放攻击检查异常，回调ID: {}", callbackId, e);
-            return false; // 异常情况下允许处理
+            throw buildRedisUnavailableException("回调防重放校验", e);
         }
     }
 
@@ -129,7 +143,7 @@ public class RedisPaymentSecurityService {
             redisTemplate.opsForValue().set(key, System.currentTimeMillis(), Duration.ofMinutes(callbackExpireTime));
             log.debug("回调ID: {} 标记为已处理", callbackId);
         } catch (Exception e) {
-            log.error("标记回调已处理异常，回调ID: {}", callbackId, e);
+            throw buildRedisUnavailableException("回调幂等标记", e);
         }
     }
 
@@ -190,8 +204,7 @@ public class RedisPaymentSecurityService {
             return true;
 
         } catch (Exception e) {
-            log.error("检查可疑用户行为异常，用户ID: {}", userId, e);
-            return true; // 异常情况下允许支付
+            throw buildRedisUnavailableException("可疑行为检查", e);
         }
     }
 
@@ -288,9 +301,7 @@ public class RedisPaymentSecurityService {
             }
 
         } catch (Exception e) {
-            log.error("获取支付会话锁异常，用户ID: {}", userId, e);
-            // ✅ 异常情况下不允许支付，避免并发问题
-            return false;
+            throw buildRedisUnavailableException("获取支付会话锁", e);
         }
     }
 
@@ -331,8 +342,7 @@ public class RedisPaymentSecurityService {
             return exists != null && exists;
 
         } catch (Exception e) {
-            log.error("检查支付会话异常，用户ID: {}", userId, e);
-            return false;
+            throw buildRedisUnavailableException("检查支付会话", e);
         }
     }
 
@@ -378,8 +388,7 @@ public class RedisPaymentSecurityService {
             return false; // 返回false表示首次处理，允许继续处理
 
         } catch (Exception e) {
-            log.error("支付请求防重放检查异常，请求ID: {}, 用户ID: {}", requestId, userId, e);
-            return false; // 异常情况下允许处理，避免影响正常业务
+            throw buildRedisUnavailableException("支付请求防重放校验", e);
         }
     }
 

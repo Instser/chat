@@ -209,6 +209,9 @@ public class PaymentServiceImpl implements PaymentService {
         boolean securityEnabled = true; // 安全验证开关
 
         if (securityEnabled) {
+            // Redis安全依赖校验（安全优先）
+            redisPaymentSecurityService.assertRedisAvailable();
+
             // 1. 支付请求频率限制验证（用户、IP、套餐级别）
             validatePaymentRateLimit(paymentRequest);
 
@@ -450,6 +453,9 @@ public class PaymentServiceImpl implements PaymentService {
             log.info("【支付回调】收到支付回调通知，clientId：{}，requestTime：{}", clientId, requestTime);
 
             log.debug("【支付回调】生成回调唯一标识进行防重放检查");
+
+            // Redis安全依赖校验（安全优先）
+            redisPaymentSecurityService.assertRedisAvailable();
 
             // 生成回调唯一标识进行防重放攻击检查
             String callbackId = generateCallbackId(clientId, requestTime, signature);
@@ -738,6 +744,9 @@ public class PaymentServiceImpl implements PaymentService {
             String tradeStatus = notifyParams.get("trade_status");
             String sign = notifyParams.get("sign");
             String paymentType = notifyParams.get("type"); // 获取支付类型
+
+            // Redis安全依赖校验（安全优先）
+            redisPaymentSecurityService.assertRedisAvailable();
 
             if (outTradeNo == null || sign == null) {
                 log.error("易支付回调参数不完整");
