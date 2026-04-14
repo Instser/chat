@@ -1,13 +1,15 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-01-11 19:30:00
+**📅 最后更新**: 2026-04-14 13:44:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v116.0
+**📊 文档版本**: v118.0
 
 ## 当前任务
 - 验证支付Redis安全优先改造在创建支付与回调流程中的失败行为
 
 ## 最新完成任务
+✅ **标题模型编码前导换行导致400问题修复完成** - 根据标题生成失败日志定位到标题模型请求体中的 `model` 实际值包含前导换行（如 `\r\nQwen/Qwen2.5-7B-Instruct`），根因是 `AiModel` 实体直接暴露数据库中的脏字符串配置，`ChatServiceImpl`、续写与截断检测链路均原样读取使用。为避免只修单点导致遗漏，本次在 `AiModel` 实体 getter 层统一对 `modelCode`、`modelName`、`provider`、`baseUrl`、`apiKey` 执行 `trim()`，使所有 AI 请求路径都自动获得清洗后的值；新增 `AiModelTest` 回归测试验证关键请求字段空白清洗，并与 `GeminiNetworkServiceImplTest` 一起通过测试。已执行 `mvn \"-Dtest=AiModelTest,GeminiNetworkServiceImplTest\" test` 与 `mvn -DskipTests compile` 验证通过。专项报告已输出至 `docs/checks/04-14_13-44_项目检查报告_标题模型编码换行导致400修复_v1.0.md` (2026-04-14 13:44)
+✅ **Gemini联网官方REST兼容修复完成** - 在用户计划将联网模型数据库 `baseUrl` 切换为 `https://generativelanguage.googleapis.com/v1beta` 的前提下，完成联网模块剩余官方兼容修复：将 `GeminiNetworkServiceImpl` 的鉴权头从 `Authorization: Bearer` 改为 `x-goog-api-key`，将工具名从 `googleSearch` 改为 `google_search`，新增 `baseUrl` 末尾斜杠规范化处理；同时修复源码中缺失 `geminiRestTemplate` Bean 的注入风险，在 `WebClientConfig` 中补齐同名 Bean，并新增 `GeminiNetworkServiceImplTest` 验证官方 REST 请求头与工具名。经 `mvn -Dtest=GeminiNetworkServiceImplTest test` 与 `mvn -DskipTests compile` 验证通过。额外确认：若数据库中的 `model_code` 仍为代理专用模型名，或 Key/权限不满足官方要求，联网请求仍会失败，此类问题属于配置前置条件，不属于本次代码兼容问题。专项报告已输出至 `docs/checks/04-14_12-31_项目检查报告_Gemini联网官方REST兼容修复_v1.0.md` (2026-04-14 12:31)
 ✅ **支付Redis安全优先改造完成** - 调整RedisPaymentSecurityService异常处理为fail-closed，新增支付流程Redis可用性硬校验，修复订单状态更新分布式锁返回值空指针风险，确保Redis不可用时支付相关流程安全拒绝处理 (2026-01-10 01:19)
 ✅ **Stripe/PayPal首单优惠金额对齐修复完成** - 修复Stripe支付创建使用套餐原价而非订单优惠价的问题，改为以订单金额进行金额校验与PaymentIntent创建，响应金额与订单一致；同时PayPal支付创建响应金额改为订单金额，并按订单金额校验，确保首单优惠在支付创建与响应中保持一致 (2026-01-05 14:01)
 ✅ **套餐列表用户状态过滤功能实现完成** - 根据用户需求在返回套餐列表时增加用户状态过滤逻辑。核心实现：如果用户为未支付新用户，则移除ID为6的套餐；如果不是未支付用户，则移除ID为5的套餐。技术实现：1)在PaymentController中新增filterPackagesByUserStatus方法，实现基于用户支付状态的套餐过滤；2)修改getPackages方法集成过滤逻辑，在套餐转换前进行过滤；3)使用现有的UserPaymentStatusService.hasNeverPaid()方法判断用户状态；4)添加详细的调试日志记录过滤过程和结果。业务逻辑：未支付新用户可看到ID为1,2,3,4,5的套餐（可能包含新用户特殊优惠），已支付用户可看到ID为1,2,3,4,6的套餐（可能包含高级套餐或续费套餐）。保持了原有的优惠价格显示、汇率转换等功能不变，确保向后兼容性 (2025-08-02 12:42)

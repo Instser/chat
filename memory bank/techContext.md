@@ -14,7 +14,7 @@
 - **汇率服务**: 完整的实时汇率API系统 (exchangerate-api.com)
 - **缓存系统**: Redis 分布式缓存 (your-db-host.example.com:31122)
 - **分布式锁**: Redisson 3.24.3 (基于Redis实现)
-- **联网搜索**: Gemini联网AI模块 (单KEY模式，基于Gemini 2.5-flash模型)
+- **联网搜索**: Gemini联网AI模块 (单KEY模式，基于Gemini 2.5-flash模型，已兼容官方原生REST的 `x-goog-api-key` + `google_search` 请求方式)
 - **内容提取**: Gemini联网一体化处理，智能内容获取和摘要生成
 - **第三方登录**: Google OAuth2、GitHub OAuth2 (前端主导流程，后端API处理)
 - **OAuth2安全**: OAuth2SecurityUtil安全工具类 (状态令牌、AES加密、设备指纹、风险评分)
@@ -46,8 +46,9 @@
 - **支付安全策略**: Redis分布式缓存实现支付频率限制、防重放攻击、可疑行为记录
 - **Stripe回调策略**: Webhook事件使用签名验证；失败按400/500返回以触发重试
 - **分布式锁策略**: Redisson实现订单状态保护、用户支付会话管理
-- **联网搜索策略**: Gemini联网AI模块，单KEY模式，基于Gemini 2.5-flash模型，结构化JSON响应，自动内容摘要
+- **联网搜索策略**: Gemini联网AI模块，单KEY模式，基于Gemini 2.5-flash模型，结构化JSON响应，自动内容摘要；当前联网链路使用 Gemini 原生 `generateContent` 接口，请求头为 `x-goog-api-key`，联网工具为 `google_search`
 - **内容适配策略**: GeminiNetworkService简化实现，直接使用单个API密钥，移除轮询管理复杂性
+- **模型配置容错策略**: `AiModel` 关键请求字段（`modelCode/baseUrl/apiKey/provider/modelName`）在 getter 层统一执行 `trim()`，降低数据库脏空白对 AI 请求构造的影响
 - **OAuth2认证策略**: 前端主导OAuth2流程，后端专注授权码交换和用户信息获取，JWT令牌统一认证
 - **OAuth2安全策略**: CSRF状态验证、AES令牌加密存储、设备指纹识别、风险评分算法、异步审计日志
 

@@ -1,8 +1,43 @@
 # 项目进度状态
 
-**📅 最后更新**: 2026-01-11 19:30:00
+**📅 最后更新**: 2026-04-14 13:44:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v111.0
+**📊 文档版本**: v113.0
+
+## 🚀 最新完成功能 (2026-04-14)
+
+### 标题模型编码前导换行导致400问题修复完成 ✅
+- **实现时间**: 2026年4月14日 13:44
+- **功能描述**: 修复标题生成链路中模型编码带前导换行导致上游返回 `Model does not exist` 的问题，并同步收敛同类请求路径
+- **核心实现**:
+  - **根因定位**: 从日志确认请求体中的 `model` 值实际包含前导换行，说明模型配置存在脏空白且请求层未清洗
+  - **统一修复**: 在 `AiModel` 实体 getter 层对 `modelCode/modelName/provider/baseUrl/apiKey` 统一 `trim()`
+  - **影响收敛**: 标题生成、普通聊天、续写、截断检测等依赖 `AiModel` 的请求链路同步受益
+  - **回归测试**: 新增 `AiModelTest` 验证关键请求字段空白清洗行为
+- **验证结果**:
+  - `mvn "-Dtest=AiModelTest,GeminiNetworkServiceImplTest" test` ✅
+  - `mvn -DskipTests compile` ✅
+- **文档输出**: `docs/checks/04-14_13-44_项目检查报告_标题模型编码换行导致400修复_v1.0.md`
+
+## 🚀 最新完成功能 (2026-04-14)
+
+### Gemini联网官方REST兼容修复完成 ✅
+- **实现时间**: 2026年4月14日 12:31
+- **功能描述**: 配合联网模型数据库 `baseUrl` 切换至 Google 官方 Gemini 原生 REST 地址，完成联网模块剩余兼容修复
+- **核心实现**:
+  - **官方鉴权兼容**: `GeminiNetworkServiceImpl` 请求头从 `Authorization: Bearer` 改为 `x-goog-api-key`
+  - **联网工具兼容**: 请求体中的搜索工具名从 `googleSearch` 改为 `google_search`
+  - **URL 规范化**: 新增 `baseUrl` 末尾斜杠清理，避免拼接出双斜杠 URL
+  - **Bean 注入修复**: 在 `WebClientConfig` 中新增 `geminiRestTemplate` Bean，消除源码中的隐藏注入风险
+  - **回归测试**: 新增 `GeminiNetworkServiceImplTest`，通过红绿测试验证官方 REST 请求头和工具名
+- **兼容性结论**:
+  - 联网模块代码层面的官方 REST 不兼容项已修复
+  - 数据库中的 `model_code` 仍必须为官方支持且支持联网工具的模型名
+  - `api_key` 仍必须为可用的官方 Gemini Key，否则会继续出现 400/401/403/429 等接口错误
+- **验证结果**:
+  - `mvn -Dtest=GeminiNetworkServiceImplTest test` ✅
+  - `mvn -DskipTests compile` ✅
+- **文档输出**: `docs/checks/04-14_12-31_项目检查报告_Gemini联网官方REST兼容修复_v1.0.md`
 
 ## 🚀 最新完成功能 (2026-01-10)
 

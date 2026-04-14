@@ -7,7 +7,6 @@ import com.instser.chat.service.GeminiNetworkService;
 import com.instser.chat.service.GeminiResponseParser;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -28,7 +27,6 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class GeminiNetworkServiceImpl implements GeminiNetworkService {
 
-    @Qualifier("geminiRestTemplate")
     private final RestTemplate restTemplate;
 
     private final AiModelService aiModelService;
@@ -58,16 +56,16 @@ public class GeminiNetworkServiceImpl implements GeminiNetworkService {
             // 构建请求体
             Map<String, Object> requestBody = buildGeminiRequest(userContext);
 
-            // 设置请求头，使用Bearer认证
+            // 设置请求头，使用Gemini官方REST鉴权头
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(webSearchModel.getApiKey());
+            headers.set("x-goog-api-key", webSearchModel.getApiKey());
 
             HttpEntity<Map<String, Object>> httpEntity = new HttpEntity<>(requestBody, headers);
 
             // 构建请求URL
             String requestUrl = String.format("%s/models/%s:generateContent",
-                    webSearchModel.getBaseUrl(), webSearchModel.getModelCode());
+                    normalizeBaseUrl(webSearchModel.getBaseUrl()), webSearchModel.getModelCode());
 
             log.info("【Gemini联网】发送请求到：{}，模型：{}", webSearchModel.getBaseUrl(), webSearchModel.getModelCode());
 
@@ -121,14 +119,21 @@ public class GeminiNetworkServiceImpl implements GeminiNetworkService {
 
         // 构建tools（grounding工具）
         Map<String, Object> googleSearch = new HashMap<>();
-        // 空的googleSearch对象，启用默认的Google搜索
+        // 空的google_search对象，启用默认的Google搜索
 
         Map<String, Object> tool = new HashMap<>();
-        tool.put("googleSearch", googleSearch);
+        tool.put("google_search", googleSearch);
 
         requestBody.put("tools", List.of(tool));
 
         return requestBody;
+    }
+
+    private String normalizeBaseUrl(String baseUrl) {
+        if (baseUrl == null) {
+            return "";
+        }
+        return baseUrl.endsWith("/") ? baseUrl.substring(0, baseUrl.length() - 1) : baseUrl;
     }
 
     @Override

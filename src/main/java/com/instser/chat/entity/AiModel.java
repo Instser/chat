@@ -111,4 +111,28 @@ public class AiModel implements Serializable {
     @TableLogic
     @TableField("deleted")
     private Integer deleted;
+
+    public String getModelCode() {
+        return trimValue(modelCode);
+    }
+
+    public String getModelName() {
+        return trimValue(modelName);
+    }
+
+    public String getProvider() {
+        return trimValue(provider);
+    }
+
+    public String getBaseUrl() {
+        return trimValue(baseUrl);
+    }
+
+    public String getApiKey() {
+        return trimValue(apiKey);
+    }
+
+    private String trimValue(String value) {
+        return value == null ? null : value.trim();
+    }
 }
