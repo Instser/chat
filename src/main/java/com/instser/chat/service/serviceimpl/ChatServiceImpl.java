@@ -523,39 +523,17 @@ public class ChatServiceImpl implements ChatService {
             // 发送流式错误响应给用户
             writeErrorResponse(response, errorMessage);
             
-            // 保存AI的限制回复到数据库
-            saveAiLimitResponseToDatabase(request.getSessionId(), errorMessage, request.getUserId(), model.getId());
+            // 保存错误响应到数据库，使用status=3避免进入后续聊天上下文
+            saveErrorResponse(request.getSessionId(), request.getUserId(), model.getId(), errorMessage);
             
             return ChatResponseDTO.failure(errorMessage);
         } catch (IOException e) {
             log.error("发送错误响应失败，用户ID：{}，会话ID：{}", request.getUserId(), request.getSessionId(), e);
             
             // 即使发送响应失败，也要保存到数据库
-            saveAiLimitResponseToDatabase(request.getSessionId(), errorMessage, request.getUserId(), model.getId());
+            saveErrorResponse(request.getSessionId(), request.getUserId(), model.getId(), errorMessage);
             
             return ChatResponseDTO.failure("System error");
-        }
-    }
-
-    /**
-     * 保存AI限制回复到数据库
-     * 
-     * @param sessionId 会话ID
-     * @param limitMessage 限制消息
-     * @param userId 用户ID
-     * @param modelId 模型ID
-     */
-    private void saveAiLimitResponseToDatabase(String sessionId, String limitMessage, Long userId, Long modelId) {
-        try {
-            // 保存AI的限制回复消息到数据库
-            Long messageDbId = chatMessageService.sendMessage(sessionId, "assistant", limitMessage, userId, modelId, 0);
-            if (messageDbId != null) {
-                log.info("AI限制回复已保存到数据库，用户ID：{}，会话ID：{}，消息内容：{}", userId, sessionId, limitMessage);
-            } else {
-                log.error("保存AI限制回复失败，用户ID：{}，会话ID：{}", userId, sessionId);
-            }
-        } catch (Exception e) {
-            log.error("保存AI限制回复异常，用户ID：{}，会话ID：{}", userId, sessionId, e);
         }
     }
 

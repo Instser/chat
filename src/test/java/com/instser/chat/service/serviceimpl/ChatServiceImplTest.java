@@ -1,5 +1,8 @@
 package com.instser.chat.service.serviceimpl;
 
+import com.instser.chat.dto.ChatRequestDTO;
+import com.instser.chat.dto.ChatResponseDTO;
+import com.instser.chat.entity.AiModel;
 import com.instser.chat.entity.ChatMessage;
 import com.instser.chat.entity.ChatSession;
 import com.instser.chat.entity.User;
@@ -22,6 +25,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
 
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -29,10 +34,97 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.argThat;
 import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ChatServiceImplTest {
+
+    @Test
+    void streamChatWhenDailyLimitExceededShouldSaveErrorResponseWithStatus3InsteadOfNormalAssistantMessage() {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatSessionService chatSessionService = mock(ChatSessionService.class);
+        AiModelService aiModelService = mock(AiModelService.class);
+        ChatLimitService chatLimitService = mock(ChatLimitService.class);
+        ChatRateLimitService chatRateLimitService = mock(ChatRateLimitService.class);
+        FileUploadService fileUploadService = mock(FileUploadService.class);
+        ChatInterruptService chatInterruptService = mock(ChatInterruptService.class);
+        TruncationDetectionService truncationDetectionService = mock(TruncationDetectionService.class);
+        WebSearchContentService webSearchContentService = mock(WebSearchContentService.class);
+        NetworkAiService networkAiService = mock(NetworkAiService.class);
+        WebClient.Builder webClientBuilder = WebClient.builder();
+        RestTemplate restTemplate = new RestTemplate();
+        Executor continuationExecutor = Runnable::run;
+
+        ChatServiceImpl service = new ChatServiceImpl(
+                chatMessageService,
+                chatSessionService,
+                aiModelService,
+                chatLimitService,
+                chatRateLimitService,
+                fileUploadService,
+                chatInterruptService,
+                webClientBuilder,
+                restTemplate,
+                truncationDetectionService,
+                webSearchContentService,
+                networkAiService,
+                continuationExecutor
+        );
+
+        Long userId = 1003L;
+        String sessionId = "session-chat";
+        String userContent = "普通聊天触发限制";
+
+        AiModel model = new AiModel();
+        model.setId(7L);
+        model.setIsAvailable(1);
+        model.setModelCode("test-model");
+
+        ChatMessage savedUserMessage = new ChatMessage();
+        savedUserMessage.setId(501L);
+        savedUserMessage.setMessageId("msg-user-chat");
+        savedUserMessage.setSessionId(sessionId);
+        savedUserMessage.setUserId(userId);
+        savedUserMessage.setRole("user");
+        savedUserMessage.setContent(userContent);
+
+        when(aiModelService.getById(model.getId())).thenReturn(model);
+        when(chatMessageService.sendMessage(sessionId, "user", userContent, userId, model.getId(), 0)).thenReturn(501L);
+        when(chatMessageService.getById(501L)).thenReturn(savedUserMessage);
+        when(chatLimitService.validateChatPermission(userId)).thenReturn(permissionOk());
+        when(chatLimitService.validateModelChatPermission(userId, String.valueOf(model.getId()))).thenReturn(permissionOk());
+        when(chatRateLimitService.checkUserChatRateLimit(userId)).thenReturn(true);
+        when(chatRateLimitService.getClientIpAddress()).thenReturn("127.0.0.1");
+        when(chatRateLimitService.checkIpChatRateLimit(anyString())).thenReturn(true);
+        when(chatRateLimitService.checkDailyChatLimit(userId)).thenReturn(false);
+        when(chatInterruptService.hasActiveSession(userId)).thenReturn(false);
+
+        ChatRequestDTO request = new ChatRequestDTO();
+        request.setSessionId(sessionId);
+        request.setModelId(model.getId());
+        request.setMessages(List.of(Map.of("role", "user", "content", userContent)));
+
+        HttpServletResponse response = new MockHttpServletResponse();
+
+        ChatResponseDTO result = service.processStreamChat(request, authentication(userId), response);
+
+        assertEquals(false, result.isSuccess());
+        verify(chatMessageService).sendErrorResponseMessage(
+                sessionId,
+                userId,
+                model.getId(),
+                "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow."
+        );
+        verify(chatMessageService, never()).sendMessage(
+                sessionId,
+                "assistant",
+                "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.",
+                userId,
+                model.getId(),
+                0
+        );
+    }
 
     @Test
     void retryWhenDailyLimitExceededShouldDeleteTargetMessageBeforeSavingNewErrorResponse() {
@@ -216,5 +308,12 @@ class ChatServiceImplTest {
         user.setRole("user");
         UserDetailsServiceImpl.CustomUserDetails principal = new UserDetailsServiceImpl.CustomUserDetails(user);
         return new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities());
+    }
+
+    private com.instser.chat.vo.ChatLimitVO permissionOk() {
+        com.instser.chat.vo.ChatLimitVO permission = com.instser.chat.vo.ChatLimitVO.success();
+        permission.setPackageName("pkg");
+        permission.setLimitType("daily");
+        return permission;
     }
 }

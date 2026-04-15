@@ -1,10 +1,23 @@
 # 项目进度状态
 
-**📅 最后更新**: 2026-04-15 17:29:00
+**📅 最后更新**: 2026-04-15 17:37:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v115.0
+**📊 文档版本**: v116.0
 
 ## 🚀 最新完成功能 (2026-04-15)
+
+### chat限制错误响应状态统一与同类问题排查完成 ✅
+- **实现时间**: 2026年4月15日 17:37
+- **功能描述**: 将普通 `chat` 的限制错误响应统一改为 `status=3` 落库，并完成同类错误响应按普通消息保存问题的全局排查
+- **核心实现**:
+  - **根因定位**: `saveErrorResponseAndReturn` 之前调用 `saveAiLimitResponseToDatabase`，导致普通 `chat` 的限制说明以普通 assistant 消息保存
+  - **统一收口**: 改为直接调用 `saveErrorResponse`，统一走 `sendErrorResponseMessage(status=3)`
+  - **上下文修复**: 使普通 `chat` 的限制说明不再进入后续 AI 聊天上下文
+  - **代码清理**: 删除已失效的 `saveAiLimitResponseToDatabase` 方法，避免后续误用
+  - **同类排查**: 全局检查 `ChatServiceImpl/ChatMessageServiceImpl` 后，未再发现限制说明按普通 assistant 消息落库的同类入口
+- **验证结果**:
+  - `mvn -Dtest=ChatServiceImplTest test` ✅
+- **文档输出**: `docs/checks/04-15_17-37_项目检查报告_chat限制错误响应状态统一与同类问题排查_v1.0.md`
 
 ### 三条错误响应链路核对与edit-resend限制修复完成 ✅
 - **实现时间**: 2026年4月15日 17:29

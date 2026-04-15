@@ -1,13 +1,14 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-04-15 17:29:00
+**📅 最后更新**: 2026-04-15 17:37:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v120.0
+**📊 文档版本**: v121.0
 
 ## 当前任务
-- 核对 chat/retry/edit-resend 三条错误响应链路，并修复 edit-resend 在限制场景下未保留用户新编辑内容的问题
+- 统一 chat/retry/edit-resend 三条限制错误响应的落库状态，并排查同类错误响应被当作普通消息保存的问题
 
 ## 最新完成任务
+✅ **chat限制错误响应状态统一完成** - 在继续核对三条错误响应链路时确认普通 `chat` 仍存在与 `retry/edit-resend` 不一致的问题：命中每日限制/频率限制时，`saveErrorResponseAndReturn` 通过 `saveAiLimitResponseToDatabase` 调用普通 `sendMessage(..., "assistant", ...)` 落库，导致限制说明以 `status=1` 保存并进入后续聊天上下文。现已将该入口统一改为调用 `saveErrorResponse`，使普通 `chat` 的限制响应也通过 `sendErrorResponseMessage` 以 `status=3` 落库；同时删除已失效的 `saveAiLimitResponseToDatabase` 方法，避免后续误用。新增 `streamChatWhenDailyLimitExceededShouldSaveErrorResponseWithStatus3InsteadOfNormalAssistantMessage` 回归测试，并与既有 `retry/edit-resend` 测试一起通过 `mvn -Dtest=ChatServiceImplTest test`。随后对 `ChatServiceImpl` 与 `ChatMessageServiceImpl` 做同类入口排查，当前未再发现“限制说明文本按普通 assistant 消息落库”的残留路径。专项报告已输出至 `docs/checks/04-15_17-37_项目检查报告_chat限制错误响应状态统一与同类问题排查_v1.0.md` (2026-04-15 17:37)
 ✅ **edit-resend限制场景内容替换顺序修复完成** - 对普通 `chat`、`retry`、`edit-resend` 三条错误响应链路进行并排检查后确认：普通 `chat` 已具备“先保存用户消息再返回限制说明”的行为，`retry` 已具备“先删除旧消息再返回限制说明”的行为，但 `edit-resend` 仍然在聊天频率/每日限制校验通过前提前返回，导致用户新编辑内容没有替换旧消息。现已在 `ChatServiceImpl.processEditResendChat` 中将 `validateChatRateLimit` 移到“删除旧用户消息及后续消息、保存新用户消息、转移原附件”之后执行，确保用户在 `edit-resend` 命中限制时，会话中仍保留新编辑内容，并只追加最新限制说明；同时扩展 `ChatServiceImplTest`，新增 `editResendWhenDailyLimitExceededShouldReplaceUserMessageBeforeSavingNewErrorResponse` 回归测试，并与既有 `retry` 回归测试一起通过 `mvn -Dtest=ChatServiceImplTest test` 验证。专项报告已输出至 `docs/checks/04-15_17-29_项目检查报告_三条错误响应链路与edit-resend限制修复_v1.0.md` (2026-04-15 17:29)
 ✅ **retry错误响应重复累加问题修复完成** - 定位到 `/chat/retry` 链路中聊天频率/每日限制校验执行时机过早：用户对 `Request failed. Please try again later.` 或 `Your daily usage limit for this model has been reached...` 这类错误响应点击重新生成时，后端会先命中新一轮限制校验并再次保存错误响应，导致旧错误消息未删除而持续累加。修复方案是在 `ChatServiceImpl.processRetryChat` 中将 `validateChatRateLimit` 调整到 `deleteMessagesFromPoint` 之后执行，确保 retry 无论目标是否为错误响应，都会先删除目标消息及其后续消息，再根据当前限制状态决定是否返回新的错误响应；同时新增 `ChatServiceImplTest` 回归测试，验证“错误响应重试且仍处于每日限制时，必须先删旧消息再保存新错误消息”的顺序行为。已执行 `mvn -Dtest=ChatServiceImplTest test` 验证通过，专项报告已输出至 `docs/checks/04-15_15-47_项目检查报告_retry错误响应重复累加修复_v1.0.md` (2026-04-15 15:47)
 ✅ **标题模型编码前导换行导致400问题修复完成** - 根据标题生成失败日志定位到标题模型请求体中的 `model` 实际值包含前导换行（如 `\r\nQwen/Qwen2.5-7B-Instruct`），根因是 `AiModel` 实体直接暴露数据库中的脏字符串配置，`ChatServiceImpl`、续写与截断检测链路均原样读取使用。为避免只修单点导致遗漏，本次在 `AiModel` 实体 getter 层统一对 `modelCode`、`modelName`、`provider`、`baseUrl`、`apiKey` 执行 `trim()`，使所有 AI 请求路径都自动获得清洗后的值；新增 `AiModelTest` 回归测试验证关键请求字段空白清洗，并与 `GeminiNetworkServiceImplTest` 一起通过测试。已执行 `mvn \"-Dtest=AiModelTest,GeminiNetworkServiceImplTest\" test` 与 `mvn -DskipTests compile` 验证通过。专项报告已输出至 `docs/checks/04-14_13-44_项目检查报告_标题模型编码换行导致400修复_v1.0.md` (2026-04-14 13:44)
