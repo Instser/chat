@@ -4162,12 +4162,6 @@ public class ChatServiceImpl implements ChatService {
             ChatSession chatSession = validation.getChatSession();
             LogUtils.logUserSessionOperation(log, userId, sessionId, "重试验证", "所有权限验证通过，准备删除消息，用户ID: {}，消息ID: {}", userId, messageId);
 
-            // 检查聊天频率限制
-            ChatResponseDTO rateLimitResult = validateChatRateLimit(userId, sessionId, modelId, response);
-            if (rateLimitResult != null) {
-                return;
-            }
-
             // 删除指定AI消息及之后的所有消息
             int deletedCount = chatMessageService.deleteMessagesFromPoint(messageId, sessionId);
             if (deletedCount == 0) {
@@ -4177,6 +4171,13 @@ public class ChatServiceImpl implements ChatService {
             }
 
             LogUtils.logUserSessionOperation(log, userId, sessionId, "重试执行", "成功删除{}条消息，消息删除安全完成，准备重新生成AI回复", deletedCount);
+
+            // 重试错误响应消息时也需要先清理旧消息，再返回新的限制错误，避免错误消息无限累加
+            Long rateLimitModelId = modelId != null ? modelId : chatSession.getModelId();
+            ChatResponseDTO rateLimitResult = validateChatRateLimit(userId, sessionId, rateLimitModelId, response);
+            if (rateLimitResult != null) {
+                return;
+            }
 
             // 获取删除后的会话消息，构建新的聊天请求（排除错误响应）
             List<ChatMessage> remainingMessages = chatMessageService.getSessionMessagesForAi(sessionId);
@@ -4412,12 +4413,6 @@ public class ChatServiceImpl implements ChatService {
             ChatSession chatSession = validation.getChatSession();
             LogUtils.logUserSessionOperation(log, userId, sessionId, "编辑重发", "所有权限验证通过，用户ID: {}，消息ID: {}", userId, messageId);
 
-            // 检查聊天频率限制
-            ChatResponseDTO rateLimitResult = validateChatRateLimit(userId, sessionId, modelId, response);
-            if (rateLimitResult != null) {
-                return;
-            }
-
             // 在删除消息之前，先获取被编辑消息的文件关联信息
             String originalFilesId = fileUploadService.getFileIdsByMessageId(messageId);
             log.info("被编辑消息的原始文件关联：{}", originalFilesId);
@@ -4488,6 +4483,13 @@ public class ChatServiceImpl implements ChatService {
                 } else {
                     log.info("edit-resend场景：文件关联转移成功验证通过");
                 }
+            }
+
+            // edit-resend 命中限制时也要先完成用户编辑内容替换，避免旧内容残留
+            Long rateLimitModelId = modelId != null ? modelId : chatSession.getModelId();
+            ChatResponseDTO rateLimitResult = validateChatRateLimit(userId, sessionId, rateLimitModelId, response);
+            if (rateLimitResult != null) {
+                return;
             }
 
             // 获取更新后的会话消息，构建新的聊天请求（排除错误响应）

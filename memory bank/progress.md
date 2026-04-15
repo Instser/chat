@@ -1,8 +1,35 @@
 # 项目进度状态
 
-**📅 最后更新**: 2026-04-14 13:44:00
+**📅 最后更新**: 2026-04-15 17:29:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v113.0
+**📊 文档版本**: v115.0
+
+## 🚀 最新完成功能 (2026-04-15)
+
+### 三条错误响应链路核对与edit-resend限制修复完成 ✅
+- **实现时间**: 2026年4月15日 17:29
+- **功能描述**: 完成普通 `chat`、`retry`、`edit-resend` 三条错误响应链路的代码核对，并修复 `edit-resend` 在限制场景下未保留用户新编辑内容的问题
+- **核心实现**:
+  - **链路核对**: 确认普通 `chat` 已具备“先保存用户消息再返回限制说明”，`retry` 已具备“先删除旧消息再返回限制说明”
+  - **根因定位**: `processEditResendChat` 原先在删除旧消息和保存新消息前就执行 `validateChatRateLimit`
+  - **顺序修正**: 将 `edit-resend` 的频率/每日限制校验移动到“删除旧消息 + 保存新用户消息 + 附件转移”之后
+  - **行为收敛**: 用户在 `edit-resend` 命中限制时，会话中保留新编辑内容，并仅追加一条最新限制说明
+  - **回归测试**: 在 `ChatServiceImplTest` 中新增 `editResendWhenDailyLimitExceededShouldReplaceUserMessageBeforeSavingNewErrorResponse`
+- **验证结果**:
+  - `mvn -Dtest=ChatServiceImplTest test` ✅
+- **文档输出**: `docs/checks/04-15_17-29_项目检查报告_三条错误响应链路与edit-resend限制修复_v1.0.md`
+
+### retry错误响应重复累加修复完成 ✅
+- **实现时间**: 2026年4月15日 15:47
+- **功能描述**: 修复用户在聊天限制错误响应上点击重新生成时，旧错误消息未删除、后端持续追加新错误消息的问题
+- **核心实现**:
+  - **根因定位**: `ChatServiceImpl.processRetryChat` 在删除目标消息前先执行 `validateChatRateLimit`，导致受限状态下直接再次落库错误响应并提前返回
+  - **顺序修正**: 将聊天频率/每日限制校验移动到 `chatMessageService.deleteMessagesFromPoint` 之后执行
+  - **行为收敛**: retry 命中限制时，先清掉旧错误消息及其后续消息，再仅保存最新一条错误响应
+  - **回归测试**: 新增 `ChatServiceImplTest`，验证“错误响应重试且仍受限”场景下的删除与落库顺序
+- **验证结果**:
+  - `mvn -Dtest=ChatServiceImplTest test` ✅
+- **文档输出**: `docs/checks/04-15_15-47_项目检查报告_retry错误响应重复累加修复_v1.0.md`
 
 ## 🚀 最新完成功能 (2026-04-14)
 
