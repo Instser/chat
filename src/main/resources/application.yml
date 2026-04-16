@@ -144,6 +144,12 @@ performance:
       description: ""      # 服务器描述信息，为空时自动检测
       auto-detect: true    # 是否启用自动检测服务器信息
 
+cache:
+  management:
+    admin:
+      account: ${CACHE_MANAGEMENT_ADMIN_ACCOUNT:aaaugment}
+      password: ${CACHE_MANAGEMENT_ADMIN_PASSWORD:your-admin-password}
+
 
 
 # MyBatis-Plus配置

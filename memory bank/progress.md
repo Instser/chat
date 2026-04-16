@@ -1,10 +1,40 @@
 # 项目进度状态
 
-**📅 最后更新**: 2026-04-15 17:37:00
+**📅 最后更新**: 2026-04-16 15:29:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v116.0
+**📊 文档版本**: v119.0
 
 ## 🚀 最新完成功能 (2026-04-15)
+
+## 🚀 最新完成功能 (2026-04-16)
+
+### 管理员全量清理用户套餐与聊天次数缓存接口完成 ✅
+- **实现时间**: 2026年4月16日 15:20
+- **功能描述**: 新增管理端接口，支持一次性清理所有用户套餐、权限和聊天次数相关缓存，避免手工删 Redis key
+- **核心实现**:
+  - **管理接口**: 新增 `POST /admin/cache/user-package/refresh-all`
+  - **双层鉴权**: 先走现有 `ManagementApiKeyService` 的管理 API Key 校验，再校验内置管理员账号密码 `aaaugment / your-admin-password`
+  - **鉴权定位澄清**: `aaaugment` 只是接口鉴权账号，不对应数据库中的业务用户，也不参与缓存 key 定位
+  - **缓存收口**: 在 `ChatLimitCacheManager` 中新增 `clearAllUserPackageCaches()`，统一清理 `user:account:*`、`package:config:*`、`model:permission:*`、`user:remaining:*`
+  - **批量删除能力**: 在 `HybridCacheManager` 增加 `evictPattern`，在 `CachedUsageService` 增加 `evictAllUserModelCaches`
+  - **最小影响范围**: 接口只清套餐/权限/次数相关缓存，不提供整库 `FLUSHDB/FLUSHALL`，避免误伤支付防重放、频率限制、会话和并发控制数据
+- **验证结果**:
+  - `mvn "-Dtest=ChatLimitCacheManagerTest,AdminCacheControllerTest" test` ✅
+- **业务价值**:
+  - 直接修改 `t_user_account` 或套餐配置后可批量立即生效，无需逐个删 key 或重启服务
+  - 管理动作收敛为可审计、可复用的标准接口
+  - 降低误删全局 Redis 数据带来的安全和一致性风险
+
+### 管理缓存鉴权账号配置化完成 ✅
+- **实现时间**: 2026年4月16日 15:29
+- **功能描述**: 将缓存管理接口二次鉴权使用的管理员账号密码迁移到 `application.yml` 配置
+- **核心实现**:
+  - **配置项新增**: `cache.management.admin.account`、`cache.management.admin.password`
+  - **环境变量覆盖**: 支持 `CACHE_MANAGEMENT_ADMIN_ACCOUNT`、`CACHE_MANAGEMENT_ADMIN_PASSWORD`
+  - **控制器改造**: `AdminCacheController` 使用 `@Value` 读取配置，不再依赖硬编码常量
+  - **测试更新**: `AdminCacheControllerTest` 改为验证“配置字段注入后生效”
+- **验证结果**:
+  - `mvn "-Dtest=AdminCacheControllerTest,ChatLimitCacheManagerTest" test` ✅
 
 ### chat限制错误响应状态统一与同类问题排查完成 ✅
 - **实现时间**: 2026年4月15日 17:37

@@ -39,19 +39,42 @@ public class ChatLimitCacheManager {
         Long userId = event.getUserId();
         
         try {
-            // 清除用户账户缓存
-            hybridCacheManager.evict(USER_ACCOUNT_CACHE_PREFIX + userId);
-            
-            // 清除模型权限缓存（通配符模式，需要实现evictPattern方法）
-            evictModelPermissionCacheForUser(userId);
-            
-            // 清除用户的缓存次数（新增）
-            evictUserModelUsageCacheForUser(userId);
+            refreshUserPackageCaches(userId, event.getNewPackageId());
             
             log.info("用户{}套餐变更（{}），已清除所有相关缓存", userId, event.getChangeType());
         } catch (Exception e) {
             log.error("处理用户{}套餐变更事件异常", userId, e);
         }
+    }
+
+    /**
+     * 手动刷新指定用户套餐相关缓存
+     */
+    public void refreshUserPackageCaches(Long userId, Long packageId) {
+        if (userId == null) {
+            log.warn("手动刷新用户套餐缓存失败，userId不能为空");
+            return;
+        }
+
+        hybridCacheManager.evict(USER_ACCOUNT_CACHE_PREFIX + userId);
+
+        if (packageId != null) {
+            hybridCacheManager.evict(PACKAGE_CONFIG_CACHE_PREFIX + packageId);
+        }
+
+        evictModelPermissionCacheForUser(userId);
+        evictUserModelUsageCacheForUser(userId);
+    }
+
+    /**
+     * 手动清除所有用户套餐与聊天次数相关缓存
+     */
+    public void clearAllUserPackageCaches() {
+        hybridCacheManager.evictPattern(USER_ACCOUNT_CACHE_PREFIX + "*");
+        hybridCacheManager.evictPattern(PACKAGE_CONFIG_CACHE_PREFIX + "*");
+        hybridCacheManager.evictPattern(MODEL_PERMISSION_CACHE_PREFIX + "*");
+        cachedUsageService.evictAllUserModelCaches();
+        log.info("已清除所有用户套餐与聊天次数相关缓存");
     }
     
     /**
@@ -84,16 +107,8 @@ public class ChatLimitCacheManager {
      */
     public void clearAllPackageConfigCaches() {
         try {
-            // 这里应该使用Redis模式匹配删除，但HybridCacheManager没有提供批量删除方法
-            // 暂时通过常见套餐ID清除，实际使用中可以根据需要扩展
-            Long[] commonPackageIds = {1L, 2L, 3L, 4L, 5L, 6L, 7L, 8L, 9L, 10L};
-            
-            for (Long packageId : commonPackageIds) {
-                String cacheKey = PACKAGE_CONFIG_CACHE_PREFIX + packageId;
-                hybridCacheManager.evict(cacheKey);
-            }
-            
-            log.info("已清除常见套餐配置缓存，如需清理更多请手动处理或重启Redis");
+            hybridCacheManager.evictPattern(PACKAGE_CONFIG_CACHE_PREFIX + "*");
+            log.info("已清除所有套餐配置缓存");
         } catch (Exception e) {
             log.error("清除套餐配置缓存异常", e);
         }

@@ -26,6 +26,7 @@
 - **数据库字符集**: utf8mb4_unicode_ci
 - **时区**: 系统默认时区
 - **日志**: SLF4J + Logback (优化配置，分离式日志记录)
+- **管理缓存接口**: `/admin/cache/user-package/refresh-all`，需同时提供管理 API Key 与 `application.yml` 中 `cache.management.admin.account/password` 配置的管理员账号密码
 
 ## 技术约束
 1. **JDK版本**: 必须使用JDK 17，不允许修改
@@ -44,6 +45,8 @@
 - **文档解析策略**: 工厂模式实现多格式文档解析器，支持文本、Office、PDF、图片等格式
 - **图片解析策略**: AI服务集成，Base64编码传输，JSON格式响应解析
 - **支付安全策略**: Redis分布式缓存实现支付频率限制、防重放攻击、可疑行为记录
+- **套餐缓存刷新策略**: 直接改库后通过管理接口调用 `ChatLimitCacheManager.clearAllUserPackageCaches()` 批量清理 `user:account:*`、`package:config:*`、`model:permission:*`、`user:remaining:*`；业务事件内部仍保留 `refreshUserPackageCaches(userId, packageId)` 进行单用户失效；不建议直接整库清空 Redis
+- **管理鉴权配置策略**: 管理缓存接口的二次鉴权账号密码写入 `application.yml`，支持环境变量覆盖，避免源码硬编码敏感凭据
 - **Stripe回调策略**: Webhook事件使用签名验证；失败按400/500返回以触发重试
 - **分布式锁策略**: Redisson实现订单状态保护、用户支付会话管理
 - **联网搜索策略**: Gemini联网AI模块，单KEY模式，基于Gemini 2.5-flash模型，结构化JSON响应，自动内容摘要；当前联网链路使用 Gemini 原生 `generateContent` 接口，请求头为 `x-goog-api-key`，联网工具为 `google_search`

@@ -366,4 +366,19 @@ public class CachedUsageService {
             LogUtils.logUserError(log, userId, "清除缓存次数", "清除模型{}缓存异常", e, modelId);
         }
     }
+
+    /**
+     * 清除所有用户模型剩余次数缓存
+     */
+    public void evictAllUserModelCaches() {
+        try {
+            java.util.Set<String> keys = redisTemplate.keys(REMAINING_CACHE_PREFIX + "*");
+            if (keys != null && !keys.isEmpty()) {
+                redisTemplate.delete(keys);
+            }
+            log.info("已清除所有用户模型剩余次数缓存，共{}个key", keys == null ? 0 : keys.size());
+        } catch (Exception e) {
+            log.error("清除所有用户模型剩余次数缓存异常", e);
+        }
+    }
 }

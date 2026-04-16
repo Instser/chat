@@ -213,6 +213,51 @@ public class HybridCacheManager {
     }
 
     /**
+     * 按模式删除缓存，当前支持前缀通配符，如 user:account:*
+     *
+     * @param pattern Redis key pattern
+     */
+    public void evictPattern(String pattern) {
+        try {
+            l1Cache.asMap().keySet().removeIf(key -> matchesPattern(key, pattern));
+            log.debug("L1缓存按模式删除成功，pattern: {}", pattern);
+
+            if (circuitBreaker.isAvailable()) {
+                try {
+                    Set<String> keys = redisTemplate.keys(pattern);
+                    if (keys != null && !keys.isEmpty()) {
+                        redisTemplate.delete(keys);
+                    }
+                    log.debug("L2缓存按模式删除成功，pattern: {}, count: {}", pattern, keys == null ? 0 : keys.size());
+                    circuitBreaker.recordSuccess();
+                } catch (Exception e) {
+                    log.warn("L2缓存按模式删除失败，pattern: {}, 错误: {}", pattern, e.getMessage());
+                    circuitBreaker.recordFailure();
+                }
+            }
+        } catch (Exception e) {
+            log.error("混合缓存按模式删除异常，pattern: {}", pattern, e);
+        }
+    }
+
+    private boolean matchesPattern(String key, String pattern) {
+        if (pattern == null || pattern.isEmpty()) {
+            return false;
+        }
+
+        if (!pattern.contains("*")) {
+            return pattern.equals(key);
+        }
+
+        if (pattern.endsWith("*")) {
+            String prefix = pattern.substring(0, pattern.length() - 1);
+            return key.startsWith(prefix);
+        }
+
+        return key.equals(pattern.replace("*", ""));
+    }
+
+    /**
      * 检查缓存是否存在
      * 
      * @param key 缓存键
