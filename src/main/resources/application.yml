@@ -144,14 +144,6 @@ performance:
       description: ""      # 服务器描述信息，为空时自动检测
       auto-detect: true    # 是否启用自动检测服务器信息
 
-cache:
-  management:
-    admin:
-      account: ${CACHE_MANAGEMENT_ADMIN_ACCOUNT:aaaugment}
-      password: ${CACHE_MANAGEMENT_ADMIN_PASSWORD:your-admin-password}
-
-
-
 # MyBatis-Plus配置
 mybatis-plus:
   # 配置扫描通用枚举
@@ -555,7 +547,10 @@ cache:
     # 使用现有的management端口8081，不需要额外端口配置
     api-key:
       enabled: true        # 启用API密钥认证
-      master: ${CACHE_API_KEY:}  # 主API密钥，建议通过环境变量设置
+      master: ${CACHE_API_KEY:WnhEEINL8Xmu2VpBeIZUyPNUHZrfQmkzJomhirdmz_g}  # 主API密钥，建议通过环境变量设置
+    admin:
+      account: ${CACHE_MANAGEMENT_ADMIN_ACCOUNT:aaaugment}
+      password: ${CACHE_MANAGEMENT_ADMIN_PASSWORD:your-admin-password}
 
 # 自定义缓存配置
 custom:
