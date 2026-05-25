@@ -1,0 +1,38 @@
+# Maven
+target/*
+!target/*.jar
+*.class
+*.war
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.project
+.classpath
+.settings/
+
+# Git
+.git/
+.gitignore
+
+# Logs
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs (不需要打包进镜像)
+docs/
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*.yml
+
+# Temp
+tmp/
+temp/
+*.tmp

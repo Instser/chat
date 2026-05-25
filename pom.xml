@@ -228,10 +228,16 @@
             <artifactId>spring-boot-starter-aop</artifactId>
         </dependency>
 
-        <!-- Micrometer Core for WebSearchMetrics (usually included in Spring Boot Actuator) -->
+        <!-- Spring Boot Actuator for application metrics and management endpoints -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- Prometheus registry for /actuator/prometheus metrics export -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
         </dependency>
 
         <!-- Stripe Java SDK -->

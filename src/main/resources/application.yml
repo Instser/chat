@@ -495,9 +495,9 @@ management:
   server:
     address: 127.0.0.1
     port: 8081
-  metrics:
-    export:
-      prometheus:
+  prometheus:
+    metrics:
+      export:
         enabled: true
 
 # 异步任务配置优化

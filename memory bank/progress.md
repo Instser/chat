@@ -1,10 +1,20 @@
 # 项目进度状态
 
-**📅 最后更新**: 2026-04-16 15:29:00
+**📅 最后更新**: 2026-05-17 22:32:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v119.0
+**📊 文档版本**: v120.0
 
-## 🚀 最新完成功能 (2026-04-15)
+## 🚀 最新完成功能 (2026-05-17)
+
+### Micrometer Prometheus基础监控接入完成 ✅
+- **实现时间**: 2026年5月17日 22:32
+- **功能描述**: 在现有 Spring Boot Actuator 基础上接入 Prometheus registry，使基础运行指标可被 Prometheus 抓取
+- **核心实现**:
+  - **依赖新增**: `io.micrometer:micrometer-registry-prometheus`，版本由 Spring Boot 3.1.12 统一管理
+  - **配置调整**: 将 Prometheus 导出配置调整为 `management.prometheus.metrics.export.enabled=true`
+  - **端点保持**: 继续使用 `127.0.0.1:8081/actuator/prometheus`
+  - **范围控制**: 仅启用 JVM、GC、线程、进程、系统和 HTTP 自动指标，不新增业务错误指标代码
+- **文档输出**: `docs/05-17 22-32 Micrometer基础监控接入报告 v1.0.md`
 
 ## 🚀 最新完成功能 (2026-04-16)
 

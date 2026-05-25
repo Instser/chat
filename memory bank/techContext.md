@@ -19,6 +19,7 @@
 - **第三方登录**: Google OAuth2、GitHub OAuth2 (前端主导流程，后端API处理)
 - **OAuth2安全**: OAuth2SecurityUtil安全工具类 (状态令牌、AES加密、设备指纹、风险评分)
 - **OAuth2审计**: OAuth2AuditService审计服务 (异步日志记录、安全事件监控)
+- **基础监控**: Spring Boot Actuator + Micrometer Prometheus Registry，暴露 JVM、GC、线程、进程、系统和 HTTP 自动指标
 
 ## 开发环境设置
 - **编码**: UTF-8
@@ -26,6 +27,7 @@
 - **数据库字符集**: utf8mb4_unicode_ci
 - **时区**: 系统默认时区
 - **日志**: SLF4J + Logback (优化配置，分离式日志记录)
+- **监控端点**: `/actuator/prometheus`，通过 management 端口 `127.0.0.1:8081` 暴露 Prometheus 指标
 - **管理缓存接口**: `/admin/cache/user-package/refresh-all`，需同时提供管理 API Key 与 `application.yml` 中 `cache.management.admin.account/password` 配置的管理员账号密码
 
 ## 技术约束
