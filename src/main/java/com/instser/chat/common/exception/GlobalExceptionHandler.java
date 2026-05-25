@@ -4,6 +4,7 @@ import com.instser.chat.common.result.Result;
 import com.instser.chat.common.result.ResultCode;
 import com.instser.chat.common.util.ErrorResponseUtil;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -309,10 +310,9 @@ public class GlobalExceptionHandler {
         String method = request.getMethod();
         String message = "系统异常，请联系管理员";
 
-        // 生成异常ID用于追踪
-        String exceptionId = System.currentTimeMillis() + "-" + Thread.currentThread().getId();
+        String traceId = MDC.get("traceId");
 
-        log.error("未知异常 [{}] {} (异常ID: {}): {}", method, requestUrl, exceptionId, e.getMessage(), e);
-        return new Result<>(ResultCode.FAILED.getCode(), message + " (异常ID: " + exceptionId + ")", null);
+        log.error("未知异常 [{}] {} (traceId: {}): {}", method, requestUrl, traceId, e.getMessage(), e);
+        return new Result<>(ResultCode.FAILED.getCode(), message + " (traceId: " + traceId + ")", null);
     }
 }

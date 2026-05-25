@@ -1,6 +1,7 @@
 package com.instser.chat.common.result;
 
 import lombok.Data;
+import org.slf4j.MDC;
 
 import java.io.Serializable;
 
@@ -35,8 +36,14 @@ public class Result<T> implements Serializable {
      */
     private Long timestamp;
 
+    /**
+     * 调用链追踪ID，从 MDC 自动获取
+     */
+    private String traceId;
+
     public Result() {
         this.timestamp = System.currentTimeMillis();
+        this.traceId = MDC.get("traceId");
     }
 
     public Result(Integer code, String message) {

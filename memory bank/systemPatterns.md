@@ -20,6 +20,7 @@
 - **异常处理模式**: WebSearchException业务异常体系，统一错误码管理
 - **缓存模式**: WebSearchCacheService权限缓存，Caffeine本地缓存优化
 - **监控模式**: WebSearchMetrics性能指标收集，AOP切面监控
+- **全链路追踪模式**: TraceIdFilter (`@Order(HIGHEST_PRECEDENCE)`) 在请求入口自动生成/传递 traceId → 写入 SLF4J MDC → 响应头 `X-Trace-Id` 透出 → finally 清理 MDC；`Result<T>` 无参构造自动从 MDC 取值填充 `traceId` 字段；Logback pattern 通过 `%X{traceId}` 输出到所有日志行
 - **基础指标导出模式**: Spring Boot Actuator 自动采集 JVM、GC、线程、进程、系统和 HTTP 请求指标，Micrometer Prometheus Registry 通过 `/actuator/prometheus` 输出抓取格式；业务错误指标暂不扩展
 - **多层缓存模式**: HybridCacheManager实现L1(内存)+L2(Redis)+L3(数据库)三级缓存
 - **熔断器模式**: RedisCircuitBreaker实现Redis故障自动降级和恢复

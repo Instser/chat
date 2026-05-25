@@ -1,14 +1,15 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-05-17 22:32:00
-**👤 更新人员**: Codex
-**📊 文档版本**: v125.0
+**📅 最后更新**: 2026-05-25 22:15:00
+**👤 更新人员**: Claude Code
+**📊 文档版本**: v126.0
 
 ## 当前任务
-- Micrometer Prometheus 基础监控接入已完成，当前只启用 JVM、进程、系统和 HTTP 自动指标，不新增业务错误指标代码
+- 运维开发/内部应用维护平台工程优化进行中，当前已完成 TraceId 全链路追踪（第一阶段），下一步为慢接口拦截器与全局 API 指标（第二阶段）
 
 ## 最新完成任务
-✅ **Micrometer Prometheus基础监控接入完成** - 在现有 Spring Boot Actuator 基础上新增 `io.micrometer:micrometer-registry-prometheus`，使 `/actuator/prometheus` 能输出 Prometheus 可抓取格式；同步将 Prometheus 导出配置调整为 Spring Boot 3.x 推荐结构 `management.prometheus.metrics.export.enabled=true`。本次只接入基础自动指标，包括 JVM、GC、线程、进程、系统和 HTTP server request 指标，不新增业务级 Counter/Timer/Gauge 代码；management 端口和本机绑定策略保持 `127.0.0.1:8081` 不变。实施报告已输出至 `docs/05-17 22-32 Micrometer基础监控接入报告 v1.0.md`。 (2026-05-17 22:32)
+✅ **TraceId 全链路追踪功能完成** — 新增 `TraceIdFilter`（`@Order(HIGHEST_PRECEDENCE)`），在每个 HTTP 请求到达时从请求头获取或自动生成 traceId，写入 SLF4J MDC，响应头返回 `X-Trace-Id`，finally 块清理 MDC 防止线程池泄漏。`Result<T>` 新增 `traceId` 字段，无参构造自动从 `MDC.get("traceId")` 填充。`GlobalExceptionHandler.handleException` 改为使用 MDC traceId 替代原有 `currentTimeMillis-threadId` 拼装。`logback-spring.xml` 的 CONSOLE/ALL_FILE/ERROR_FILE/MONITOR_FILE 共 4 处 pattern 加入 `[%X{traceId}]`。开发遵循 TDD 流程：先写 9 个测试（`TraceIdFilterTest` 3 个、`ResultTraceIdTest` 4 个、`GlobalExceptionHandlerTraceIdTest` 2 个）观察失败，再写最小实现代码通过测试。全量 `mvn test` 17/17 通过，零回归。开发总结输出至 `docs/05-25_22-15_TraceId开发总结_v1.0.md`。 (2026-05-25 22:15)
+✅ **工程优化合规检查与方案设计完成** — 对项目进行 15 项运维开发/内部应用维护平台方向的全面检查，生成合规检查报告（1 项符合、6 项部分符合、8 项不符合）、详细实施方案（15 项分 5 阶段实施，含完整代码示例）和监控体系方案（4 块 Grafana Dashboard、Prometheus 告警规则、Loki 日志采集、主动巡检脚本）。文档输出至 `docs/checks/`、`docs/plans/`、`docs/ops/`。 (2026-05-25 15:30)
 ✅ **管理缓存鉴权账号改为 application.yml 配置驱动** - 将 `AdminCacheController` 中的管理员二次鉴权账号密码从源码硬编码改为配置读取，新增 `application.yml` 配置项 `cache.management.admin.account` 与 `cache.management.admin.password`，并支持通过环境变量 `CACHE_MANAGEMENT_ADMIN_ACCOUNT`、`CACHE_MANAGEMENT_ADMIN_PASSWORD` 覆盖；默认值仍兼容现有 `aaaugment / your-admin-password`。同步更新 `AdminCacheControllerTest`，改为验证“配置字段注入后生效”，已通过 `mvn "-Dtest=AdminCacheControllerTest,ChatLimitCacheManagerTest" test` 验证。 (2026-04-16 15:29)
 ✅ **管理员全量清理用户套餐与聊天次数缓存接口完成** - 根据新要求，将原本“按用户刷新”方案调整为“全量清理所有用户套餐与聊天次数缓存”，新增管理接口 `/admin/cache/user-package/refresh-all`，复用现有 `/admin/cache/**` 管理链路，在 `X-API-Key` 校验通过后，再使用内置管理员账号密码二次校验（`aaaugment` / `your-admin-password`）；其中 `aaaugment` 仅作为接口鉴权凭据，不参与任何业务用户缓存定位。实现上保留 `refreshUserPackageCaches(userId, packageId)` 供业务事件按用户失效使用，同时在 `ChatLimitCacheManager` 新增 `clearAllUserPackageCaches()`，批量清理 `user:account:*`、`package:config:*`、`model:permission:*` 以及 `user:remaining:*` 缓存；为此在 `HybridCacheManager` 增加 `evictPattern`，在 `CachedUsageService` 增加 `evictAllUserModelCaches`。新增/更新 `ChatLimitCacheManagerTest` 与 `AdminCacheControllerTest`，已通过 `mvn "-Dtest=ChatLimitCacheManagerTest,AdminCacheControllerTest" test` 验证。额外确认：仍不建议在生产环境直接 `FLUSHDB/FLUSHALL`，因为项目 Redis 除套餐/次数缓存外还承载支付频率限制、防重放、支付会话、近期待支付订单和并发锁等控制数据，整库清空会放大运行风险。 (2026-04-16 15:20)
 ✅ **chat限制错误响应状态统一完成** - 在继续核对三条错误响应链路时确认普通 `chat` 仍存在与 `retry/edit-resend` 不一致的问题：命中每日限制/频率限制时，`saveErrorResponseAndReturn` 通过 `saveAiLimitResponseToDatabase` 调用普通 `sendMessage(..., "assistant", ...)` 落库，导致限制说明以 `status=1` 保存并进入后续聊天上下文。现已将该入口统一改为调用 `saveErrorResponse`，使普通 `chat` 的限制响应也通过 `sendErrorResponseMessage` 以 `status=3` 落库；同时删除已失效的 `saveAiLimitResponseToDatabase` 方法，避免后续误用。新增 `streamChatWhenDailyLimitExceededShouldSaveErrorResponseWithStatus3InsteadOfNormalAssistantMessage` 回归测试，并与既有 `retry/edit-resend` 测试一起通过 `mvn -Dtest=ChatServiceImplTest test`。随后对 `ChatServiceImpl` 与 `ChatMessageServiceImpl` 做同类入口排查，当前未再发现“限制说明文本按普通 assistant 消息落库”的残留路径。专项报告已输出至 `docs/checks/04-15_17-37_项目检查报告_chat限制错误响应状态统一与同类问题排查_v1.0.md` (2026-04-15 17:37)

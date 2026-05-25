@@ -1,12 +1,26 @@
 # 项目进度状态
 
-**📅 最后更新**: 2026-05-17 22:32:00
-**👤 更新人员**: Codex
-**📊 文档版本**: v120.0
+**📅 最后更新**: 2026-05-25 22:15:00
+**👤 更新人员**: Claude Code
+**📊 文档版本**: v121.0
 
-## 🚀 最新完成功能 (2026-05-17)
+## 🚀 最新完成功能 (2026-05-25)
 
-### Micrometer Prometheus基础监控接入完成 ✅
+### TraceId 全链路追踪功能完成 ✅
+- **实现时间**: 2026年5月25日 22:15
+- **功能描述**: 为项目建立请求级全链路追踪能力，使每个 HTTP 请求通过 traceId 贯穿接口响应、日志输出和异常信息
+- **核心实现**:
+  - **TraceIdFilter**: `@Order(Ordered.HIGHEST_PRECEDENCE)` 最高优先级，请求到达时自动生成/传递 traceId，写入 MDC，响应头返回 `X-Trace-Id`，finally 清理防止线程池泄漏
+  - **Result 增强**: `Result<T>` 新增 `traceId` 字段，无参构造中从 `MDC.get("traceId")` 自动填充，所有工厂方法（success/failed/unauthorized/validateFailed/forbidden）自动继承
+  - **异常处理优化**: `GlobalExceptionHandler.handleException` 改为使用 `MDC.get("traceId")`，替代原有 `currentTimeMillis-threadId` 拼装方式
+  - **日志格式升级**: `logback-spring.xml` 的 CONSOLE/ALL_FILE/ERROR_FILE/MONITOR_FILE 共 4 处 pattern 均加入 `[%X{traceId}]`
+- **开发流程**: 严格遵循 TDD（RED → GREEN → REFACTOR → VERIFICATION），先写 9 个测试用例观察失败，再写最小实现代码通过测试
+- **测试覆盖**:
+  - `TraceIdFilterTest`: 3 个测试（自动生成/透传/MDC清理）
+  - `ResultTraceIdTest`: 4 个测试（无参构造/success/failed/MDC为空）
+  - `GlobalExceptionHandlerTraceIdTest`: 2 个测试（包含traceId/MDC为空不崩溃）
+- **验证结果**: `mvn test` — 17/17 通过（8 已有 + 9 新增），Build SUCCESS，零回归
+- **文档输出**: `docs/05-25_22-15_TraceId开发总结_v1.0.md`、`docs/plans/05-25_15-30_工程优化实施方案_v2.0.md`、`docs/ops/05-25_15-30_运维监控体系方案_v1.0.md`、`docs/checks/05-25_15-00_工程优化合规检查报告_v2.0.md`
 - **实现时间**: 2026年5月17日 22:32
 - **功能描述**: 在现有 Spring Boot Actuator 基础上接入 Prometheus registry，使基础运行指标可被 Prometheus 抓取
 - **核心实现**:

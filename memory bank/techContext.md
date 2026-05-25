@@ -26,7 +26,8 @@
 - **Maven编译**: JDK 17
 - **数据库字符集**: utf8mb4_unicode_ci
 - **时区**: 系统默认时区
-- **日志**: SLF4J + Logback (优化配置，分离式日志记录)
+- **日志**: SLF4J + Logback (优化配置，分离式日志记录，支持 MDC traceId 全链路追踪)
+- **调用链追踪**: TraceIdFilter + SLF4J MDC，支持从请求头 `X-Trace-Id` 透传或自动生成 32 位 UUID，所有日志自动携带 `[%X{traceId}]`
 - **监控端点**: `/actuator/prometheus`，通过 management 端口 `127.0.0.1:8081` 暴露 Prometheus 指标
 - **管理缓存接口**: `/admin/cache/user-package/refresh-all`，需同时提供管理 API Key 与 `application.yml` 中 `cache.management.admin.account/password` 配置的管理员账号密码
 
@@ -126,14 +127,22 @@
 ### 日志文件结构
 - **普通日志**: `jinyu-chat-all.log` - 记录所有控制台输出的内容，不进行级别过滤
 - **错误日志**: `jinyu-chat-error.log` - 记录WARN和ERROR级别的日志内容
+- **监控日志**: `jinyu-chat-monitor.log` - 监控相关信息单独记录
 - **控制台输出**: 开发环境实时查看日志
 
+### 日志格式
+```
+%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] [%X{traceId}] %-5level %logger - %msg%n
+```
+其中 `[%X{traceId}]` 由 `TraceIdFilter` 写入 MDC，支持全链路追踪。
+
 ### 日志配置特点
+- **MDC 追踪**: 通过 `TraceIdFilter` 自动写入 traceId，所有日志行自动携带
 - **分离式记录**: 普通日志和错误日志分别存储，便于问题排查
 - **无级别过滤**: 普通日志文件记录所有通过日志级别控制的内容
 - **错误日志过滤**: 错误日志文件记录WARN和ERROR级别的日志
 - **异步处理**: 使用异步appender提高性能，队列大小1024/256
-- **滚动策略**: 普通日志100MB/文件保留15天，错误日志50MB/文件保留30天
+- **滚动策略**: 普通日志100MB/文件保留20天，错误日志50MB/文件保留45天
 - **级别控制**: 完全通过启动参数控制日志级别，配置文件不设置过滤器
 - **编码统一**: 文件使用UTF-8编码，控制台使用系统默认编码
 
@@ -145,5 +154,5 @@
 
 ### 配置文件
 - **主配置**: `src/main/resources/logback-spring.xml`
-- **更新时间**: 2025年7月19日 00:56
-- **版本**: v1.0 优化配置版本
+- **更新时间**: 2026年5月25日 22:15
+- **版本**: v2.0 (加入 traceId 支持)
