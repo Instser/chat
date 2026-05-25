@@ -4,7 +4,10 @@ import com.instser.chat.service.UserDailyUsageService;
 import com.instser.chat.common.util.LogUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 
@@ -372,11 +375,16 @@ public class CachedUsageService {
      */
     public void evictAllUserModelCaches() {
         try {
-            java.util.Set<String> keys = redisTemplate.keys(REMAINING_CACHE_PREFIX + "*");
-            if (keys != null && !keys.isEmpty()) {
-                redisTemplate.delete(keys);
-            }
-            log.info("已清除所有用户模型剩余次数缓存，共{}个key", keys == null ? 0 : keys.size());
+            String pattern = REMAINING_CACHE_PREFIX + "*";
+            redisTemplate.execute((RedisCallback<Void>) connection -> {
+                Cursor<byte[]> cursor = connection.scan(
+                        ScanOptions.scanOptions().match(pattern).count(100).build());
+                while (cursor.hasNext()) {
+                    connection.del(cursor.next());
+                }
+                return null;
+            });
+            log.info("已清除所有用户模型剩余次数缓存");
         } catch (Exception e) {
             log.error("清除所有用户模型剩余次数缓存异常", e);
         }

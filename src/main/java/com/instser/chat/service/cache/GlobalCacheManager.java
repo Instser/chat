@@ -5,7 +5,10 @@ import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.CacheManager;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.stereotype.Component;
 
 import jakarta.annotation.PostConstruct;
@@ -478,10 +481,15 @@ public class GlobalCacheManager {
         }
 
         try {
-            Set<String> keys = redisTemplate.keys(cacheName + "*");
-            if (keys != null && !keys.isEmpty()) {
-                redisTemplate.delete(keys);
-            }
+            String pattern = cacheName + "*";
+            redisTemplate.execute((RedisCallback<Void>) connection -> {
+                Cursor<byte[]> cursor = connection.scan(
+                        ScanOptions.scanOptions().match(pattern).count(100).build());
+                while (cursor.hasNext()) {
+                    connection.del(cursor.next());
+                }
+                return null;
+            });
             circuitBreaker.recordSuccess();
         } catch (Exception e) {
             circuitBreaker.recordFailure();

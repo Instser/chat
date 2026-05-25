@@ -1,10 +1,21 @@
 # 项目进度状态
 
-**📅 最后更新**: 2026-05-25 23:52:00
+**📅 最后更新**: 2026-05-26 00:05:00
 **👤 更新人员**: Claude Code
-**📊 文档版本**: v124.0
+**📊 文档版本**: v125.0
 
-## 🚀 最新完成功能 (2026-05-25)
+## 🚀 最新完成功能 (2026-05-26)
+
+### 第四阶段：治理与规范化完成 ✅
+- **实现时间**: 2026年5月26日 00:05
+- **功能描述**: 统一外部 HTTP 调用、补齐审计覆盖、规范 Redis Key、KEYS→SCAN 优化
+- **核心实现**:
+  - **4.1 ExternalApiClient**: 统一封装 RestTemplate 调用，提供超时/重试/日志/异常分类。支持 `success()`/`clientError()`/`networkError()` 三类结果，`classifyError()` 识别 timeout/connection_refused/dns_resolve_failed/ssl_error。配套 `ApiCallResult<T>` 泛型结果类。
+  - **4.2 OperationAudit**: 新增 `t_operation_audit` 表（SQL）、`OperationAudit` 实体 + `OperationAuditDao`（MyBatis-Plus）、`OperationAuditEvent`（record 事件类）、`OperationAuditService`（@Async @EventListener 异步消费）。在 `AdminCacheController` 的缓存刷新操作和 `LogManagementController` 的 7 个变更方法（setLevel/resetLevel/3个preset/enableSql/disableSql）中集成审计事件发布。
+  - **4.3 CacheConstants**: 收敛 30+ Redis Key 前缀到统一常量类，格式 `{项目}:{模块}:{类型}:{标识}`，覆盖用户/会话/锁/AI/套餐/支付/联网搜索/熔断等模块。提供 `userAccount(userId)`/`orderLock(orderNo)` 工厂方法。
+  - **4.4 KEYS→SCAN**: 将 5 处 `redisTemplate.keys()` 调用全部替换为游标 `SCAN`（count=100），避免生产环境阻塞。覆盖 `GlobalCacheManager`、`HybridCacheManager`（evictPattern + clear）、`CachedUsageService`、`CacheCleanupRunner`。
+- **全量测试**: `mvn test` — **43/43 通过**，零回归
+- **影响范围**: AdminCacheController/LogManagementController 新增 ApplicationEventPublisher 注入；HybridCacheManager 新增 deleteByPattern 辅助方法；CacheCleanupRunner 移除 Set 导入
 
 ### 运维接口开发完成 ✅
 - **实现时间**: 2026年5月25日 23:52

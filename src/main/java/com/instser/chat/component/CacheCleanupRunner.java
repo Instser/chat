@@ -5,10 +5,11 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.ApplicationArguments;
 import org.springframework.boot.ApplicationRunner;
 import org.springframework.core.annotation.Order;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.stereotype.Component;
-
-import java.util.Set;
 
 /**
  * 系统启动时的缓存清理组件
@@ -46,14 +47,15 @@ public class CacheCleanupRunner implements ApplicationRunner {
     private void clearOldPackageConfigCaches() {
         try {
             String pattern = "package:config:*";
-            Set<String> keys = redisTemplate.keys(pattern);
-            
-            if (keys != null && !keys.isEmpty()) {
-                redisTemplate.delete(keys);
-                log.info("清理旧格式Package配置缓存{}个", keys.size());
-            } else {
-                log.debug("未发现需要清理的Package配置缓存");
-            }
+            redisTemplate.execute((RedisCallback<Void>) connection -> {
+                Cursor<byte[]> cursor = connection.scan(
+                        ScanOptions.scanOptions().match(pattern).count(100).build());
+                while (cursor.hasNext()) {
+                    connection.del(cursor.next());
+                }
+                return null;
+            });
+            log.info("清理旧格式Package配置缓存完成");
         } catch (Exception e) {
             log.warn("清理旧Package配置缓存失败，但不影响系统功能", e);
         }

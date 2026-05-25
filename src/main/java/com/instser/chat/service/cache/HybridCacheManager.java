@@ -4,7 +4,10 @@ import com.github.benmanes.caffeine.cache.Cache;
 import com.github.benmanes.caffeine.cache.Caffeine;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.redis.core.Cursor;
+import org.springframework.data.redis.core.RedisCallback;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.ScanOptions;
 import org.springframework.stereotype.Component;
 
 import java.time.Duration;
@@ -224,11 +227,15 @@ public class HybridCacheManager {
 
             if (circuitBreaker.isAvailable()) {
                 try {
-                    Set<String> keys = redisTemplate.keys(pattern);
-                    if (keys != null && !keys.isEmpty()) {
-                        redisTemplate.delete(keys);
-                    }
-                    log.debug("L2缓存按模式删除成功，pattern: {}, count: {}", pattern, keys == null ? 0 : keys.size());
+                    redisTemplate.execute((RedisCallback<Void>) connection -> {
+                        Cursor<byte[]> cursor = connection.scan(
+                                ScanOptions.scanOptions().match(pattern).count(100).build());
+                        while (cursor.hasNext()) {
+                            connection.del(cursor.next());
+                        }
+                        return null;
+                    });
+                    log.debug("L2缓存按模式删除成功，pattern: {}", pattern);
                     circuitBreaker.recordSuccess();
                 } catch (Exception e) {
                     log.warn("L2缓存按模式删除失败，pattern: {}, 错误: {}", pattern, e.getMessage());
@@ -351,17 +358,11 @@ public class HybridCacheManager {
             if (circuitBreaker.isAvailable()) {
                 try {
                     // 清空用户账户相关缓存，修复序列化问题
-                    Set<String> keys = redisTemplate.keys("user:account:*");
-                    if (keys != null && !keys.isEmpty()) {
-                        redisTemplate.delete(keys);
-                        log.info("用户账户缓存已清空，共清除{}个key", keys.size());
-                    }
+                    deleteByPattern("user:account:*");
+                    log.info("用户账户缓存已清空");
                     // 清空支付相关缓存
-                    Set<String> paymentKeys = redisTemplate.keys("payment:*");
-                    if (paymentKeys != null && !paymentKeys.isEmpty()) {
-                        redisTemplate.delete(paymentKeys);
-                        log.info("支付缓存已清空，共清除{}个key", paymentKeys.size());
-                    }
+                    deleteByPattern("payment:*");
+                    log.info("支付缓存已清空");
                     circuitBreaker.recordSuccess();
                 } catch (Exception e) {
                     log.warn("L2缓存清空失败，错误: {}", e.getMessage());
@@ -372,6 +373,17 @@ public class HybridCacheManager {
         } catch (Exception e) {
             log.error("混合缓存清空异常", e);
         }
+    }
+
+    private void deleteByPattern(String pattern) {
+        redisTemplate.execute((RedisCallback<Void>) connection -> {
+            Cursor<byte[]> cursor = connection.scan(
+                    ScanOptions.scanOptions().match(pattern).count(100).build());
+            while (cursor.hasNext()) {
+                connection.del(cursor.next());
+            }
+            return null;
+        });
     }
 
     /**

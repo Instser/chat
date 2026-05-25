@@ -2,6 +2,7 @@ package com.instser.chat.controller;
 
 import com.instser.chat.common.result.Result;
 import com.instser.chat.config.LogManagementConfig;
+import com.instser.chat.event.OperationAuditEvent;
 import com.instser.chat.service.ManagementApiKeyService;
 import com.instser.chat.util.LogLevelManager;
 import io.swagger.v3.oas.annotations.Operation;
@@ -9,11 +10,14 @@ import io.swagger.v3.oas.annotations.Parameter;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import jakarta.servlet.http.HttpServletRequest;
+import java.time.LocalDateTime;
 import java.util.Map;
 import com.instser.chat.common.util.LogUtils;
 
@@ -41,6 +45,15 @@ public class LogManagementController {
     private final LogLevelManager logLevelManager;
     private final LogManagementConfig logManagementConfig;
     private final ManagementApiKeyService managementApiKeyService;
+    private final ApplicationEventPublisher applicationEventPublisher;
+
+    private void publishAudit(String operationType, String target, String targetDetail,
+                               String result, HttpServletRequest request) {
+        applicationEventPublisher.publishEvent(new OperationAuditEvent(
+                "system", null, operationType, target, targetDetail,
+                result, request.getRemoteAddr(), MDC.get("traceId"), LocalDateTime.now()
+        ));
+    }
 
     /**
      * 验证API密钥
@@ -94,6 +107,8 @@ public class LogManagementController {
         LogUtils.logAdminOperation(log, "日志管理", "设置Logger级别，Logger：{}，级别：{}", loggerName, level);
         boolean success = logLevelManager.setLevel(loggerName, level);
         if (success) {
+            publishAudit("LOG_LEVEL_CHANGE", loggerName, "level=" + level,
+                    "SUCCESS", request);
             return ResponseEntity.ok(Result.success("日志级别设置成功"));
         } else {
             return ResponseEntity.ok(Result.failed("日志级别设置失败"));
@@ -114,6 +129,8 @@ public class LogManagementController {
         LogUtils.logAdminOperation(log, "日志管理", "重置Logger级别，Logger：{}", loggerName);
         boolean success = logLevelManager.resetLevel(loggerName);
         if (success) {
+            publishAudit("LOG_LEVEL_CHANGE", loggerName, "action=reset",
+                    "SUCCESS", request);
             return ResponseEntity.ok(Result.success("日志级别重置成功"));
         } else {
             return ResponseEntity.ok(Result.failed("日志级别重置失败"));
@@ -131,6 +148,8 @@ public class LogManagementController {
 
         LogUtils.logAdminOperation(log, "日志管理", "设置开发环境日志级别");
         logLevelManager.setDevelopmentLevels();
+        publishAudit("LOG_LEVEL_CHANGE", "preset", "preset=development",
+                "SUCCESS", request);
         return ResponseEntity.ok(Result.success("开发环境日志级别设置完成"));
     }
 
@@ -145,6 +164,8 @@ public class LogManagementController {
 
         LogUtils.logAdminOperation(log, "日志管理", "设置生产环境日志级别");
         logLevelManager.setProductionLevels();
+        publishAudit("LOG_LEVEL_CHANGE", "preset", "preset=production",
+                "SUCCESS", request);
         return ResponseEntity.ok(Result.success("生产环境日志级别设置完成"));
     }
 
@@ -159,6 +180,8 @@ public class LogManagementController {
 
         LogUtils.logAdminOperation(log, "日志管理", "设置问题排查日志级别");
         logLevelManager.setDebuggingLevels();
+        publishAudit("LOG_LEVEL_CHANGE", "preset", "preset=debugging",
+                "SUCCESS", request);
         return ResponseEntity.ok(Result.success("问题排查日志级别设置完成"));
     }
 
@@ -173,6 +196,8 @@ public class LogManagementController {
 
         LogUtils.logAdminOperation(log, "日志管理", "开启SQL日志");
         logLevelManager.enableSqlLogging();
+        publishAudit("SQL_LOG_TOGGLE", "sql-logging", "action=enable",
+                "SUCCESS", request);
         return ResponseEntity.ok(Result.success("SQL日志已开启"));
     }
 
@@ -187,6 +212,8 @@ public class LogManagementController {
 
         LogUtils.logAdminOperation(log, "日志管理", "关闭SQL日志");
         logLevelManager.disableSqlLogging();
+        publishAudit("SQL_LOG_TOGGLE", "sql-logging", "action=disable",
+                "SUCCESS", request);
         return ResponseEntity.ok(Result.success("SQL日志已关闭"));
     }
 

@@ -5,6 +5,7 @@ import com.instser.chat.component.ChatLimitCacheManager;
 import com.instser.chat.service.ManagementApiKeyService;
 import org.junit.jupiter.api.Test;
 import org.mockito.Mockito;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.MediaType;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
@@ -66,16 +67,24 @@ class AdminCacheControllerTest {
         ManagementApiKeyService managementApiKeyService = Mockito.mock(ManagementApiKeyService.class);
         when(managementApiKeyService.validateRequest(any())).thenReturn(true);
         ChatLimitCacheManager chatLimitCacheManager = Mockito.mock(ChatLimitCacheManager.class);
-        return createController(managementApiKeyService, chatLimitCacheManager);
+        ApplicationEventPublisher eventPublisher = Mockito.mock(ApplicationEventPublisher.class);
+        return createController(managementApiKeyService, chatLimitCacheManager, eventPublisher);
     }
 
     private Object createController(ManagementApiKeyService managementApiKeyService,
                                     ChatLimitCacheManager chatLimitCacheManager) throws Exception {
+        ApplicationEventPublisher eventPublisher = Mockito.mock(ApplicationEventPublisher.class);
+        return createController(managementApiKeyService, chatLimitCacheManager, eventPublisher);
+    }
+
+    private Object createController(ManagementApiKeyService managementApiKeyService,
+                                    ChatLimitCacheManager chatLimitCacheManager,
+                                    ApplicationEventPublisher eventPublisher) throws Exception {
         try {
             Class<?> controllerClass = Class.forName("com.instser.chat.controller.AdminCacheController");
             Object controller = controllerClass
-                    .getConstructor(ManagementApiKeyService.class, ChatLimitCacheManager.class)
-                    .newInstance(managementApiKeyService, chatLimitCacheManager);
+                    .getConstructor(ManagementApiKeyService.class, ChatLimitCacheManager.class, ApplicationEventPublisher.class)
+                    .newInstance(managementApiKeyService, chatLimitCacheManager, eventPublisher);
             ReflectionTestUtils.setField(controller, "adminAccount", "aaaugment");
             ReflectionTestUtils.setField(controller, "adminPassword", "your-admin-password");
             return controller;
