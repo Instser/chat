@@ -15,7 +15,13 @@
   - **4.3 CacheConstants**: 收敛 30+ Redis Key 前缀到统一常量类，格式 `{项目}:{模块}:{类型}:{标识}`，覆盖用户/会话/锁/AI/套餐/支付/联网搜索/熔断等模块。提供 `userAccount(userId)`/`orderLock(orderNo)` 工厂方法。
   - **4.4 KEYS→SCAN**: 将 5 处 `redisTemplate.keys()` 调用全部替换为游标 `SCAN`（count=100），避免生产环境阻塞。覆盖 `GlobalCacheManager`、`HybridCacheManager`（evictPattern + clear）、`CachedUsageService`、`CacheCleanupRunner`。
 - **全量测试**: `mvn test` — **43/43 通过**，零回归
-- **影响范围**: AdminCacheController/LogManagementController 新增 ApplicationEventPublisher 注入；HybridCacheManager 新增 deleteByPattern 辅助方法；CacheCleanupRunner 移除 Set 导入
+
+### README-OPS.md 运维手册完成 ✅
+- **实现时间**: 2026年5月26日 00:10
+- **功能描述**: 创建完整的运维手册，涵盖部署说明、监控指标、日志规范、运维接口、故障排查和告警响应
+- **内容**: 6 大章节 — 部署说明（环境/端口/环境变量）、Prometheus 指标表（9 个关键指标）、日志规范（格式/轮转/排查技巧）、运维接口（/ops + /admin + Actuator 共 13 个端点）、5 个常见故障排查场景（500/超时/Redis/Pay/缓存）、P0-P2 告警响应流程
+- **全量测试**: `mvn test` — **43/43 通过**，零回归
+- **影响范围**: 纯文档，无代码变更
 
 ### 运维接口开发完成 ✅
 - **实现时间**: 2026年5月25日 23:52
