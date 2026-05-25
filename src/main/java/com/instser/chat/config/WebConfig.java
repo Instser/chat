@@ -1,6 +1,7 @@
 package com.instser.chat.config;
 
 import com.instser.chat.interceptor.RequestLogInterceptor;
+import com.instser.chat.interceptor.SlowRequestInterceptor;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
@@ -18,6 +19,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @RequiredArgsConstructor
 public class WebConfig implements WebMvcConfigurer {
 
+    private final SlowRequestInterceptor slowRequestInterceptor;
     private final RequestLogInterceptor requestLogInterceptor;
 
     @Value("${app.cors.allowed-origins}")
@@ -65,6 +67,18 @@ public class WebConfig implements WebMvcConfigurer {
      */
     @Override
     public void addInterceptors(InterceptorRegistry registry) {
+        // SlowRequestInterceptor 第一个注册，确保计算完整请求耗时
+        registry.addInterceptor(slowRequestInterceptor)
+                .addPathPatterns("/**")
+                .excludePathPatterns(
+                    "/druid/**",
+                    "/actuator/**",
+                    "/error",
+                    "/favicon.ico",
+                    "/static/**",
+                    "/public/**"
+                );
+
         registry.addInterceptor(requestLogInterceptor)
                 .addPathPatterns("/**")
                 .excludePathPatterns(

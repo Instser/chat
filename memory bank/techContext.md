@@ -28,6 +28,7 @@
 - **时区**: 系统默认时区
 - **日志**: SLF4J + Logback (优化配置，分离式日志记录，支持 MDC traceId 全链路追踪)
 - **调用链追踪**: TraceIdFilter + SLF4J MDC，支持从请求头 `X-Trace-Id` 透传或自动生成 32 位 UUID，所有日志自动携带 `[%X{traceId}]`
+- **业务指标**: ApiMetrics（api_requests_total / api_exceptions_total）+ SlowRequestInterceptor（slow_requests_total），Counter 使用 ConcurrentHashMap 缓存，路径模板化（BEST_MATCHING_PATTERN_ATTRIBUTE）防高基数
 - **监控端点**: `/actuator/prometheus`，通过 management 端口 `127.0.0.1:8081` 暴露 Prometheus 指标
 - **管理缓存接口**: `/admin/cache/user-package/refresh-all`，需同时提供管理 API Key 与 `application.yml` 中 `cache.management.admin.account/password` 配置的管理员账号密码
 
