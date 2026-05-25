@@ -7,6 +7,7 @@ import com.instser.chat.entity.ChatMessage;
 import com.instser.chat.entity.ChatSession;
 import com.instser.chat.entity.User;
 import com.instser.chat.security.UserDetailsServiceImpl;
+import com.instser.chat.monitor.AiCallMonitor;
 import com.instser.chat.service.AiModelService;
 import com.instser.chat.service.ChatInterruptService;
 import com.instser.chat.service.ChatLimitService;
@@ -55,6 +56,7 @@ class ChatServiceImplTest {
         WebClient.Builder webClientBuilder = WebClient.builder();
         RestTemplate restTemplate = new RestTemplate();
         Executor continuationExecutor = Runnable::run;
+        AiCallMonitor aiCallMonitor = mock(AiCallMonitor.class);
 
         ChatServiceImpl service = new ChatServiceImpl(
                 chatMessageService,
@@ -69,6 +71,7 @@ class ChatServiceImplTest {
                 truncationDetectionService,
                 webSearchContentService,
                 networkAiService,
+                aiCallMonitor,
                 continuationExecutor
         );
 
@@ -141,6 +144,7 @@ class ChatServiceImplTest {
         WebClient.Builder webClientBuilder = WebClient.builder();
         RestTemplate restTemplate = new RestTemplate();
         Executor continuationExecutor = Runnable::run;
+        AiCallMonitor aiCallMonitor = mock(AiCallMonitor.class);
 
         ChatServiceImpl service = new ChatServiceImpl(
                 chatMessageService,
@@ -155,6 +159,7 @@ class ChatServiceImplTest {
                 truncationDetectionService,
                 webSearchContentService,
                 networkAiService,
+                aiCallMonitor,
                 continuationExecutor
         );
 
@@ -217,6 +222,7 @@ class ChatServiceImplTest {
         WebClient.Builder webClientBuilder = WebClient.builder();
         RestTemplate restTemplate = new RestTemplate();
         Executor continuationExecutor = Runnable::run;
+        AiCallMonitor aiCallMonitor = mock(AiCallMonitor.class);
 
         ChatServiceImpl service = new ChatServiceImpl(
                 chatMessageService,
@@ -231,6 +237,7 @@ class ChatServiceImplTest {
                 truncationDetectionService,
                 webSearchContentService,
                 networkAiService,
+                aiCallMonitor,
                 continuationExecutor
         );
 

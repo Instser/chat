@@ -1,14 +1,14 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-05-25 23:30:00
+**📅 最后更新**: 2026-05-25 23:35:00
 **👤 更新人员**: Claude Code
-**📊 文档版本**: v127.0
+**📊 文档版本**: v128.0
 
 ## 当前任务
-- 运维开发/内部应用维护平台工程优化进行中，已完成 TraceId 全链路追踪（第一阶段）和慢接口拦截器+全局 API 指标（第二阶段），下一步为 AI 调用监控封装（第三阶段 2.3）
+- 运维开发/内部应用维护平台工程优化进行中，已完成 TraceId 全链路追踪（第一阶段）、慢接口拦截器+全局 API 指标（第二阶段 2.1-2.2）、AI 调用监控封装（第二阶段 2.3），下一步为运维接口开发（第三阶段 3.1 `/ops/version`）
 
 ## 最新完成任务
-✅ **慢接口拦截器与全局 API 指标完成** — 新增 `SlowRequestInterceptor`（`HandlerInterceptor`），preHandle 记录开始时间，afterCompletion 计算耗时并分级处理（>1s WARN + slow_requests_total{warn}，>3s ERROR + slow_requests_total{error}），日志自动关联 traceId。新增 `ApiMetrics`（`@Component`），提供 `recordRequest(method, path, status)` 和 `recordException(method, path, exceptionType)` 两个打点方法，使用 `ConcurrentHashMap` + `computeIfAbsent` 缓存 Counter。通过 `HandlerMapping.BEST_MATCHING_PATTERN_ATTRIBUTE` 实现路径模板化，避免路径变量导致 Prometheus 高基数。`WebConfig` 中将 SlowRequestInterceptor 注册为第一个拦截器。开发遵循 superpowers 子进程驱动流程（brainstorming → writing-plans → subagent-driven development，每 Task 经 spec 合规 + 代码质量双审查）。全量 `mvn test` 25/25 通过，零回归。 (2026-05-25 23:30)
+✅ **AI 调用监控封装完成** — 新增 `AiCallMetrics`（Prometheus 指标：调用总数/耗时/TTFT/Token 消耗/活跃数/失败分类）和 `AiCallMonitor`（监控封装 + `CallContext` 生命周期管理）。在 `ChatServiceImpl.streamChatWithAI()` 的 4 个关键点埋点：beginCall → markFirstToken → recordSuccess/recordFailure。结构化日志 `AI_CALL_START/AI_FIRST_TOKEN/AI_CALL_SUCCESS/AI_CALL_FAILED` 自动关联 traceId。新增 `AiCallMetricsTest`(5) + `AiCallMonitorTest`(6) 共 11 个测试，修复 `ChatServiceImplTest` 构造参数适配。全量 `mvn test` 36/36 通过，零回归。 (2026-05-25 23:38)
 ✅ **TraceId 全链路追踪功能完成** — 新增 `TraceIdFilter`（`@Order(HIGHEST_PRECEDENCE)`），MDC 写入 + 响应头 `X-Trace-Id` + finally 清理。`Result<T>` 新增 `traceId` 字段自动填充。`logback-spring.xml` 4 处 pattern 加入 `[%X{traceId}]`。TDD 开发，9 个测试覆盖。 (2026-05-25 22:15)
 ✅ **管理缓存鉴权账号改为 application.yml 配置驱动** - 将 `AdminCacheController` 中的管理员二次鉴权账号密码从源码硬编码改为配置读取，新增 `application.yml` 配置项 `cache.management.admin.account` 与 `cache.management.admin.password`，并支持通过环境变量 `CACHE_MANAGEMENT_ADMIN_ACCOUNT`、`CACHE_MANAGEMENT_ADMIN_PASSWORD` 覆盖；默认值仍兼容现有 `aaaugment / your-admin-password`。同步更新 `AdminCacheControllerTest`，改为验证“配置字段注入后生效”，已通过 `mvn "-Dtest=AdminCacheControllerTest,ChatLimitCacheManagerTest" test` 验证。 (2026-04-16 15:29)
 ✅ **管理员全量清理用户套餐与聊天次数缓存接口完成** - 根据新要求，将原本“按用户刷新”方案调整为“全量清理所有用户套餐与聊天次数缓存”，新增管理接口 `/admin/cache/user-package/refresh-all`，复用现有 `/admin/cache/**` 管理链路，在 `X-API-Key` 校验通过后，再使用内置管理员账号密码二次校验（`aaaugment` / `your-admin-password`）；其中 `aaaugment` 仅作为接口鉴权凭据，不参与任何业务用户缓存定位。实现上保留 `refreshUserPackageCaches(userId, packageId)` 供业务事件按用户失效使用，同时在 `ChatLimitCacheManager` 新增 `clearAllUserPackageCaches()`，批量清理 `user:account:*`、`package:config:*`、`model:permission:*` 以及 `user:remaining:*` 缓存；为此在 `HybridCacheManager` 增加 `evictPattern`，在 `CachedUsageService` 增加 `evictAllUserModelCaches`。新增/更新 `ChatLimitCacheManagerTest` 与 `AdminCacheControllerTest`，已通过 `mvn "-Dtest=ChatLimitCacheManagerTest,AdminCacheControllerTest" test` 验证。额外确认：仍不建议在生产环境直接 `FLUSHDB/FLUSHALL`，因为项目 Redis 除套餐/次数缓存外还承载支付频率限制、防重放、支付会话、近期待支付订单和并发锁等控制数据，整库清空会放大运行风险。 (2026-04-16 15:20)

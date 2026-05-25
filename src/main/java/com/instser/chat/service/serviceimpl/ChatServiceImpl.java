@@ -16,6 +16,7 @@ import com.instser.chat.entity.GeminiSource;
 import com.instser.chat.entity.GeminiTextSegment;
 import com.instser.chat.entity.WebSearchResult;
 
+import com.instser.chat.monitor.AiCallMonitor;
 import com.instser.chat.service.*;
 import com.instser.chat.service.cache.RequestValidationCache;
 import com.instser.chat.util.ChatSessionManager;
@@ -72,6 +73,7 @@ public class ChatServiceImpl implements ChatService {
     private final TruncationDetectionService truncationDetectionService;
     private final WebSearchContentService webSearchContentService;
     private final NetworkAiService networkAiService;
+    private final AiCallMonitor aiCallMonitor;
 
     @Qualifier("continuationExecutor")
     private final Executor continuationExecutor;
@@ -1428,6 +1430,10 @@ public class ChatServiceImpl implements ChatService {
             // 用于收集完整的AI响应内容
             final StringBuilder aiResponseContent = new StringBuilder();
 
+            // AI 调用监控上下文（在外层声明，以便 catch 块可访问）
+            final AiCallMonitor.CallContext[] aiCtxHolder = {null};
+            final boolean[] firstTokenMarked = {false};
+
             try {
             // 构建带有伪造对话提示词的消息列表
             List<Map<String, String>> messagesWithPrompt = new ArrayList<>();
@@ -1472,6 +1478,9 @@ public class ChatServiceImpl implements ChatService {
 
             // 记录详细的AI请求信息
             logAiRequestDetails(requestBody, model, request.getUserId());
+
+            // AI 调用监控：开始追踪
+            aiCtxHolder[0] = aiCallMonitor.beginCall(model.getModelCode());
 
             // 创建WebClient（使用配置的Builder，已禁用SSL验证）
             WebClient webClient = webClientBuilder
@@ -1612,6 +1621,11 @@ public class ChatServiceImpl implements ChatService {
                                             hasContentSent[0] = true;
                                             isRealAiResponse[0] = true;
                                             aiResponseContent.append(contentSent);
+
+                                            if (!firstTokenMarked[0]) {
+                                                firstTokenMarked[0] = true;
+                                                aiCallMonitor.markFirstToken(aiCtxHolder[0]);
+                                            }
                                         }
                                         jsonBuffer.setLength(0);
                                     } catch (ChatRetryException e) {
@@ -1650,6 +1664,11 @@ public class ChatServiceImpl implements ChatService {
                                             hasContentSent[0] = true;
                                             isRealAiResponse[0] = true;
                                             aiResponseContent.append(contentSent);
+
+                                            if (!firstTokenMarked[0]) {
+                                                firstTokenMarked[0] = true;
+                                                aiCallMonitor.markFirstToken(aiCtxHolder[0]);
+                                            }
                                         }
                                         jsonBuffer.setLength(0);
                                     } catch (ChatRetryException e) {
@@ -1741,6 +1760,11 @@ public class ChatServiceImpl implements ChatService {
                                                         hasContentSent[0] = true;
                                                         isRealAiResponse[0] = true;
                                                         aiResponseContent.append(contentSent);
+
+                                                        if (!firstTokenMarked[0]) {
+                                                            firstTokenMarked[0] = true;
+                                                            aiCallMonitor.markFirstToken(aiCtxHolder[0]);
+                                                        }
                                                     }
                                                 } catch (ChatRetryException e) {
                                                     log.warn("检测到需要重试的错误消息，标记需要重试");
@@ -1767,6 +1791,11 @@ public class ChatServiceImpl implements ChatService {
                                                     hasContentSent[0] = true;
                                                     isRealAiResponse[0] = true;
                                                     aiResponseContent.append(contentSent);
+
+                                                    if (!firstTokenMarked[0]) {
+                                                        firstTokenMarked[0] = true;
+                                                        aiCallMonitor.markFirstToken(aiCtxHolder[0]);
+                                                    }
                                                 }
                                             } catch (ChatRetryException e) {
                                                 log.warn("检测到需要重试的错误消息，标记需要重试");
@@ -1823,16 +1852,19 @@ public class ChatServiceImpl implements ChatService {
 
             if (isInterrupted[0]) {
                 log.info("返回中断响应，hasContentSent: {}, 内容长度: {}", hasContentSent[0], aiResponseContent.length());
+                aiCallMonitor.recordSuccess(aiCtxHolder[0]);
                 return ChatResponseDTO.interrupted(hasContentSent[0], aiResponseContent.toString());
             }
 
             log.info("返回成功响应，hasContentSent: {}, isRealAiResponse: {}, 内容长度: {}",
                      hasContentSent[0], isRealAiResponse[0], aiResponseContent.length());
+            aiCallMonitor.recordSuccess(aiCtxHolder[0]);
             ChatResponseDTO result = ChatResponseDTO.success(hasContentSent[0], isRealAiResponse[0], aiResponseContent.toString());
             return result;
 
         } catch (Exception e) {
             log.error("流式聊天异常", e);
+            aiCallMonitor.recordFailure(aiCtxHolder[0], e.getClass().getSimpleName(), e.getMessage());
 
             // 会话状态将在handleStreamCompletionWithInterruptStatus中清理
 

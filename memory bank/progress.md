@@ -1,10 +1,23 @@
 # 项目进度状态
 
-**📅 最后更新**: 2026-05-25 23:30:00
+**📅 最后更新**: 2026-05-25 23:35:00
 **👤 更新人员**: Claude Code
-**📊 文档版本**: v122.0
+**📊 文档版本**: v123.0
 
 ## 🚀 最新完成功能 (2026-05-25)
+
+### AI 调用监控封装完成 ✅
+- **实现时间**: 2026年5月25日 23:35
+- **功能描述**: 为 AI 调用链路建立完整的可观测性体系，包括首 Token 延迟（TTFT）、Token 消耗、调用耗时、失败分类等 Prometheus 指标
+- **核心实现**:
+  - **AiCallMetrics**: `@Component`，Prometheus 指标组件，包含 `ai_calls_total`（调用总数，按 status）、`ai_call_duration_seconds`（耗时 Timer，按 model + status）、`ai_ttft_seconds`（首 Token 延迟）、`ai_token_consumption_total`（Token 消耗，按 prompt/completion）、`ai_calls_active`（活跃调用 Gauge）、`ai_calls_failed_total`（失败分类，按 model + error_type）
+  - **AiCallMonitor**: `@Component`，AI 调用监控封装类，提供 `CallContext` 内部类贯穿一次完整 AI 调用生命周期，包含 `beginCall(model)`、`markFirstToken(ctx)`、`recordSuccess(ctx)`、`recordFailure(ctx, errorType, errorMessage)` 四个方法，自动记录结构化日志 `AI_CALL_START/AI_FIRST_TOKEN/AI_CALL_SUCCESS/AI_CALL_FAILED`
+  - **ChatServiceImpl 埋点**: 在 `streamChatWithAI()` 方法的 4 个关键位置埋点 — ① WebClient POST 前调用 `beginCall`、② 首个内容块发送给客户端时调用 `markFirstToken`、③ 流正常结束时调用 `recordSuccess`、④ 异常捕获时调用 `recordFailure`
+- **Prometheus 指标**: `ai_calls_total`、`ai_call_duration_seconds`、`ai_ttft_seconds`、`ai_token_consumption_total`、`ai_calls_active`、`ai_calls_failed_total`
+- **验证结果**: `mvn compile` — BUILD SUCCESS，零编译错误
+- **测试覆盖**: `AiCallMetricsTest` 5 个测试 + `AiCallMonitorTest` 6 个测试
+- **全量测试**: `mvn test` — **36/36 通过**，零回归
+- **影响范围**: `ChatServiceImpl` 新增 `AiCallMonitor` 依赖注入，`streamChatWithAI()` 中增加监控代码，纯增量不影响现有业务逻辑
 
 ### 慢接口拦截器与全局 API 指标完成 ✅
 - **实现时间**: 2026年5月25日 23:30
