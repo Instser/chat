@@ -1,10 +1,24 @@
 # 项目进度状态
 
-**📅 最后更新**: 2026-05-25 23:35:00
+**📅 最后更新**: 2026-05-25 23:52:00
 **👤 更新人员**: Claude Code
-**📊 文档版本**: v123.0
+**📊 文档版本**: v124.0
 
 ## 🚀 最新完成功能 (2026-05-25)
+
+### 运维接口开发完成 ✅
+- **实现时间**: 2026年5月25日 23:52
+- **功能描述**: 为运维人员提供排障所需的状态查询接口，包括应用版本信息、全组件健康检查、AI 错误日志分析
+- **核心实现**:
+  - **pom.xml**: 新增 `git-commit-id-maven-plugin`(7.0.0) 生成 `git.properties`，为 `spring-boot-maven-plugin` 添加 `build-info` goal 使 `BuildProperties` 自动注入
+  - **OpsController**: `@RestController @RequestMapping("/ops")`，3 个运维端点均通过 `ManagementApiKeyService.validateRequest()` 鉴权（复用 X-API-Key 机制）
+    - `GET /ops/version`: 返回应用版本、Git commit、构建时间、Java/OS 信息、Spring Boot 版本、启动时长、活跃 Profile
+    - `GET /ops/health/full`: 检查 application(UP) + database(Druid 连接池状态) + redis(PING) + aiApi(Gemini 可用性)，汇总 overall UP/DEGRADED
+    - `POST /ops/ai/analyze-error`: 接收异常日志文本，调用 AI（第一个可用模型，sync 非流式）分析并返回 JSON 结构化的异常摘要、可能原因、排查步骤、建议日志查询语句和置信度
+  - **SecurityConfig**: 新增 `.requestMatchers("/ops/**").permitAll()` 放行运维路径
+  - **ErrorAnalysisRequest**: DTO 含 `@NotBlank errorLog` + 可选 `contextInfo`
+- **测试覆盖**: `OpsControllerTest` 7 个测试（API Key 拒绝 3 + version 正常 1 + health UP 1 + health DEGRADED 1 + 无可用模型 1）
+- **全量测试**: `mvn test` — **43/43 通过**（36 已有 + 7 新增），零回归
 
 ### AI 调用监控封装完成 ✅
 - **实现时间**: 2026年5月25日 23:35

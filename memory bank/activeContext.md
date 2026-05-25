@@ -1,13 +1,14 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-05-25 23:35:00
+**📅 最后更新**: 2026-05-25 23:52:00
 **👤 更新人员**: Claude Code
-**📊 文档版本**: v128.0
+**📊 文档版本**: v129.0
 
 ## 当前任务
-- 运维开发/内部应用维护平台工程优化进行中，已完成 TraceId 全链路追踪（第一阶段）、慢接口拦截器+全局 API 指标（第二阶段 2.1-2.2）、AI 调用监控封装（第二阶段 2.3），下一步为运维接口开发（第三阶段 3.1 `/ops/version`）
+- 运维开发/内部应用维护平台工程优化进行中，已完成第一、二、三阶段（TraceId + 慢接口/API指标 + AI调用监控 + 运维接口），下一步为第四阶段 4.1 统一外部 HTTP 调用封装（ExternalApiClient）
 
 ## 最新完成任务
+✅ **运维接口开发完成** — 新增 `OpsController`（`/ops/version`、`/ops/health/full`、`/ops/ai/analyze-error`），复用 `ManagementApiKeyService` 鉴权。pom.xml 添加 `git-commit-id-maven-plugin` + `build-info` goal。SecurityConfig 放行 `/ops/**`。新增 `ErrorAnalysisRequest` DTO。`OpsControllerTest` 7 个测试。全量 43/43 通过，零回归。 (2026-05-25 23:52)
 ✅ **AI 调用监控封装完成** — 新增 `AiCallMetrics`（Prometheus 指标：调用总数/耗时/TTFT/Token 消耗/活跃数/失败分类）和 `AiCallMonitor`（监控封装 + `CallContext` 生命周期管理）。在 `ChatServiceImpl.streamChatWithAI()` 的 4 个关键点埋点：beginCall → markFirstToken → recordSuccess/recordFailure。结构化日志 `AI_CALL_START/AI_FIRST_TOKEN/AI_CALL_SUCCESS/AI_CALL_FAILED` 自动关联 traceId。新增 `AiCallMetricsTest`(5) + `AiCallMonitorTest`(6) 共 11 个测试，修复 `ChatServiceImplTest` 构造参数适配。全量 `mvn test` 36/36 通过，零回归。 (2026-05-25 23:38)
 ✅ **TraceId 全链路追踪功能完成** — 新增 `TraceIdFilter`（`@Order(HIGHEST_PRECEDENCE)`），MDC 写入 + 响应头 `X-Trace-Id` + finally 清理。`Result<T>` 新增 `traceId` 字段自动填充。`logback-spring.xml` 4 处 pattern 加入 `[%X{traceId}]`。TDD 开发，9 个测试覆盖。 (2026-05-25 22:15)
 ✅ **管理缓存鉴权账号改为 application.yml 配置驱动** - 将 `AdminCacheController` 中的管理员二次鉴权账号密码从源码硬编码改为配置读取，新增 `application.yml` 配置项 `cache.management.admin.account` 与 `cache.management.admin.password`，并支持通过环境变量 `CACHE_MANAGEMENT_ADMIN_ACCOUNT`、`CACHE_MANAGEMENT_ADMIN_PASSWORD` 覆盖；默认值仍兼容现有 `aaaugment / your-admin-password`。同步更新 `AdminCacheControllerTest`，改为验证“配置字段注入后生效”，已通过 `mvn "-Dtest=AdminCacheControllerTest,ChatLimitCacheManagerTest" test` 验证。 (2026-04-16 15:29)

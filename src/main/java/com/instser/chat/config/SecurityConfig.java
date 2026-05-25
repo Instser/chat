@@ -192,6 +192,9 @@ public class SecurityConfig {
                 // 日志管理接口 - 仅允许localhost访问（在Controller中验证）
                 .requestMatchers("/admin/logs/**").permitAll()
 
+                // 运维接口 - 通过 ManagementApiKeyService 鉴权
+                .requestMatchers("/ops/**").permitAll()
+
                 // 聊天接口 - 允许已认证用户访问，但排除SSE流式响应
                 .requestMatchers(HttpMethod.POST, "/chat").permitAll()  // 临时允许SSE流式响应绕过Spring Security
                 .requestMatchers("/chat/**").authenticated()
