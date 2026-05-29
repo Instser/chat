@@ -20,6 +20,7 @@ import com.instser.chat.service.TruncationDetectionService;
 import com.instser.chat.service.WebSearchContentService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.Test;
+import org.mockito.InOrder;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
@@ -198,8 +199,9 @@ class ChatServiceImplTest {
                 session.getModelId(),
                 "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow."
         );
-        inOrder(chatMessageService).verify(chatMessageService).deleteMessagesFromPoint(messageId, sessionId);
-        inOrder(chatMessageService).verify(chatMessageService).sendErrorResponseMessage(
+        InOrder order = inOrder(chatMessageService);
+        order.verify(chatMessageService).deleteMessagesFromPoint(messageId, sessionId);
+        order.verify(chatMessageService).sendErrorResponseMessage(
                 sessionId,
                 userId,
                 session.getModelId(),
@@ -292,13 +294,14 @@ class ChatServiceImplTest {
                 session.getModelId(),
                 "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow."
         );
-        inOrder(chatMessageService).verify(chatMessageService).deleteMessagesFromPoint(messageId, sessionId);
-        inOrder(chatMessageService).verify(chatMessageService).save(argThat(message ->
+        InOrder order = inOrder(chatMessageService);
+        order.verify(chatMessageService).deleteMessagesFromPoint(messageId, sessionId);
+        order.verify(chatMessageService).save(argThat(message ->
                 message != null
                         && "user".equals(message.getRole())
                         && newContent.equals(message.getContent())
         ));
-        inOrder(chatMessageService).verify(chatMessageService).sendErrorResponseMessage(
+        order.verify(chatMessageService).sendErrorResponseMessage(
                 sessionId,
                 userId,
                 session.getModelId(),

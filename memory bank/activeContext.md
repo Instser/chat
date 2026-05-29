@@ -1,13 +1,15 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-05-26 00:10:00
+**📅 最后更新**: 2026-05-29 13:59:00
 **👤 更新人员**: Claude Code
-**📊 文档版本**: v131.0
+**📊 文档版本**: v133.0
 
 ## 当前任务
-- 运维开发/内部应用维护平台工程优化全部 15 项改造已完成（第一~五阶段）。待办：确认是否需要推送到远程仓库。
+- AI 对话业务模块解耦准备完成：已输出解耦方案文档，并按当前代码生成阶段一改造前的特征测试基线。下一步可在测试保护下执行阶段一“提取不改行为”的重构。
 
 ## 最新完成任务
+✅ **AI 对话业务模块阶段一特征测试基线完成** — 新增 `ChatServiceImplStageOneCharacterizationTest`，覆盖标题生成消息构建、固定模型 4L 标题生成请求/清洗/持久化、标题模型不可用降级、Gemini 联网内容拼接、联网异常降级、联网结果持久化与网络关闭不持久化等 7 个高风险行为点；同时补强 `InOrder` 顺序断言，锁定 retry 删除旧消息后再保存错误响应、edit-resend 删除旧消息后保存新用户消息再保存错误响应、联网结果先持久化再标记 AI 消息、标题模型读取后再标题落库。已执行相关测试 10/10 通过、全量 `mvn -s "$env:TEMP\codex-maven-settings-aliyun.xml" test` 50/50 通过。 (2026-05-29 13:59)
+✅ **AI 对话业务模块解耦方案文档完成** — 输出 `docs/plans/05-29_12-25_AI对话业务模块解耦方案_v1.0.md`，记录当前 `ChatServiceImpl` 高耦合点、目标分层、核心接口、五阶段实施计划、测试策略和风险控制。 (2026-05-29 12:25)
 ✅ **README-OPS.md 运维手册完成** — 6 大章节：部署说明、Prometheus 指标、日志规范、13 个运维接口、5 个故障排查场景、P0-P2 告警响应流程。全量 43/43 测试通过。 (2026-05-26 00:10)
 ✅ **第四阶段完成** — 4.1 ExternalApiClient 统一外部 HTTP 调用封装（重试/超时/异常分类）+ ApiCallResult。4.2 通用运维操作审计（SQL表 + Entity/DAO/Event/Service + AdminCacheController + LogManagementController 7个变更方法集成）。4.3 CacheConstants 收敛 30+ Redis Key 前缀。4.4 KEYS→SCAN 替换（5处全部改为游标扫描）。全量 43/43 测试通过。 (2026-05-26 00:05)
 ✅ **运维接口开发完成** — 新增 `OpsController`（`/ops/version`、`/ops/health/full`、`/ops/ai/analyze-error`），复用 `ManagementApiKeyService` 鉴权。pom.xml 添加 `git-commit-id-maven-plugin` + `build-info` goal。SecurityConfig 放行 `/ops/**`。新增 `ErrorAnalysisRequest` DTO。`OpsControllerTest` 7 个测试。全量 43/43 通过，零回归。 (2026-05-25 23:52)
