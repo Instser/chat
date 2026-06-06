@@ -65,9 +65,7 @@ public class NetworkAiServiceImpl implements NetworkAiService {
         }
     }
 
-    /**
-     * 新增方法：获取Gemini完整响应（用于聊天内容拼接）
-     */
+    @Override
     public GeminiGroundingResponse queryWithGeminiGrounding(String userContext) {
         return geminiNetworkService.queryWithGrounding(userContext);
     }

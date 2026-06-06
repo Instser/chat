@@ -14,8 +14,10 @@ import com.instser.chat.service.ChatLimitService;
 import com.instser.chat.service.ChatMessageService;
 import com.instser.chat.service.ChatRateLimitService;
 import com.instser.chat.service.ChatSessionService;
+import com.instser.chat.service.ChatTitleService;
 import com.instser.chat.service.FileUploadService;
 import com.instser.chat.service.NetworkAiService;
+import com.instser.chat.service.NetworkSearchOrchestrator;
 import com.instser.chat.service.TruncationDetectionService;
 import com.instser.chat.service.WebSearchContentService;
 import jakarta.servlet.http.HttpServletResponse;
@@ -71,8 +73,9 @@ class ChatServiceImplTest {
                 restTemplate,
                 truncationDetectionService,
                 webSearchContentService,
-                networkAiService,
                 aiCallMonitor,
+                mock(ChatTitleService.class),
+                mock(NetworkSearchOrchestrator.class),
                 continuationExecutor
         );
 
@@ -159,8 +162,9 @@ class ChatServiceImplTest {
                 restTemplate,
                 truncationDetectionService,
                 webSearchContentService,
-                networkAiService,
                 aiCallMonitor,
+                mock(ChatTitleService.class),
+                mock(NetworkSearchOrchestrator.class),
                 continuationExecutor
         );
 
@@ -238,8 +242,9 @@ class ChatServiceImplTest {
                 restTemplate,
                 truncationDetectionService,
                 webSearchContentService,
-                networkAiService,
                 aiCallMonitor,
+                mock(ChatTitleService.class),
+                mock(NetworkSearchOrchestrator.class),
                 continuationExecutor
         );
 

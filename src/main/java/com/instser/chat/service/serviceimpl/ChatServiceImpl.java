@@ -7,13 +7,11 @@ import com.instser.chat.constants.PromptConstants;
 import com.instser.chat.dto.ChatRequestDTO;
 import com.instser.chat.dto.ChatResponseDTO;
 import com.instser.chat.dto.MessageSaveResult;
+import com.instser.chat.dto.NetworkSearchProcessResult;
 import com.instser.chat.entity.AiModel;
 import com.instser.chat.entity.ChatMessage;
 import com.instser.chat.entity.ChatSession;
 import com.instser.chat.entity.FileUpload;
-import com.instser.chat.entity.GeminiGroundingResponse;
-import com.instser.chat.entity.GeminiSource;
-import com.instser.chat.entity.GeminiTextSegment;
 import com.instser.chat.entity.WebSearchResult;
 
 import com.instser.chat.monitor.AiCallMonitor;
@@ -26,10 +24,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.buffer.DataBuffer;
 import org.springframework.core.io.buffer.DataBufferUtils;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.security.core.Authentication;
@@ -48,7 +43,6 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Executor;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.TimeUnit;
-import java.util.stream.Collectors;
 
 /**
  * 聊天业务服务实现类
@@ -72,8 +66,9 @@ public class ChatServiceImpl implements ChatService {
     private final RestTemplate restTemplate;
     private final TruncationDetectionService truncationDetectionService;
     private final WebSearchContentService webSearchContentService;
-    private final NetworkAiService networkAiService;
     private final AiCallMonitor aiCallMonitor;
+    private final ChatTitleService chatTitleService;
+    private final NetworkSearchOrchestrator networkSearchOrchestrator;
 
     @Qualifier("continuationExecutor")
     private final Executor continuationExecutor;
@@ -903,7 +898,7 @@ public class ChatServiceImpl implements ChatService {
                         }
                     }
 
-                    NetworkSearchResult networkResult = processNetworkContent(messages, userQuery);
+                    NetworkSearchProcessResult networkResult = processNetworkContent(messages, userQuery);
                     messages = networkResult.getMessages();
 
                     // 记录处理后的消息状态
@@ -3472,31 +3467,7 @@ public class ChatServiceImpl implements ChatService {
      * 构建标题生成消息：用户原始内容 + 当前AI响应
      */
     private List<Map<String, String>> buildTitleMessages(ChatRequestDTO request, String aiResponse) {
-        List<Map<String, String>> messagesForTitle = new ArrayList<>();
-
-        // 添加用户原始消息（从originalMessages获取）
-        if (request.getOriginalMessages() != null) {
-            for (Map<String, String> originalMsg : request.getOriginalMessages()) {
-                if ("user".equals(originalMsg.get("role"))) {
-                    messagesForTitle.add(new HashMap<>(originalMsg));
-                }
-            }
-        }
-
-        // 添加当前AI响应
-        if (aiResponse != null && !aiResponse.trim().isEmpty()) {
-            Map<String, String> aiMsg = new HashMap<>();
-            aiMsg.put("role", "assistant");
-            aiMsg.put("content", aiResponse);
-            messagesForTitle.add(aiMsg);
-        }
-
-        log.info("构建标题生成消息完成，消息数量: {}（用户消息: {}，AI响应: {}）",
-                messagesForTitle.size(),
-                messagesForTitle.stream().filter(m -> "user".equals(m.get("role"))).count(),
-                messagesForTitle.stream().filter(m -> "assistant".equals(m.get("role"))).count());
-
-        return messagesForTitle;
+        return chatTitleService.buildTitleMessages(request, aiResponse);
     }
 
     /**
@@ -3526,237 +3497,7 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public String generateSessionTitle(String sessionId, List<Map<String, String>> messages) {
-        log.info("=== 开始后台同步标题生成流程 ===");
-        log.info("会话ID: {}, 消息数量: {}", sessionId, messages.size());
-
-        try {
-            // 获取固定的标题生成模型（ID为4L）
-            AiModel titleModel = aiModelService.getById(4L);
-            if (titleModel == null || titleModel.getIsAvailable() != 1) {
-                LogUtils.logUserError(log, null, "标题生成", "标题生成模型（ID=4L）不可用，会话ID: {}，模型状态: {}，跳过标题生成", null, 
-                        sessionId, titleModel != null ? titleModel.getIsAvailable() : "null");
-                return null;
-            }
-            log.info("标题生成模型: {}", titleModel.getModelName());
-
-            // 构建对话内容（使用原始消息，不包含联网搜索结果）
-            String conversationContent = buildConversationContent(messages);
-            if (conversationContent == null || conversationContent.trim().isEmpty()) {
-                LogUtils.logUserWarning(log, null, "标题生成", "无法构建对话内容，会话ID: {}，消息数量: {}，跳过标题生成", 
-                        sessionId, messages.size());
-                return null;
-            }
-            log.info("对话内容构建成功，长度: {}字符", conversationContent.length());
-
-            // 构建标题生成提示词
-            String titlePrompt = buildTitlePrompt(conversationContent);
-            log.info("标题提示词构建成功，长度: {}字符", titlePrompt.length());
-
-            // 调用AI服务生成标题
-            String rawTitle = callAiForTitleWithHttpClient(titlePrompt, titleModel);
-            if (rawTitle == null || rawTitle.trim().isEmpty()) {
-                LogUtils.logUserWarning(log, null, "标题生成", "AI服务返回空标题，会话ID: {}，模型: {}，可能原因: AI模型无响应或网络异常", 
-                        sessionId, titleModel.getModelName());
-                return null;
-            }
-            log.info("AI服务返回原始标题: [{}]", rawTitle);
-
-            // 清理标题
-            String cleanedTitle = cleanTitle(rawTitle);
-            log.info("标题清理完成: [{}] -> [{}]", rawTitle, cleanedTitle);
-
-            // 保存标题到数据库
-            if (cleanedTitle != null && !cleanedTitle.equals("New Chat")) {
-                boolean saved = chatSessionService.updateSessionTitle(sessionId, cleanedTitle);
-                if (saved) {
-                    log.info("标题保存到数据库成功: {}", cleanedTitle);
-                } else {
-                    LogUtils.logUserError(log, null, "标题生成", "标题保存到数据库失败，会话ID: {}，标题: [{}]", null, 
-                            sessionId, cleanedTitle);
-                }
-            } else {
-                LogUtils.logUserWarning(log, null, "标题生成", "标题为空或为默认标题，不保存到数据库，会话ID: {}，清理后标题: [{}]", 
-                        sessionId, cleanedTitle);
-            }
-
-            log.info("=== 后台同步标题生成流程完成，最终标题: [{}] ===", cleanedTitle);
-            return cleanedTitle;
-
-        } catch (Exception e) {
-            log.error("后台同步标题生成过程中发生异常", e);
-            return null;
-        }
-    }
-
-    /**
-     * 构建对话内容
-     */
-    private String buildConversationContent(List<Map<String, String>> messages) {
-        log.info("开始构建对话内容，消息数量: {}", messages != null ? messages.size() : 0);
-
-        if (messages == null || messages.isEmpty()) {
-            log.warn("消息列表为空，无法构建对话内容");
-            return null;
-        }
-
-        StringBuilder conversationBuilder = new StringBuilder();
-        int userMessageCount = 0;
-        int assistantMessageCount = 0;
-
-        for (Map<String, String> message : messages) {
-            String role = message.get("role");
-            String content = message.get("content");
-
-            if ("user".equals(role) && content != null && !content.trim().isEmpty()) {
-                conversationBuilder.append("User: ").append(content.trim()).append("\n");
-                userMessageCount++;
-            } else if ("assistant".equals(role) && content != null && !content.trim().isEmpty()) {
-                conversationBuilder.append("AI: ").append(content.trim()).append("\n");
-                assistantMessageCount++;
-            }
-        }
-
-        String result = conversationBuilder.toString().trim();
-        log.info("对话内容构建完成，用户消息: {}条，AI消息: {}条，总长度: {}字符",
-                userMessageCount, assistantMessageCount, result.length());
-
-        if (result.isEmpty()) {
-            log.warn("构建的对话内容为空");
-            return null;
-        }
-
-        return result;
-    }
-
-    /**
-     * 构建标题生成提示词
-     */
-    private String buildTitlePrompt(String conversationContent) {
-        log.info("构建标题生成提示词，对话内容长度: {}字符", conversationContent != null ? conversationContent.length() : 0);
-
-        String prompt = PromptConstants.TITLE_GENERATION_PROMPT
-            .replace("{conversationContent}", conversationContent);
-
-        log.debug("标题生成提示词构建完成，总长度: {}字符", prompt.length());
-        return prompt;
-    }
-
-    /**
-     * 清理标题内容
-     */
-    private String cleanTitle(String title) {
-        log.info("开始清理标题，原始标题: [{}]", title);
-
-        if (title == null || title.trim().isEmpty()) {
-            log.warn("标题为null或空，返回默认标题");
-            return "New Chat";
-        }
-
-        // 基础清理：移除引号和多余空格
-        String cleaned = title.trim()
-            .replaceAll("^[\"']+|[\"']+$", "") // 移除开头和结尾的引号
-            .replaceAll("\\s+", " ") // 合并多个空格
-            .trim();
-
-        log.info("标题清理完成: [{}] -> [{}]", title, cleaned);
-
-        // 如果清理后为空，返回默认标题
-        if (cleaned.isEmpty()) {
-            log.warn("清理后标题为空，返回默认标题");
-            return "New Chat";
-        }
-
-        return cleaned;
-    }
-
-    /**
-     * 使用HTTP客户端调用AI服务生成标题
-     */
-    private String callAiForTitleWithHttpClient(String titlePrompt, AiModel model) {
-        try {
-            log.info("开始使用HTTP客户端调用AI服务生成标题");
-
-            // 构建请求体
-            Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("model", model.getModelCode());
-
-            List<Map<String, String>> titleMessages = new ArrayList<>();
-            Map<String, String> titleMessage = new HashMap<>();
-            titleMessage.put("role", "user");
-            titleMessage.put("content", titlePrompt);
-            titleMessages.add(titleMessage);
-
-            requestBody.put("messages", titleMessages);
-            requestBody.put("stream", false);
-            requestBody.put("max_tokens", 50);
-            requestBody.put("temperature", 0.7);
-
-            // 只有当provider是Gemini时才添加reasoning_effort参数
-            if ("Gemini".equalsIgnoreCase(model.getProvider())) {
-                requestBody.put("reasoning_effort", "none");
-                log.debug("检测到Gemini模型，添加reasoning_effort=none参数");
-            }
-
-            // 记录详细的AI标题生成请求信息
-            logAiTitleRequestDetails(requestBody, model);
-
-            log.info("AI标题生成请求体构建完成");
-
-            // 使用注入的RestTemplate进行HTTP调用（已禁用SSL验证）
-
-            // 设置请求头
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(model.getApiKey());
-
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
-
-            log.info("开始发送HTTP请求到: {}", model.getBaseUrl());
-
-            // 发送请求并获取响应
-            ResponseEntity<String> response = restTemplate.postForEntity(
-                model.getBaseUrl(),
-                entity,
-                String.class
-            );
-
-            String responseBody = response.getBody();
-            log.info("收到AI服务响应，响应长度: {}字符", responseBody != null ? responseBody.length() : 0);
-
-            if (responseBody == null || responseBody.trim().isEmpty()) {
-                LogUtils.logUserWarning(log, null, "标题生成", "AI服务返回空响应，模型: {}，URL: {}，可能原因: 网络异常或API不可用", 
-                        model.getModelName(), model.getBaseUrl());
-                return null;
-            }
-
-            // 解析响应
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode responseJson = mapper.readTree(responseBody);
-            log.info("AI服务响应JSON解析成功");
-
-            JsonNode choices = responseJson.get("choices");
-            if (choices != null && choices.isArray() && choices.size() > 0) {
-                JsonNode message = choices.get(0).get("message");
-                if (message != null && message.has("content")) {
-                    String title = message.get("content").asText();
-                    log.info("AI服务返回标题: [{}]", title);
-                    return title;
-                } else {
-                    LogUtils.logUserWarning(log, null, "标题生成", "AI响应中message节点不存在或没有content字段，模型: {}，响应结构可能不符合预期", model.getModelName());
-                }
-            } else {
-                LogUtils.logUserWarning(log, null, "标题生成", "AI响应中choices节点为空或不是数组，模型: {}，响应结构异常", model.getModelName());
-            }
-
-            LogUtils.logUserWarning(log, null, "标题生成", "AI服务响应格式异常，模型: {}，URL: {}，完整响应内容: {}", 
-                    model.getModelName(), model.getBaseUrl(), responseBody);
-            return null;
-
-        } catch (Exception e) {
-            LogUtils.logUserError(log, null, "标题生成", "使用HTTP客户端调用AI服务生成标题失败，模型: {}，URL: {}，异常类型: {}，异常消息: {}", e, 
-                    model.getModelName(), model.getBaseUrl(), e.getClass().getSimpleName(), e.getMessage());
-            return null;
-        }
+        return chatTitleService.generateSessionTitle(sessionId, messages);
     }
 
     @Override
@@ -3838,22 +3579,6 @@ public class ChatServiceImpl implements ChatService {
     }
 
     /**
-     * 联网搜索结果包装类
-     */
-    private static class NetworkSearchResult {
-        private final List<Map<String, String>> messages;
-        private final List<WebSearchResult> searchResults;
-
-        public NetworkSearchResult(List<Map<String, String>> messages, List<WebSearchResult> searchResults) {
-            this.messages = messages;
-            this.searchResults = searchResults;
-        }
-
-        public List<Map<String, String>> getMessages() { return messages; }
-        public List<WebSearchResult> getSearchResults() { return searchResults; }
-    }
-
-    /**
      * 处理联网搜索内容并附加到用户消息中
      * 重构为使用Gemini API的完整响应格式，发送完整会话上下文
      *
@@ -3861,63 +3586,8 @@ public class ChatServiceImpl implements ChatService {
      * @param query 搜索查询内容（从用户消息中提取，用于日志记录）
      * @return 包含处理后的消息列表和搜索结果的对象
      */
-    private NetworkSearchResult processNetworkContent(List<Map<String, String>> messages, String query) {
-        if (messages == null || messages.isEmpty()) {
-            return new NetworkSearchResult(messages, new ArrayList<>());
-        }
-
-        try {
-            log.info("【Gemini联网】开始处理联网搜索内容，最新查询：{}，会话消息数量：{}", query, messages.size());
-
-            // 构建完整的会话上下文发送给Gemini API
-            String fullContext = buildFullContextForNetworkSearch(messages);
-
-            log.debug("【Gemini联网】构建的完整上下文长度：{}，内容预览：{}",
-                    fullContext.length(),
-                    fullContext.length() > 300 ? fullContext.substring(0, 300) + "..." : fullContext);
-
-            // 使用Gemini API进行联网搜索，发送完整上下文
-            GeminiGroundingResponse geminiResponse = ((NetworkAiServiceImpl) networkAiService).queryWithGeminiGrounding(fullContext);
-
-            if (geminiResponse == null) {
-                log.warn("【Gemini联网】Gemini响应为空，上下文长度：{}", fullContext.length());
-                return new NetworkSearchResult(messages, new ArrayList<>());
-            }
-
-            log.info("【Gemini联网】Gemini响应获取成功，sources数量：{}",
-                    geminiResponse.getSources() != null ? geminiResponse.getSources().size() : 0);
-
-            // 格式化完整的Gemini响应内容
-            String formattedNetworkContent = formatCompleteGeminiResponse(geminiResponse);
-
-            log.debug("【联网内容拼接】格式化的联网内容详情：\n{}", formattedNetworkContent);
-
-            // 将格式化后的完整响应拼接到最后一条用户消息
-            List<Map<String, String>> updatedMessages = new ArrayList<>(messages);
-            if (!updatedMessages.isEmpty()) {
-                Map<String, String> lastMessage = updatedMessages.get(updatedMessages.size() - 1);
-                if ("user".equals(lastMessage.get("role"))) {
-                    String originalContent = lastMessage.get("content");
-                    String updatedContent = originalContent + "\n\nBelow is the networking content you get from your own search:\n\n" + formattedNetworkContent;
-                    lastMessage.put("content", updatedContent);
-
-                    log.info("【Gemini联网】已将格式化的Gemini响应拼接到用户消息，原始长度：{}，拼接后长度：{}",
-                            originalContent.length(), updatedContent.length());
-
-                    log.debug("【联网内容拼接】原始用户内容：\n{}", originalContent);
-                    log.debug("【联网内容拼接】拼接后完整内容：\n{}", updatedContent);
-                }
-            }
-
-            // 转换sources为WebSearchResult用于数据库存储
-            List<WebSearchResult> searchResults = convertGeminiSourcesToWebSearchResults(geminiResponse.getSources());
-
-            return new NetworkSearchResult(updatedMessages, searchResults);
-
-        } catch (Exception e) {
-            log.error("处理联网搜索内容失败，查询：{}，消息数量：{}", query, messages.size(), e);
-            return new NetworkSearchResult(messages, new ArrayList<>()); // 出错时返回原消息列表和空搜索结果
-        }
+    private NetworkSearchProcessResult processNetworkContent(List<Map<String, String>> messages, String query) {
+        return networkSearchOrchestrator.processNetworkContent(messages, query);
     }
 
     /**
@@ -3932,49 +3602,6 @@ public class ChatServiceImpl implements ChatService {
         }
 
         return searchResponse;
-    }
-
-    /**
-     * 构建完整的会话上下文用于联网搜索
-     * 将整个会话历史转换为自然语言格式，让联网AI能够理解完整的对话上下文
-     *
-     * @param messages 消息列表
-     * @return 格式化的会话上下文
-     */
-    private String buildFullContextForNetworkSearch(List<Map<String, String>> messages) {
-        if (messages == null || messages.isEmpty()) {
-            return "";
-        }
-
-        StringBuilder contextBuilder = new StringBuilder();
-        contextBuilder.append("以下是用户与AI助手的完整对话历史，请基于这个上下文理解用户的最新需求并进行网络搜索：\n\n");
-
-        // 遍历所有消息，构建对话上下文
-        for (int i = 0; i < messages.size(); i++) {
-            Map<String, String> message = messages.get(i);
-            String role = message.get("role");
-            String content = message.get("content");
-
-            if (content == null || content.trim().isEmpty()) {
-                continue;
-            }
-
-            // 清理内容，移除之前的联网搜索结果和文件内容
-            String cleanContent = extractOriginalUserContent(content);
-
-            if ("user".equals(role)) {
-                contextBuilder.append("用户: ").append(cleanContent).append("\n\n");
-            } else if ("assistant".equals(role)) {
-                // 对于AI回复，只保留前200个字符作为上下文参考
-                String shortContent = cleanContent.length() > 200 ?
-                    cleanContent.substring(0, 200) + "..." : cleanContent;
-                contextBuilder.append("AI助手: ").append(shortContent).append("\n\n");
-            }
-        }
-
-        contextBuilder.append("请基于以上对话上下文，理解用户的最新需求并进行相关的网络搜索。");
-
-        return contextBuilder.toString();
     }
 
     /**
@@ -4041,28 +3668,6 @@ public class ChatServiceImpl implements ChatService {
 
         } catch (Exception e) {
             log.warn("【AI请求】记录请求详细信息失败：{}", e.getMessage());
-        }
-    }
-
-    /**
-     * 记录详细的AI标题生成请求信息
-     */
-    private void logAiTitleRequestDetails(Map<String, Object> requestBody, AiModel model) {
-        try {
-            log.info("=== AI标题生成请求详细信息 ===");
-            log.info("模型: {} ({})", model.getModelCode(), model.getBaseUrl());
-
-            // 处理请求体，截取content字段
-            Map<String, Object> processedRequestBody = truncateRequestBodyContent(requestBody);
-
-            // 输出处理后的原始请求体
-            ObjectMapper objectMapper = new ObjectMapper();
-            String requestBodyJson = objectMapper.writeValueAsString(processedRequestBody);
-            log.info("原始请求体: {}", requestBodyJson);
-
-            log.info("=== AI标题生成请求信息结束 ===");
-        } catch (Exception e) {
-            log.warn("记录AI标题生成请求详细信息失败: {}", e.getMessage());
         }
     }
 
@@ -4290,7 +3895,7 @@ public class ChatServiceImpl implements ChatService {
                         }
                     }
 
-                    NetworkSearchResult networkResult = processNetworkContent(messages, userQuery);
+                    NetworkSearchProcessResult networkResult = processNetworkContent(messages, userQuery);
                     messages = networkResult.getMessages();
                     retrySearchResults = networkResult.getSearchResults();
 
@@ -4572,7 +4177,7 @@ public class ChatServiceImpl implements ChatService {
                         }
                     }
 
-                    NetworkSearchResult networkResult = processNetworkContent(messages, userQuery);
+                    NetworkSearchProcessResult networkResult = processNetworkContent(messages, userQuery);
                     messages = networkResult.getMessages();
                     editResendSearchResults = networkResult.getSearchResults();
 
@@ -4925,109 +4530,6 @@ public class ChatServiceImpl implements ChatService {
 
 
 
-
-
-    /**
-     * 格式化完整的Gemini响应内容
-     * 包括response_text、search_queries、sources、text_segments等所有信息
-     */
-    private String formatCompleteGeminiResponse(GeminiGroundingResponse response) {
-        StringBuilder formatted = new StringBuilder();
-
-        log.debug("【联网内容格式化】开始格式化Gemini响应");
-
-        // 1. 主要响应文本
-        if (response.getResponseText() != null) {
-            log.debug("【联网内容格式化】响应文本长度：{}，内容：{}",
-                    response.getResponseText().length(),
-                    response.getResponseText().length() > 200 ?
-                        response.getResponseText().substring(0, 200) + "..." :
-                        response.getResponseText());
-            formatted.append(response.getResponseText()).append("\n\n");
-        } else {
-            log.debug("【联网内容格式化】响应文本为空");
-        }
-
-        // 2. 搜索查询信息
-        if (response.getSearchQueries() != null && !response.getSearchQueries().isEmpty()) {
-            log.debug("【联网内容格式化】搜索查询数量：{}，查询列表：{}",
-                    response.getSearchQueries().size(), response.getSearchQueries());
-            formatted.append("Search Queries:\n");
-            for (String query : response.getSearchQueries()) {
-                formatted.append("- ").append(query).append("\n");
-            }
-            formatted.append("\n");
-        } else {
-            log.debug("【联网内容格式化】搜索查询为空");
-        }
-
-        // 3. 来源信息
-        if (response.getSources() != null && !response.getSources().isEmpty()) {
-            log.debug("【联网内容格式化】来源数量：{}", response.getSources().size());
-            formatted.append("Sources:\n");
-            for (int i = 0; i < response.getSources().size(); i++) {
-                GeminiSource source = response.getSources().get(i);
-                log.debug("【联网内容格式化】来源[{}]：标题={}，URL={}",
-                        i + 1, source.getTitle(), source.getUrl());
-                formatted.append(String.format("[%d] %s - %s\n",
-                    i + 1, source.getTitle(), source.getUrl()));
-            }
-            formatted.append("\n");
-        } else {
-            log.debug("【联网内容格式化】来源信息为空");
-        }
-
-        // 4. 文本段落支持信息（如果需要的话）
-        if (response.getTextSegments() != null && !response.getTextSegments().isEmpty()) {
-            log.debug("【联网内容格式化】文本段落数量：{}", response.getTextSegments().size());
-            formatted.append("Citation Details:\n");
-            for (int i = 0; i < response.getTextSegments().size(); i++) {
-                GeminiTextSegment segment = response.getTextSegments().get(i);
-                if (segment.getText() != null) {
-                    log.debug("【联网内容格式化】文本段落[{}]：文本长度={}，来源索引={}",
-                            i, segment.getText().length(), segment.getSourceIndices());
-                    formatted.append("\"").append(segment.getText()).append("\" ");
-                    if (segment.getSourceIndices() != null && !segment.getSourceIndices().isEmpty()) {
-                        formatted.append("(Sources: ");
-                        for (Integer index : segment.getSourceIndices()) {
-                            formatted.append("[").append(index + 1).append("] ");
-                        }
-                        formatted.append(")");
-                    }
-                    formatted.append("\n");
-                }
-            }
-        } else {
-            log.debug("【联网内容格式化】文本段落为空");
-        }
-
-        String result = formatted.toString().trim();
-        log.debug("【联网内容格式化】最终格式化结果长度：{}，内容预览：{}",
-                result.length(),
-                result.length() > 300 ? result.substring(0, 300) + "..." : result);
-
-        return result;
-    }
-
-    /**
-     * 转换Gemini sources为WebSearchResult格式（用于数据库存储）
-     */
-    private List<WebSearchResult> convertGeminiSourcesToWebSearchResults(List<GeminiSource> sources) {
-        if (sources == null) {
-            return new ArrayList<>();
-        }
-
-        return sources.stream()
-            .map(source -> {
-                WebSearchResult result = new WebSearchResult();
-                result.setUrl(source.getUrl());
-                result.setTitle(source.getTitle());
-
-                // 不设置其他字段，保持为null
-                return result;
-            })
-            .collect(Collectors.toList());
-    }
 
 
 }

@@ -1,5 +1,6 @@
 package com.instser.chat.service;
 
+import com.instser.chat.entity.GeminiGroundingResponse;
 import com.instser.chat.entity.WebSearchResult;
 
 import java.util.List;
@@ -20,6 +21,14 @@ public interface NetworkAiService {
      * @return 转换为WebSearchResult格式的联网查询结果
      */
     List<WebSearchResult> queryWithNetworkAsWebSearchResults(String userContext);
+
+    /**
+     * 获取Gemini完整联网响应，用于聊天上下文拼接。
+     *
+     * @param userContext 用户有效上下文
+     * @return Gemini完整联网响应
+     */
+    GeminiGroundingResponse queryWithGeminiGrounding(String userContext);
 
     /**
      * 检查联网AI服务是否可用

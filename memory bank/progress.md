@@ -1,8 +1,37 @@
 # 项目进度状态
 
-**📅 最后更新**: 2026-06-05 06:52:00
+**📅 最后更新**: 2026-06-06 21:03:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v128.0
+**📊 文档版本**: v130.0
+
+## 🚀 最新完成功能 (2026-06-06)
+
+### AI 对话业务模块阶段一解耦完成 ✅
+- **实现时间**: 2026年6月6日 21:03
+- **功能描述**: 按阶段一低风险提取方案，将 `ChatServiceImpl` 中标题生成与 Gemini 联网搜索拼接职责拆分到独立服务，在保持 `/chat`、`retry`、`edit-resend` 等外部行为兼容的前提下降低主流程类职责。
+- **核心实现**:
+  - **标题服务提取**: 新增 `ChatTitleService`、`ChatTitleServiceImpl`，承接标题消息构建、固定 ID=4L 标题模型读取、HTTP 非流式标题生成、标题清洗与会话标题保存。
+  - **联网编排提取**: 新增 `NetworkSearchOrchestrator`、`NetworkSearchOrchestratorImpl`、`NetworkSearchProcessResult`，承接联网完整上下文构建、Gemini 响应格式化、搜索来源转换和异常降级。
+  - **接口边界修复**: `NetworkAiService` 新增 `queryWithGeminiGrounding(String userContext)`，`ChatServiceImpl` 不再强转 `NetworkAiServiceImpl`。
+  - **主流程兼容**: `ChatServiceImpl` 保留外部接口与关键调用顺序，标题和联网入口改为委托新服务，联网结果保存仍沿用现有 `saveWebSearchResultsToAiResponse` 副作用路径。
+- **测试覆盖**:
+  - 新增 `ChatTitleServiceImplTest`，覆盖标题消息过滤、固定 4L 模型请求参数、标题清洗保存、模型不可用降级。
+  - 新增 `NetworkSearchOrchestratorImplTest`，覆盖 Gemini 联网内容拼接、来源转换、异常降级。
+  - 保留并通过 `ChatServiceImplStageOneCharacterizationTest` 与 `ChatServiceImplTest`，锁定原阶段一行为。
+- **验证结果**:
+  - `mvn "-Dtest=ChatTitleServiceImplTest,NetworkSearchOrchestratorImplTest,ChatServiceImplStageOneCharacterizationTest,ChatServiceImplTest" test` ✅
+  - `mvn -DskipTests compile` ✅
+- **影响范围**: Java 代码与测试变更；未新增、移除、升级依赖，未修改 JDK 版本，未修改数据库或 SQL。
+
+### 项目技术选型与业务逻辑面试复盘文档完成 ✅
+- **实现时间**: 2026年6月6日 16:58
+- **功能描述**: 在不修改业务代码、SQL、依赖或运行库版本的前提下，完成面向面试复习的项目技术选型与业务逻辑梳理文档。
+- **核心产出**:
+  - **复盘文档**: `docs/06-06_16-58_项目技术选型与业务逻辑面试复盘_v1.0.md`
+  - **技术栈梳理**: 覆盖 Spring Boot 3.1.12、JDK17、MyBatis-Plus、MySQL8.0、Redis、Caffeine、Redisson、WebClient、JWT、OAuth2、Actuator、Micrometer、Prometheus、POI/PDFBox 等选型。
+  - **业务逻辑梳理**: 覆盖 AI 对话主链路、SSE 流式响应、retry/edit-resend、Gemini 联网搜索、文件解析、套餐限流、支付策略、多层缓存、安全认证、traceId、异常处理和监控运维。
+  - **面试准备**: 补充项目介绍、AI 对话链路、支付链路、缓存设计、监控设计等回答模板，以及项目亮点、不足和推荐复习顺序。
+- **影响范围**: 纯文档新增并同步 memory bank；未修改 Java 代码、SQL、依赖、JDK 版本或运行库版本。
 
 ## 🚀 最新完成功能 (2026-06-05)
 

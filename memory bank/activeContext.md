@@ -1,13 +1,15 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-06-05 06:52:00
+**📅 最后更新**: 2026-06-06 21:03:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v134.0
+**📊 文档版本**: v136.0
 
 ## 当前任务
-- AI 核心性能指标监控学习方案已完成：已输出自定义埋点 + Prometheus + Grafana 开发方案文档，聚焦 TTFT、TPS/TPOT、End-to-End latency、RPS/RPM 等 AI 运维指标。当前仅新增文档，未修改业务代码、SQL、依赖或运行库版本。
+- AI 对话业务模块阶段一解耦已完成：按 `docs/plans/05-29_12-25_AI对话业务模块解耦方案_v1.0.md` 的低风险提取思路，将标题生成职责迁移到 `ChatTitleService`，将 Gemini 联网内容拼接职责迁移到 `NetworkSearchOrchestrator`，并通过 `NetworkAiService.queryWithGeminiGrounding` 消除 `ChatServiceImpl` 对 `NetworkAiServiceImpl` 的实现类强转。未新增、移除或升级依赖，JDK17 不变，数据库结构不变。
 
 ## 最新完成任务
+✅ **AI 对话业务模块阶段一解耦完成** — 新增 `ChatTitleService` / `ChatTitleServiceImpl`，迁移标题消息构建、固定 4L 标题模型调用、标题清洗和会话标题落库逻辑；新增 `NetworkSearchOrchestrator` / `NetworkSearchOrchestratorImpl` 和 `NetworkSearchProcessResult`，迁移 Gemini 联网完整上下文构建、响应格式化、来源转换和异常降级逻辑；扩展 `NetworkAiService` 接口新增 `queryWithGeminiGrounding`，`ChatServiceImpl` 改为编排委托，不再强转 `NetworkAiServiceImpl`。新增 `ChatTitleServiceImplTest` 与 `NetworkSearchOrchestratorImplTest`，并通过阶段一相关回归测试与编译验证。 (2026-06-06 21:03)
+✅ **项目技术选型与业务逻辑面试复盘文档完成** — 输出 `docs/06-06_16-58_项目技术选型与业务逻辑面试复盘_v1.0.md`，基于 `pom.xml`、`README.md`、`memory bank` 与核心源码梳理项目定位、技术选型、分层结构、AI 流式对话、retry/edit-resend、Gemini 联网、文件解析、套餐权限、支付策略、多层缓存、安全认证、traceId、AI 监控指标、面试回答模板与复习顺序。本次仅新增学习文档并同步 memory bank，无业务代码、SQL、依赖或运行库版本改动。 (2026-06-06 16:58)
 ✅ **AI核心性能指标监控开发方案完成** — 输出 `docs/06-05 06_52 AI核心性能指标监控开发方案_v1.0.md`，基于当前已有 Actuator、Micrometer、ApiMetrics、SlowRequestInterceptor、AiCallMetrics、AiCallMonitor 和 `ChatServiceImpl.streamChatWithAI` 埋点现状，分析 TTFT、Token 生成速度 TPS/TPOT、End-to-End latency、Throughput（RPS/RPM）的指标口径、Prometheus 指标设计、Grafana Dashboard、告警规则、测试验收与分阶段开发顺序；明确当前 Token Counter 存在但主链路未调用 `addTokens`，因此 Token 消耗、TPS/TPOT 需要补真实采集。本次仅新增学习方案文档，无代码改动。 (2026-06-05 06:52)
 ✅ **AI 对话业务模块阶段一特征测试基线完成** — 新增 `ChatServiceImplStageOneCharacterizationTest`，覆盖标题生成消息构建、固定模型 4L 标题生成请求/清洗/持久化、标题模型不可用降级、Gemini 联网内容拼接、联网异常降级、联网结果持久化与网络关闭不持久化等 7 个高风险行为点；同时补强 `InOrder` 顺序断言，锁定 retry 删除旧消息后再保存错误响应、edit-resend 删除旧消息后保存新用户消息再保存错误响应、联网结果先持久化再标记 AI 消息、标题模型读取后再标题落库。已执行相关测试 10/10 通过、全量 `mvn -s "$env:TEMP\codex-maven-settings-aliyun.xml" test` 50/50 通过。 (2026-05-29 13:59)
 ✅ **AI 对话业务模块解耦方案文档完成** — 输出 `docs/plans/05-29_12-25_AI对话业务模块解耦方案_v1.0.md`，记录当前 `ChatServiceImpl` 高耦合点、目标分层、核心接口、五阶段实施计划、测试策略和风险控制。 (2026-05-29 12:25)

@@ -16,9 +16,11 @@ import com.instser.chat.service.ChatLimitService;
 import com.instser.chat.service.ChatMessageService;
 import com.instser.chat.service.ChatRateLimitService;
 import com.instser.chat.service.ChatSessionService;
+import com.instser.chat.service.ChatTitleService;
 import com.instser.chat.service.FileUploadService;
 import com.instser.chat.service.GeminiNetworkService;
 import com.instser.chat.service.NetworkAiService;
+import com.instser.chat.service.NetworkSearchOrchestrator;
 import com.instser.chat.service.TruncationDetectionService;
 import com.instser.chat.service.WebSearchContentService;
 import org.junit.jupiter.api.Test;
@@ -72,6 +74,7 @@ class ChatServiceImplStageOneCharacterizationTest {
     private final Executor continuationExecutor = Runnable::run;
     private final AiCallMonitor aiCallMonitor = mock(AiCallMonitor.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ChatTitleService chatTitleService = new ChatTitleServiceImpl(aiModelService, chatSessionService, restTemplate);
 
     @Test
     void buildTitleMessagesShouldUseOnlyOriginalUserMessagesAndCurrentAiResponse() {
@@ -274,6 +277,7 @@ class ChatServiceImplStageOneCharacterizationTest {
     }
 
     private ChatServiceImpl createService(NetworkAiService networkAiService) {
+        NetworkSearchOrchestrator networkSearchOrchestrator = new NetworkSearchOrchestratorImpl(networkAiService);
         return new ChatServiceImpl(
                 chatMessageService,
                 chatSessionService,
@@ -286,8 +290,9 @@ class ChatServiceImplStageOneCharacterizationTest {
                 restTemplate,
                 truncationDetectionService,
                 webSearchContentService,
-                networkAiService,
                 aiCallMonitor,
+                chatTitleService,
+                networkSearchOrchestrator,
                 continuationExecutor
         );
     }
