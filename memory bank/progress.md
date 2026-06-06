@@ -1,8 +1,20 @@
 # 项目进度状态
 
-**📅 最后更新**: 2026-05-29 13:59:00
-**👤 更新人员**: Claude Code
-**📊 文档版本**: v127.0
+**📅 最后更新**: 2026-06-05 06:52:00
+**👤 更新人员**: Codex
+**📊 文档版本**: v128.0
+
+## 🚀 最新完成功能 (2026-06-05)
+
+### AI核心性能指标监控开发方案完成 ✅
+- **实现时间**: 2026年6月5日 06:52
+- **功能描述**: 在不修改业务代码、SQL、依赖或运行库版本的前提下，完成 AI 运维学习方案文档，说明当前项目接入 TTFT、TPS/TPOT、End-to-End latency、RPS/RPM 等核心指标需要进行的开发。
+- **核心产出**:
+  - **方案文档**: `docs/06-05 06_52 AI核心性能指标监控开发方案_v1.0.md`
+  - **现状分析**: 当前项目已有 Actuator + Micrometer Prometheus Registry、`ApiMetrics`、`SlowRequestInterceptor`、`AiCallMetrics`、`AiCallMonitor` 和主聊天流式链路初步埋点。
+  - **缺口说明**: 当前 Token Counter 和 `addTokens` 方法已存在，但主聊天流式链路未调用 `addTokens`，因此 Token 消耗、TPS、TPOT 仍需补真实采集。
+  - **开发规划**: 覆盖指标模型规范化、Token 采集、业务 E2E 耗时、所有 AI 调用链路覆盖、Prometheus 抓取、Grafana Dashboard、告警与测试验收。
+- **影响范围**: 纯文档新增；未修改 Java 代码、SQL、依赖、JDK 版本或运行库版本。
 
 ## 🚀 最新完成功能 (2026-05-29)
 
