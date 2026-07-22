@@ -37,3 +37,6 @@ build/
 ### log
 .log
 logs/
+
+### directory
+前后端部署说明/
