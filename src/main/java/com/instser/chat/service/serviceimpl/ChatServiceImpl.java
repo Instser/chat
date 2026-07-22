@@ -2130,83 +2130,90 @@ public class ChatServiceImpl implements ChatService {
                 JsonNode delta = choices.get(0).get("delta");
 
                 if (delta != null && delta.has("content")) {
-                    String content = delta.get("content").asText();
-                    if (content != null && !content.isEmpty()) {
-                        // 移除详细的续写内容日志
+                    // 跳过 JSON null content（推理模型思考阶段发 content:null + reasoning_content:文本），
+                    // Jackson asText() 对 JSON null 返回字符串 "null"（非空），会被误当内容发给前端 → nullnull... 串
+                    JsonNode contentNode = delta.get("content");
+                    if (contentNode != null && contentNode.isTextual()) {
+                        String content = contentNode.asText();
+                        if (content != null && !content.isEmpty()) {
+                            // 移除详细的续写内容日志
 
-                        // 如果还没有开始缓存，初始化缓存
-                        if (cacheStartTime[0] == 0) {
-                            cacheStartTime[0] = System.currentTimeMillis();
-                            log.info("续写缓存开始，时间: {}", cacheStartTime[0]);
-                        }
+                            // 如果还没有开始缓存，初始化缓存
+                            if (cacheStartTime[0] == 0) {
+                                cacheStartTime[0] = System.currentTimeMillis();
+                                log.info("续写缓存开始，时间: {}", cacheStartTime[0]);
+                            }
 
-                        // 如果清理还没完成，继续缓存
-                        if (!cleaningDone[0]) {
-                            cacheBuffer.append(content);
-                            cacheBlockCount[0]++;
-                            // 简化续写缓存日志
-                            log.debug("续写缓存中，块数: {}, 缓存长度: {}", cacheBlockCount[0], cacheBuffer.length());
+                            // 如果清理还没完成，继续缓存
+                            if (!cleaningDone[0]) {
+                                cacheBuffer.append(content);
+                                cacheBlockCount[0]++;
+                                // 简化续写缓存日志
+                                log.debug("续写缓存中，块数: {}, 缓存长度: {}", cacheBlockCount[0], cacheBuffer.length());
 
-                            // 检查是否应该停止缓存并进行清理
-                            if (shouldStopCaching(cacheBuffer, cacheStartTime[0], cacheBlockCount[0])) {
-                                // 一次性清理所有标签
-                                String cachedContent = cacheBuffer.toString();
-                                try {
-                                    String cleanedCache = cleanAllTagsOnce(cachedContent);
-                                    log.debug("续写缓存清理完成，原长度: {}, 清理后长度: {}, 缓存时间: {}ms",
-                                            cachedContent.length(), cleanedCache.length(),
-                                            System.currentTimeMillis() - cacheStartTime[0]);
+                                // 检查是否应该停止缓存并进行清理
+                                if (shouldStopCaching(cacheBuffer, cacheStartTime[0], cacheBlockCount[0])) {
+                                    // 一次性清理所有标签
+                                    String cachedContent = cacheBuffer.toString();
+                                    try {
+                                        String cleanedCache = cleanAllTagsOnce(cachedContent);
+                                        log.debug("续写缓存清理完成，原长度: {}, 清理后长度: {}, 缓存时间: {}ms",
+                                                cachedContent.length(), cleanedCache.length(),
+                                                System.currentTimeMillis() - cacheStartTime[0]);
 
-                                    cleaningDone[0] = true;
-                                cacheBuffer.setLength(0); // 清空缓存
+                                        cleaningDone[0] = true;
+                                    cacheBuffer.setLength(0); // 清空缓存
 
-                                    // 处理清理后的内容
-                                    if (!cleanedCache.isEmpty()) {
-                                        return processCachedContent(cleanedCache, originalContent, continuationContent,
-                                                                  alignedContentForSaving, alignmentDone, response, mapper);
-                                    } else {
-                                        // 如果清理后内容为空（被过滤），不进行任何处理
-                                        log.debug("续写缓存内容被过滤，跳过处理");
-                                        return null;
+                                        // 处理清理后的内容
+                                        if (!cleanedCache.isEmpty()) {
+                                            return processCachedContent(cleanedCache, originalContent, continuationContent,
+                                                                      alignedContentForSaving, alignmentDone, response, mapper);
+                                        } else {
+                                            // 如果清理后内容为空（被过滤），不进行任何处理
+                                            log.debug("续写缓存内容被过滤，跳过处理");
+                                            return null;
+                                        }
+                                    } catch (ChatRetryException e) {
+                                        log.warn("续写缓存清理时检测到需要重试的错误消息，抛出重试异常");
+                                        throw e; // 重新抛出异常，让上层处理重试
                                     }
-                                } catch (ChatRetryException e) {
-                                    log.warn("续写缓存清理时检测到需要重试的错误消息，抛出重试异常");
-                                    throw e; // 重新抛出异常，让上层处理重试
+                                }
+                                return null; // 继续缓存
+                            } else {
+                                // 清理已完成，后续内容需要进行过滤检测
+
+                                if (!content.isEmpty()) {
+                                    // 检查后续内容是否包含需要重试的错误消息
+                                    if (shouldRestartChat(content)) {
+                                        log.warn("续写后续内容检测到需要重试的错误消息，抛出重试异常");
+                                        throw new ChatRetryException("续写后续内容检测到需要重试的错误消息");
+                                    }
+
+                                    // 检查后续内容是否包含需要过滤的内容
+                                    if (shouldFilterContent(content)) {
+                                        log.info("续写后续内容检测到需要过滤的AI响应内容，已阻止向前端发送且不保存到数据库");
+                                        // 不累积到内容中，也不发送给前端
+                                        return null; // 返回null，不累积任何内容
+                                    }
+
+                                    // 对齐完成后，直接添加内容（不再清理）
+                                    alignedContentForSaving.append(content);
+                                    continuationContent.append(content);
+
+                                    // 发送后续内容给前端
+                                    if (ENABLE_SMART_CHUNKING) {
+                                        sendContentBySmartChunking(content, response, mapper);
+                                    } else {
+                                        sendContentAsBlock(content, response, mapper);
+                                    }
+                                    return content;
                                 }
                             }
-                            return null; // 继续缓存
                         } else {
-                            // 清理已完成，后续内容需要进行过滤检测
-
-                            if (!content.isEmpty()) {
-                                // 检查后续内容是否包含需要重试的错误消息
-                                if (shouldRestartChat(content)) {
-                                    log.warn("续写后续内容检测到需要重试的错误消息，抛出重试异常");
-                                    throw new ChatRetryException("续写后续内容检测到需要重试的错误消息");
-                                }
-
-                                // 检查后续内容是否包含需要过滤的内容
-                                if (shouldFilterContent(content)) {
-                                    log.info("续写后续内容检测到需要过滤的AI响应内容，已阻止向前端发送且不保存到数据库");
-                                    // 不累积到内容中，也不发送给前端
-                                    return null; // 返回null，不累积任何内容
-                                }
-
-                                // 对齐完成后，直接添加内容（不再清理）
-                                alignedContentForSaving.append(content);
-                                continuationContent.append(content);
-
-                                // 发送后续内容给前端
-                                if (ENABLE_SMART_CHUNKING) {
-                                    sendContentBySmartChunking(content, response, mapper);
-                                } else {
-                                    sendContentAsBlock(content, response, mapper);
-                                }
-                                return content;
-                            }
+                            log.debug("续写原始content为空或null");
                         }
                     } else {
-                        log.debug("续写原始content为空或null");
+                        log.debug("续写delta节点content为JSON null（推理阶段），跳过");
                     }
                 } else {
                     log.debug("续写delta节点不存在content字段");
@@ -2435,35 +2442,42 @@ public class ChatServiceImpl implements ChatService {
             if (choices != null && choices.isArray() && choices.size() > 0) {
                 JsonNode delta = choices.get(0).get("delta");
                 if (delta != null && delta.has("content")) {
-                    String content = delta.get("content").asText();
-                    if (content != null && !content.isEmpty()) {
-                        ContentDetectionResult detectionResult = detectContentAndGetResult(content);
-                        String cleanContent = detectionResult.getCleanedContent();
+                    // 跳过 JSON null content（推理模型思考阶段发 content:null + reasoning_content:文本），
+                    // Jackson asText() 对 JSON null 返回字符串 "null"（非空），会被误当内容发给前端 → nullnull... 串
+                    JsonNode contentNode = delta.get("content");
+                    if (contentNode != null && contentNode.isTextual()) {
+                        String content = contentNode.asText();
+                        if (content != null && !content.isEmpty()) {
+                            ContentDetectionResult detectionResult = detectContentAndGetResult(content);
+                            String cleanContent = detectionResult.getCleanedContent();
 
-                        // 如果需要重试，抛出特殊异常
-                        if (detectionResult.needsRetry()) {
-                            log.warn("检测到需要重试的错误消息，抛出重试异常: [{}]",
-                                content.length() > 50 ? content.substring(0, 50) + "..." : content);
-                            throw new ChatRetryException("检测到需要重试的错误消息");
-                        }
-
-                        // 如果内容被过滤，不返回任何内容（既不发送给前端，也不累积到数据库）
-                        if (detectionResult.wasFiltered()) {
-                            log.debug("AI响应内容被过滤，不发送给前端且不保存到数据库: [{}]",
-                                content.length() > 50 ? content.substring(0, 50) + "..." : content);
-                            return null; // 返回null，不累积到aiResponseContent
-                        }
-
-                        if (!cleanContent.isEmpty()) {
-                            log.debug("AI响应内容: [{}]", cleanContent.length() > 50 ? cleanContent.substring(0, 50) + "..." : cleanContent);
-
-                            if (ENABLE_SMART_CHUNKING) {
-                                sendContentBySmartChunking(cleanContent, response, mapper);
-                            } else {
-                                sendContentAsBlock(cleanContent, response, mapper);
+                            // 如果需要重试，抛出特殊异常
+                            if (detectionResult.needsRetry()) {
+                                log.warn("检测到需要重试的错误消息，抛出重试异常: [{}]",
+                                    content.length() > 50 ? content.substring(0, 50) + "..." : content);
+                                throw new ChatRetryException("检测到需要重试的错误消息");
                             }
-                            return cleanContent;
+
+                            // 如果内容被过滤，不返回任何内容（既不发送给前端，也不累积到数据库）
+                            if (detectionResult.wasFiltered()) {
+                                log.debug("AI响应内容被过滤，不发送给前端且不保存到数据库: [{}]",
+                                    content.length() > 50 ? content.substring(0, 50) + "..." : content);
+                                return null; // 返回null，不累积到aiResponseContent
+                            }
+
+                            if (!cleanContent.isEmpty()) {
+                                log.debug("AI响应内容: [{}]", cleanContent.length() > 50 ? cleanContent.substring(0, 50) + "..." : cleanContent);
+
+                                if (ENABLE_SMART_CHUNKING) {
+                                    sendContentBySmartChunking(cleanContent, response, mapper);
+                                } else {
+                                    sendContentAsBlock(cleanContent, response, mapper);
+                                }
+                                return cleanContent;
+                            }
                         }
+                    } else {
+                        log.debug("完整响应delta节点content为JSON null（推理阶段），跳过");
                     }
                 }
             }
