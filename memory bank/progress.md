@@ -1,8 +1,26 @@
 # 项目进度状态
 
-**📅 最后更新**: 2026-06-06 21:03:00
+**📅 最后更新**: 2026-07-22 18:54:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v130.0
+**📊 文档版本**: v131.0
+
+## 🚀 最新完成功能 (2026-07-22)
+
+### 推理模型流式响应 nullnull 修复 + CORS 配置化 ✅
+- **实现时间**: 2026年7月22日 18:54
+- **功能描述**: 修复推理模型思考阶段把 JSON `content:null` 误推为字符串 `"null"` 的问题；并将 CORS 白名单从 Java 硬编码改为 `application.yml` 配置驱动，适配 `chat.instser.xyz` 部署域名。
+- **核心实现**:
+  - **nullnull 修复**: `ChatServiceImpl.processCompleteJson` 与 `processContinuationJson` 在读取 `delta.content` 前增加 `JsonNode.isTextual()` 判断，跳过 JSON null 节点。
+  - **工作区净化**: 丢弃混入的约 500 行解耦回退改动，恢复 `3867e0a` 阶段一解耦状态（`ChatTitleService` / `NetworkSearchOrchestrator` / `AiCallMonitor` 保留），仅重打两处 isTextual 改动。
+  - **CORS 配置化**: `SecurityConfig`、`WebConfig` 通过 `@Value` 读取 `app.cors.*`；`application.yml` 默认允许源改为含 `https://chat.instser.xyz,http://chat.instser.xyz`。
+- **文档产出**:
+  - `docs/2026-07-22_18-54_推理模型流式响应nullnull修复总结_v1.0.md`
+  - 根目录 `后端改动保留说明.md`（保留/丢弃清单）
+- **验证标准**:
+  - `/api/chat`（modelId=1）响应 `0:"null"` 行数 0
+  - 正常输出中文
+  - `chat.instser.xyz` 登录不再 `403 Invalid CORS request`
+- **影响范围**: Java 代码与 yml 配置；未新增/移除/升级依赖，未修改 JDK 版本，未修改数据库或 SQL。代码已在工作区落地，待提交与部署验证。
 
 ## 🚀 最新完成功能 (2026-06-06)
 

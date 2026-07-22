@@ -1,13 +1,14 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-06-06 21:03:00
+**📅 最后更新**: 2026-07-22 18:54:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v136.0
+**📊 文档版本**: v137.0
 
 ## 当前任务
-- AI 对话业务模块阶段一解耦已完成：按 `docs/plans/05-29_12-25_AI对话业务模块解耦方案_v1.0.md` 的低风险提取思路，将标题生成职责迁移到 `ChatTitleService`，将 Gemini 联网内容拼接职责迁移到 `NetworkSearchOrchestrator`，并通过 `NetworkAiService.queryWithGeminiGrounding` 消除 `ChatServiceImpl` 对 `NetworkAiServiceImpl` 的实现类强转。未新增、移除或升级依赖，JDK17 不变，数据库结构不变。
+- 工作区已整理完成：保留 nullnull 修复与 CORS 配置化，丢弃 ChatServiceImpl 中回退阶段一解耦的无关改动。下一步可按建议拆 commit 并部署验证。
 
 ## 最新完成任务
+✅ **推理模型流式响应 nullnull 修复 + CORS 配置化** — 根因是推理模型思考阶段发 `content:null`，Jackson `asText()` 返回字符串 `"null"` 被误当内容推给前端。已在 `processCompleteJson` / `processContinuationJson` 两处增加 `isTextual()` 守卫；同时将 `SecurityConfig`/`WebConfig` CORS 改为读取 `application.yml`，默认域名切到 `chat.instser.xyz`。工作区曾混入回退 `3867e0a` 解耦的约 500 行改动，已恢复 HEAD 解耦版后仅重打两处修复。总结文档：`docs/2026-07-22_18-54_推理模型流式响应nullnull修复总结_v1.0.md`。 (2026-07-22 18:54)
 ✅ **AI 对话业务模块阶段一解耦完成** — 新增 `ChatTitleService` / `ChatTitleServiceImpl`，迁移标题消息构建、固定 4L 标题模型调用、标题清洗和会话标题落库逻辑；新增 `NetworkSearchOrchestrator` / `NetworkSearchOrchestratorImpl` 和 `NetworkSearchProcessResult`，迁移 Gemini 联网完整上下文构建、响应格式化、来源转换和异常降级逻辑；扩展 `NetworkAiService` 接口新增 `queryWithGeminiGrounding`，`ChatServiceImpl` 改为编排委托，不再强转 `NetworkAiServiceImpl`。新增 `ChatTitleServiceImplTest` 与 `NetworkSearchOrchestratorImplTest`，并通过阶段一相关回归测试与编译验证。 (2026-06-06 21:03)
 ✅ **项目技术选型与业务逻辑面试复盘文档完成** — 输出 `docs/06-06_16-58_项目技术选型与业务逻辑面试复盘_v1.0.md`，基于 `pom.xml`、`README.md`、`memory bank` 与核心源码梳理项目定位、技术选型、分层结构、AI 流式对话、retry/edit-resend、Gemini 联网、文件解析、套餐权限、支付策略、多层缓存、安全认证、traceId、AI 监控指标、面试回答模板与复习顺序。本次仅新增学习文档并同步 memory bank，无业务代码、SQL、依赖或运行库版本改动。 (2026-06-06 16:58)
 ✅ **AI核心性能指标监控开发方案完成** — 输出 `docs/06-05 06_52 AI核心性能指标监控开发方案_v1.0.md`，基于当前已有 Actuator、Micrometer、ApiMetrics、SlowRequestInterceptor、AiCallMetrics、AiCallMonitor 和 `ChatServiceImpl.streamChatWithAI` 埋点现状，分析 TTFT、Token 生成速度 TPS/TPOT、End-to-End latency、Throughput（RPS/RPM）的指标口径、Prometheus 指标设计、Grafana Dashboard、告警规则、测试验收与分阶段开发顺序；明确当前 Token Counter 存在但主链路未调用 `addTokens`，因此 Token 消耗、TPS/TPOT 需要补真实采集。本次仅新增学习方案文档，无代码改动。 (2026-06-05 06:52)

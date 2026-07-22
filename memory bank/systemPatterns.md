@@ -1717,3 +1717,55 @@ performance:
 ✅ 提供完整的可观测性和问题排查能力
 ✅ 确保高性能和安全的日志记录机制
 ✅ 支持未来的日志分析和监控扩展
+
+## 推理模型流式 content null 过滤模式 (2026-07-22 18:54)
+
+### 问题模式
+推理模型（如 DeepSeek-V4-Flash）流式响应在思考阶段发送：
+- `delta.content = null`
+- `delta.reasoning_content = "..."`
+
+正式回答阶段才把文本放回 `content`。
+
+### 反模式
+```java
+String content = delta.get("content").asText();
+if (content != null && !content.isEmpty()) { ... }
+```
+Jackson 对 JSON null 的 `asText()` 返回字符串 `"null"`，会被当成真实内容推给前端，形成 `nullnull...`。
+
+### 正确模式
+```java
+JsonNode contentNode = delta.get("content");
+if (contentNode != null && contentNode.isTextual()) {
+    String content = contentNode.asText();
+    if (content != null && !content.isEmpty()) { ... }
+}
+```
+只接受真实文本节点；JSON null / 非文本节点跳过。
+
+### 落点
+- `ChatServiceImpl.processCompleteJson`（主聊天）
+- `ChatServiceImpl.processContinuationJson`（续写）
+- 文档：`docs/2026-07-22_18-54_推理模型流式响应nullnull修复总结_v1.0.md`
+
+## CORS 配置驱动模式 (2026-07-22 18:54)
+
+### 背景
+部署域名切换到 `chat.instser.xyz` 后，硬编码在 `SecurityConfig`/`WebConfig` 的 CORS 白名单不含新域名，浏览器登录收到 `403 Invalid CORS request`；仅改 yml 无效。
+
+### 模式
+1. `SecurityConfig` 与 `WebConfig` 通过 `@Value` 读取：
+   - `app.cors.allowed-origins`
+   - `app.cors.allowed-methods`
+   - `app.cors.allowed-headers`
+   - `app.cors.allow-credentials`
+   - `app.cors.max-age`
+2. 使用 `split(",")` 解析逗号分隔配置
+3. `application.yml` 提供默认值，并支持 `CORS_ALLOWED_ORIGINS` 等环境变量覆盖
+4. 当前默认生产域名：`https://chat.instser.xyz` / `http://chat.instser.xyz`
+
+### 注意
+- Spring Security 的 `corsConfigurationSource` 与 WebMvc `addCorsMappings` 需保持一致来源
+- 改域名优先改配置/环境变量，避免再次硬编码
+
