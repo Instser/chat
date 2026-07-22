@@ -4,6 +4,7 @@ import com.instser.chat.security.JwtAuthenticationEntryPoint;
 import com.instser.chat.security.JwtAuthenticationFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -43,6 +44,21 @@ public class SecurityConfig {
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final UserDetailsService userDetailsService;
 
+    @Value("${app.cors.allowed-origins}")
+    private String allowedOrigins;
+
+    @Value("${app.cors.allowed-methods:*}")
+    private String allowedMethods;
+
+    @Value("${app.cors.allowed-headers:*}")
+    private String allowedHeaders;
+
+    @Value("${app.cors.allow-credentials:true}")
+    private boolean allowCredentials;
+
+    @Value("${app.cors.max-age:3600}")
+    private long maxAge;
+
     /**
      * 密码加密器
      */
@@ -77,32 +93,20 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // 允许的源 - 包含localhost、局域网IP和生产域名
-        configuration.setAllowedOriginPatterns(Arrays.asList(
-            "http://localhost:*",
-            "https://localhost:*",
-            "http://127.0.0.1:*",
-            "https://127.0.0.1:*",
-            "http://192.168.1.100:*",
-            "https://192.168.1.100:*",
-            "http://192.168.1.101:*",
-            "https://192.168.1.101:*",
-            "https://chat.example.com",
-            "http://chat.example.com",
-            "http://203.0.113.16:3000"
-        ));
+        // 允许的源 - 从 application.yml 的 app.cors.allowed-origins 读取（逗号分隔）
+        configuration.setAllowedOriginPatterns(Arrays.asList(allowedOrigins.split(",")));
 
-        // 允许所有HTTP方法
-        configuration.setAllowedMethods(Arrays.asList("*"));
+        // 允许的 HTTP 方法 - 从配置读取（逗号分隔）
+        configuration.setAllowedMethods(Arrays.asList(allowedMethods.split(",")));
 
-        // 允许所有请求头
-        configuration.setAllowedHeaders(Arrays.asList("*"));
+        // 允许的请求头 - 从配置读取（逗号分隔）
+        configuration.setAllowedHeaders(Arrays.asList(allowedHeaders.split(",")));
 
         // 允许发送凭据
-        configuration.setAllowCredentials(true);
+        configuration.setAllowCredentials(allowCredentials);
 
         // 预检请求缓存时间
-        configuration.setMaxAge(3600L);
+        configuration.setMaxAge(maxAge);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
