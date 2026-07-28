@@ -20,6 +20,7 @@ import com.instser.chat.service.cache.RequestValidationCache;
 import com.instser.chat.service.content.ContentPolicy;
 import com.instser.chat.service.context.ChatContextBuilder;
 import com.instser.chat.service.context.PreparedChatContext;
+import com.instser.chat.service.completion.AiResponseCompletionHandler;
 import com.instser.chat.service.prepare.ChatPrepareHandler;
 import com.instser.chat.service.prepare.EditResendPrepareHandler;
 import com.instser.chat.service.prepare.PreparedTurn;
@@ -84,6 +85,7 @@ public class ChatServiceImpl implements ChatService {
     private final ChatPrepareHandler chatPrepareHandler;
     private final RetryPrepareHandler retryPrepareHandler;
     private final EditResendPrepareHandler editResendPrepareHandler;
+    private final AiResponseCompletionHandler aiResponseCompletionHandler;
 
     @Qualifier("continuationExecutor")
     private final Executor continuationExecutor;
@@ -3733,77 +3735,8 @@ public class ChatServiceImpl implements ChatService {
      * @param aiResponseMessageId AI响应消息ID
      */
     private void saveWebSearchResultsToAiResponse(ChatRequestDTO request, String aiResponseMessageId) {
-        try {
-            // 参数验证
-            if (request == null) {
-                log.error("【联网存储】参数验证失败：请求对象为空");
-                return;
-            }
-            if (aiResponseMessageId == null || aiResponseMessageId.trim().isEmpty()) {
-                log.error("【联网存储】参数验证失败：AI响应消息ID为空，用户ID：{}", request.getUserId());
-                return;
-            }
-
-            // 添加详细的调试日志
-            log.info("【联网存储调试】开始检查联网存储条件：");
-            log.info("【联网存储调试】  - request.getNetwork()：{}", request.getNetwork());
-            log.info("【联网存储调试】  - request.getNetworkSearchResults()是否为null：{}", request.getNetworkSearchResults() == null);
-            if (request.getNetworkSearchResults() != null) {
-                log.info("【联网存储调试】  - request.getNetworkSearchResults()数量：{}", request.getNetworkSearchResults().size());
-                log.info("【联网存储调试】  - request.getNetworkSearchResults().isEmpty()：{}", request.getNetworkSearchResults().isEmpty());
-            }
-
-            // 检查是否启用了联网搜索且有搜索结果
-            boolean networkEnabled = request.getNetwork() != null && request.getNetwork();
-            boolean hasSearchResults = request.getNetworkSearchResults() != null && !request.getNetworkSearchResults().isEmpty();
-
-            log.info("【联网存储调试】条件检查结果：");
-            log.info("【联网存储调试】  - networkEnabled：{}", networkEnabled);
-            log.info("【联网存储调试】  - hasSearchResults：{}", hasSearchResults);
-            log.info("【联网存储调试】  - 最终条件：{}", networkEnabled && hasSearchResults);
-
-            if (networkEnabled && hasSearchResults) {
-
-                // 构建SearchResponse对象（为了兼容现有存储逻辑）
-                com.instser.chat.entity.SearchResponse searchResponse = convertWebSearchResultsToSearchResponse(request.getNetworkSearchResults());
-
-                // 保存联网查询结果到AI响应消息
-                boolean saved = webSearchContentService.saveWebSearchContent(
-                    aiResponseMessageId,
-                    searchResponse,
-                    request.getUserId(),
-                    request.getSessionId()
-                );
-
-                if (saved) {
-                    log.info("【联网存储】联网查询结果保存成功，用户ID：{}，AI响应消息ID：{}，结果数量：{}",
-                            request.getUserId(), aiResponseMessageId, request.getNetworkSearchResults().size());
-
-                    // 更新AI响应消息的联网标记
-                    try {
-                        boolean flagUpdated = chatMessageService.updateWebSearchFlag(aiResponseMessageId, true);
-                        if (flagUpdated) {
-                            log.debug("【联网存储】AI响应消息联网标记更新成功，消息ID：{}", aiResponseMessageId);
-                        } else {
-                            log.warn("【联网存储】AI响应消息联网标记更新失败，消息ID：{}", aiResponseMessageId);
-                        }
-                    } catch (Exception e) {
-                        log.error("【联网存储】更新AI响应消息联网标记异常，消息ID：{}", aiResponseMessageId, e);
-                    }
-                } else {
-                    log.warn("【联网存储】联网查询结果保存失败，用户ID：{}，AI响应消息ID：{}",
-                            request.getUserId(), aiResponseMessageId);
-                }
-            } else {
-                log.debug("【联网存储】无需保存联网查询结果，用户ID：{}，AI响应消息ID：{}，启用联网：{}，结果数量：{}",
-                        request.getUserId(), aiResponseMessageId,
-                        request.getNetwork(),
-                        request.getNetworkSearchResults() != null ? request.getNetworkSearchResults().size() : 0);
-            }
-        } catch (Exception e) {
-            log.error("【联网存储】保存联网查询结果异常，用户ID：{}，AI响应消息ID：{}",
-                    request.getUserId(), aiResponseMessageId, e);
-        }
+        // 阶段4：委托完成副作用处理器
+        aiResponseCompletionHandler.bindNetworkResults(request, aiResponseMessageId);
     }
 
 
