@@ -18,6 +18,8 @@ import com.instser.chat.monitor.AiCallMonitor;
 import com.instser.chat.service.*;
 import com.instser.chat.service.cache.RequestValidationCache;
 import com.instser.chat.service.content.ContentPolicy;
+import com.instser.chat.service.context.ChatContextBuilder;
+import com.instser.chat.service.context.PreparedChatContext;
 import com.instser.chat.service.stream.ChatStreamEventWriter;
 import com.instser.chat.service.stream.StreamResponseState;
 import com.instser.chat.util.ChatSessionManager;
@@ -74,6 +76,7 @@ public class ChatServiceImpl implements ChatService {
     private final NetworkSearchOrchestrator networkSearchOrchestrator;
     private final ContentPolicy contentPolicy;
     private final ChatStreamEventWriter chatStreamEventWriter;
+    private final ChatContextBuilder chatContextBuilder;
 
     @Qualifier("continuationExecutor")
     private final Executor continuationExecutor;
@@ -130,8 +133,8 @@ public class ChatServiceImpl implements ChatService {
             chatSessionService.updateSessionUpdateTime(request.getSessionId());
 
             // 构建AI请求消息（用户消息已保存，直接构建完整上下文）
-            List<Map<String, String>> messages = buildAiRequestMessages(request);
-            if (messages == null) {
+            PreparedChatContext preparedContext = chatContextBuilder.buildFromSessionHistory(request);
+            if (preparedContext == null || preparedContext.getAiMessages().isEmpty()) {
                 String errorContent = "会话中没有可用的消息";
                 chatStreamEventWriter.writeErrorResponse(response, errorContent);
                 log.info("【聊天结束】用户ID：{}，会话ID：{}，结果：消息构建失败",
@@ -140,7 +143,11 @@ public class ChatServiceImpl implements ChatService {
             }
 
             // 更新request中的messages为从数据库构建的完整上下文
+            List<Map<String, String>> messages = preparedContext.getAiMessages();
             request.setMessages(messages);
+            // 兼容标题/联网落库：仍写入 DTO 运行时字段，构建逻辑已迁出
+            request.setOriginalMessages(preparedContext.getOriginalMessages());
+            request.setNetworkSearchResults(preparedContext.getNetworkSearchResults());
 
             log.info("【聊天开始】用户ID：{}，会话ID：{}，模型：{}，消息数：{}",
                     request.getUserId(), request.getSessionId(), model.getModelCode(), messages.size());
@@ -827,136 +834,14 @@ public class ChatServiceImpl implements ChatService {
         }
     }
 
-    /**
-     * 构建AI请求消息列表
-     *
-     * @param request 聊天请求
-     * @return 构建的消息列表，失败时返回null
-     */
-    private List<Map<String, String>> buildAiRequestMessages(ChatRequestDTO request) {
-        try {
-            // 从数据库获取完整的会话历史消息（排除错误响应）
-            List<ChatMessage> historyMessages = chatMessageService.getSessionMessagesForAi(request.getSessionId());
-            if (historyMessages.isEmpty()) {
-                return null;
-            }
-
-            // 构建消息列表用于AI请求
-            List<Map<String, String>> messages = new ArrayList<>();
-            for (ChatMessage message : historyMessages) {
-                Map<String, String> msgMap = new HashMap<>();
-                msgMap.put("role", message.getRole());
-                msgMap.put("content", message.getContent());
-                messages.add(msgMap);
-            }
-
-
-
-            // 保存原始消息列表（用于标题生成，在文件和联网搜索处理之前）
-            // 注意：此时messages来自数据库，本身就是原始内容，无需额外提取
-            List<Map<String, String>> originalMessages = new ArrayList<>();
-            for (Map<String, String> message : messages) {
-                Map<String, String> originalMsg = new HashMap<>();
-                originalMsg.put("role", message.get("role"));
-                originalMsg.put("content", message.get("content")); // 直接使用原始内容
-                originalMessages.add(originalMsg);
-            }
-            request.setOriginalMessages(originalMessages);
-            log.debug("【消息准备】保存原始消息列表用于可能的标题生成，消息数量：{}，只包含用户原始内容和AI响应", originalMessages.size());
-
-            // 处理文件内容并附加到用户消息中（仅用于AI处理）
-            // 正常聊天使用request中的filesId参数，而不是从数据库查找
-            if (request.getFilesId() != null && !request.getFilesId().trim().isEmpty()) {
-                log.info("【文件处理】开始处理文件附件，用户ID：{}，会话ID：{}，文件ID：{}",
-                        request.getUserId(), request.getSessionId(), request.getFilesId());
-                List<Map<String, String>> processedMessages = processFilesContent(messages, request.getFilesId(), request.getUserId());
-                messages = processedMessages;
-                log.info("【文件处理】文件内容处理完成，用户ID：{}，会话ID：{}",
-                        request.getUserId(), request.getSessionId());
-            } else {
-                log.debug("【文件处理】无文件附件，用户ID：{}，会话ID：{}", request.getUserId(), request.getSessionId());
-            }
-
-            // 处理联网搜索内容并附加到用户消息中（仅用于AI处理）
-            if (request.getNetwork() != null && request.getNetwork()) {
-                // 提取用户查询内容（从最后一条用户消息中获取）
-                String userQuery = extractUserQuery(messages);
-                if (userQuery != null && !userQuery.trim().isEmpty()) {
-                    log.info("【联网搜索】开始处理联网搜索，用户ID：{}，会话ID：{}，查询：{}",
-                            request.getUserId(), request.getSessionId(), userQuery);
-
-                    // 记录处理前的消息状态
-                    log.debug("【联网内容拼接】处理前消息数量：{}", messages.size());
-                    if (!messages.isEmpty()) {
-                        Map<String, String> lastMessage = messages.get(messages.size() - 1);
-                        if ("user".equals(lastMessage.get("role"))) {
-                            String originalContent = lastMessage.get("content");
-                            log.debug("【联网内容拼接】处理前最后一条用户消息长度：{}，内容预览：{}",
-                                    originalContent.length(),
-                                    originalContent.length() > 200 ? originalContent.substring(0, 200) + "..." : originalContent);
-                        }
-                    }
-
-                    NetworkSearchProcessResult networkResult = processNetworkContent(messages, userQuery);
-                    messages = networkResult.getMessages();
-
-                    // 记录处理后的消息状态
-                    log.debug("【联网内容拼接】处理后消息数量：{}", messages.size());
-                    if (!messages.isEmpty()) {
-                        Map<String, String> lastMessage = messages.get(messages.size() - 1);
-                        if ("user".equals(lastMessage.get("role"))) {
-                            String updatedContent = lastMessage.get("content");
-                            log.debug("【联网内容拼接】处理后最后一条用户消息长度：{}，内容预览：{}",
-                                    updatedContent.length(),
-                                    updatedContent.length() > 200 ? updatedContent.substring(0, 200) + "..." : updatedContent);
-                        }
-                    }
-
-                    // 将搜索结果存储到request中，供后续使用
-                    request.setNetworkSearchResults(networkResult.getSearchResults());
-
-                    // 添加详细调试日志
-                    log.info("【联网搜索调试】processNetworkContent返回结果：");
-                    log.info("【联网搜索调试】  - networkResult是否为null：{}", networkResult == null);
-                    if (networkResult != null) {
-                        log.info("【联网搜索调试】  - networkResult.getSearchResults()是否为null：{}", networkResult.getSearchResults() == null);
-                        if (networkResult.getSearchResults() != null) {
-                            log.info("【联网搜索调试】  - networkResult.getSearchResults()数量：{}", networkResult.getSearchResults().size());
-                            // 打印前几个搜索结果的基本信息
-                            for (int i = 0; i < Math.min(3, networkResult.getSearchResults().size()); i++) {
-                                var result = networkResult.getSearchResults().get(i);
-                                log.info("【联网搜索调试】  - 搜索结果[{}]：title={}, url={}", i,
-                                        result.getTitle() != null ? result.getTitle().substring(0, Math.min(50, result.getTitle().length())) : "null",
-                                        result.getUrl() != null ? result.getUrl().substring(0, Math.min(80, result.getUrl().length())) : "null");
-                            }
-                        }
-                    }
-
-                    log.info("【联网搜索调试】request.setNetworkSearchResults()后：");
-                    log.info("【联网搜索调试】  - request.getNetworkSearchResults()是否为null：{}", request.getNetworkSearchResults() == null);
-                    if (request.getNetworkSearchResults() != null) {
-                        log.info("【联网搜索调试】  - request.getNetworkSearchResults()数量：{}", request.getNetworkSearchResults().size());
-                    }
-
-                    log.info("【联网搜索】联网内容处理完成，用户ID：{}，会话ID：{}",
-                            request.getUserId(), request.getSessionId());
-
-                    // 联网查询结果将在AI响应保存后进行关联
-                    log.info("【联网搜索】联网内容处理完成，将在AI响应保存后关联联网信息，用户ID：{}，会话ID：{}",
-                            request.getUserId(), request.getSessionId());
-                } else {
-                    log.warn("【联网搜索】无法提取用户查询内容，用户ID：{}，会话ID：{}",
-                            request.getUserId(), request.getSessionId());
-                }
-            } else {
-                log.debug("【联网搜索】未启用联网搜索，用户ID：{}，会话ID：{}", request.getUserId(), request.getSessionId());
-            }
-
-            return messages;
-        } catch (Exception e) {
-            log.error("构建AI请求消息异常", e);
+        private List<Map<String, String>> buildAiRequestMessages(ChatRequestDTO request) {
+        PreparedChatContext prepared = chatContextBuilder.buildFromSessionHistory(request);
+        if (prepared == null) {
             return null;
         }
+        request.setOriginalMessages(prepared.getOriginalMessages());
+        request.setNetworkSearchResults(prepared.getNetworkSearchResults());
+        return prepared.getAiMessages();
     }
 
     /**
@@ -2993,91 +2878,10 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     public List<Map<String, String>> processFilesContent(List<Map<String, String>> messages, String filesId, Long userId) {
-        // 如果没有文件ID或消息列表为空，直接返回原消息列表
-        if (filesId == null || filesId.trim().isEmpty() || messages == null || messages.isEmpty()) {
-            return messages;
-        }
-
-        try {
-            // 解析文件ID列表
-            String[] fileIds = filesId.split(",");
-            if (fileIds.length == 0) {
-                return messages;
-            }
-
-            // 获取文件内容
-            StringBuilder fileContentBuilder = new StringBuilder();
-            fileContentBuilder.append("以下是文件内容：[");
-
-            boolean hasValidFiles = false;
-            for (int i = 0; i < fileIds.length; i++) {
-                String fileId = fileIds[i].trim();
-                if (fileId.isEmpty()) {
-                    continue;
-                }
-
-                try {
-                    // 获取文件信息和内容
-                    String fileContent = fileUploadService.getFileContent(fileId, userId);
-                    if (fileContent != null && !fileContent.trim().isEmpty()) {
-                        // 获取文件名
-                        com.instser.chat.entity.FileUpload fileUpload = fileUploadService.getByFileId(fileId);
-                        String fileName = fileUpload != null ? fileUpload.getFileName() : "unknown";
-
-                        if (hasValidFiles) {
-                            fileContentBuilder.append(",");
-                        }
-
-                        // 构建文件内容格式：{"fileName":"fileContent"}
-                        fileContentBuilder.append("{\"").append(fileName)
-                                         .append("\":\"").append(escapeJsonString(fileContent)).append("\"}");
-
-                        hasValidFiles = true;
-                        log.info("成功获取文件内容，文件ID：{}，文件名：{}，内容长度：{}", fileId, fileName, fileContent.length());
-                    } else {
-                        log.warn("文件内容为空或无法获取，文件ID：{}", fileId);
-                    }
-                } catch (Exception e) {
-                    log.error("获取文件内容失败，文件ID：{}", fileId, e);
-                }
-            }
-
-            fileContentBuilder.append("]");
-
-            // 如果有有效的文件内容，则附加到最后一条用户消息中
-            if (hasValidFiles) {
-                // 找到最后一条用户消息
-                for (int i = messages.size() - 1; i >= 0; i--) {
-                    Map<String, String> message = messages.get(i);
-                    if ("user".equals(message.get("role"))) {
-                        String originalContent = message.get("content");
-                        String newContent = originalContent + "。" + fileContentBuilder.toString();
-                        message.put("content", newContent);
-
-                        log.info("已将文件内容附加到用户消息中，原始内容长度：{}，附加后长度：{}",
-                                originalContent.length(), newContent.length());
-                        break;
-                    }
-                }
-            }
-
-            return messages;
-
-        } catch (Exception e) {
-            log.error("处理文件内容失败", e);
-            return messages; // 出错时返回原消息列表
-        }
+        return chatContextBuilder.processFilesContent(messages, filesId, userId);
     }
 
-    /**
-     * 处理联网搜索内容并附加到用户消息中
-     * 重构为使用Gemini API的完整响应格式，发送完整会话上下文
-     *
-     * @param messages 消息列表
-     * @param query 搜索查询内容（从用户消息中提取，用于日志记录）
-     * @return 包含处理后的消息列表和搜索结果的对象
-     */
-    private NetworkSearchProcessResult processNetworkContent(List<Map<String, String>> messages, String query) {
+        private NetworkSearchProcessResult processNetworkContent(List<Map<String, String>> messages, String query) {
         return networkSearchOrchestrator.processNetworkContent(messages, query);
     }
 
@@ -3095,30 +2899,8 @@ public class ChatServiceImpl implements ChatService {
         return searchResponse;
     }
 
-    /**
-     * 从消息列表中提取用户查询内容
-     *
-     * @param messages 消息列表
-     * @return 用户查询内容
-     */
-    private String extractUserQuery(List<Map<String, String>> messages) {
-        if (messages == null || messages.isEmpty()) {
-            return null;
-        }
-
-        // 从最后一条用户消息中提取查询内容
-        for (int i = messages.size() - 1; i >= 0; i--) {
-            Map<String, String> message = messages.get(i);
-            if ("user".equals(message.get("role"))) {
-                String content = message.get("content");
-                if (content != null && !content.trim().isEmpty()) {
-                    // 使用统一的方法提取原始用户内容（移除文件和联网搜索内容）
-                    return extractOriginalUserContent(content);
-                }
-            }
-        }
-
-        return null;
+        private String extractUserQuery(List<Map<String, String>> messages) {
+        return chatContextBuilder.extractUserQuery(messages);
     }
 
     /**
