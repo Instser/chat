@@ -95,18 +95,28 @@ public class AiResponseCompletionHandler {
                                         boolean willGenerateTitle,
                                         boolean isRealAiResponse,
                                         String aiContent) {
-        if (!willGenerateTitle || !isRealAiResponse) {
+        List<Map<String, String>> original = request == null ? null : request.getOriginalMessages();
+        String sessionId = request == null ? null : request.getSessionId();
+        return generateTitleIfNeeded(sessionId, original, willGenerateTitle, isRealAiResponse, aiContent);
+    }
+
+    public String generateTitleIfNeeded(String sessionId,
+                                        List<Map<String, String>> originalMessages,
+                                        boolean willGenerateTitle,
+                                        boolean isRealAiResponse,
+                                        String aiContent) {
+        if (!willGenerateTitle || !isRealAiResponse || sessionId == null) {
             return null;
         }
         long titleStartTime = System.currentTimeMillis();
         try {
             CompletableFuture<String> titleFuture = CompletableFuture.supplyAsync(() -> {
                 try {
-                    List<Map<String, String>> messagesForTitle = chatTitleService.buildTitleMessages(request, aiContent);
-                    return chatTitleService.generateSessionTitle(request.getSessionId(), messagesForTitle);
+                    List<Map<String, String>> messagesForTitle = chatTitleService.buildTitleMessages(originalMessages, aiContent);
+                    return chatTitleService.generateSessionTitle(sessionId, messagesForTitle);
                 } catch (Exception e) {
                     LogUtils.logUserError(log, null, "标题生成", "后台标题生成异常，会话ID: {}，异常类型: {}，异常消息: {}", e,
-                            request.getSessionId(), e.getClass().getSimpleName(), e.getMessage());
+                            sessionId, e.getClass().getSimpleName(), e.getMessage());
                     return null;
                 }
             });
@@ -117,17 +127,17 @@ public class AiResponseCompletionHandler {
                 return generatedTitle;
             }
             LogUtils.logUserWarning(log, null, "标题生成", "标题生成失败或返回默认标题，会话ID: {}，返回标题: [{}]，耗时: {}ms",
-                    request.getSessionId(), generatedTitle, titleDuration);
+                    sessionId, generatedTitle, titleDuration);
             return null;
         } catch (TimeoutException e) {
             long titleDuration = System.currentTimeMillis() - titleStartTime;
             LogUtils.logUserWarning(log, null, "标题生成", "标题生成超时，会话ID: {}，超时时长: {}ms",
-                    request.getSessionId(), titleDuration);
+                    sessionId, titleDuration);
             return null;
         } catch (Exception e) {
             long titleDuration = System.currentTimeMillis() - titleStartTime;
             LogUtils.logUserError(log, null, "标题生成", "标题生成异常，会话ID: {}，耗时: {}ms，异常类型: {}，异常消息: {}", e,
-                    request.getSessionId(), titleDuration, e.getClass().getSimpleName(), e.getMessage());
+                    sessionId, titleDuration, e.getClass().getSimpleName(), e.getMessage());
             return null;
         }
     }
@@ -155,17 +165,51 @@ public class AiResponseCompletionHandler {
                                       boolean isRealAiResponse,
                                       String contentToSave,
                                       boolean interrupted) {
+        return completeSideEffects(response, request, model, willGenerateTitle, isRealAiResponse,
+                contentToSave, interrupted, true);
+    }
+
+    /**
+     * @param recordModelUsage 是否记录模型使用次数（错误响应必须 false）
+     */
+    public String completeSideEffects(HttpServletResponse response,
+                                      ChatRequestDTO request,
+                                      AiModel model,
+                                      boolean willGenerateTitle,
+                                      boolean isRealAiResponse,
+                                      String contentToSave,
+                                      boolean interrupted,
+                                      boolean recordModelUsage) {
         String assistantMessageId = null;
         if (contentToSave != null && !contentToSave.trim().isEmpty() && request != null && model != null) {
-            String finalContent = interrupted ? contentToSave + " [已中断]" : contentToSave;
+            if (contentToSave.contains("Request failed")) {
+                // 错误响应：只落错误消息，不扣次、不绑联网、不生成标题
+                chatMessageService.sendErrorResponseMessage(
+                        request.getSessionId(), request.getUserId(), model.getId(), contentToSave);
+                writeCompletion(response, false, false, null);
+                return null;
+            }
+
+            String finalContent = interrupted && !contentToSave.endsWith("[已中断]")
+                    ? contentToSave + " [已中断]" : contentToSave;
             assistantMessageId = persistAssistantContent(
                     request.getSessionId(), request.getUserId(), model.getId(), finalContent);
             if (assistantMessageId != null && isRealAiResponse && !interrupted) {
                 bindNetworkResults(request, assistantMessageId);
             }
+            if (recordModelUsage && isRealAiResponse) {
+                String modelIdStr = model.getId().toString();
+                boolean modelRecordSuccess = chatLimitService.recordModelChatUsage(request.getUserId(), modelIdStr);
+                if (modelRecordSuccess) {
+                    log.info("用户{}模型ID{}使用记录成功", request.getUserId(), modelIdStr);
+                } else {
+                    log.warn("用户{}模型ID{}使用记录失败", request.getUserId(), modelIdStr);
+                }
+            }
         }
 
-        String generatedTitle = generateTitleIfNeeded(request, willGenerateTitle, isRealAiResponse, contentToSave);
+        String generatedTitle = generateTitleIfNeeded(request, willGenerateTitle, isRealAiResponse,
+                interrupted ? contentToSave : contentToSave);
         writeCompletion(response, willGenerateTitle, isRealAiResponse, generatedTitle);
         return assistantMessageId;
     }

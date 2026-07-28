@@ -1729,43 +1729,20 @@ public class ChatServiceImpl implements ChatService {
                 }
             }
 
-            // 阶段一步到位：续写完成后的落库/联网/usage/标题/完成帧 统一委托 CompletionHandler
+            // ticket 06：续写完成后的副作用统一走 completeSideEffects
             String contentToSave = aiResponseContentRef.toString();
             boolean shouldPersist = isRealAiResponse || finalInterruptedStatus;
-            String finalContentToSave = null;
             if (shouldPersist && contentToSave != null && !contentToSave.trim().isEmpty()) {
-                if (finalInterruptedStatus && !contentToSave.endsWith("[已中断]")) {
-                    finalContentToSave = contentToSave + " [已中断]";
-                } else {
-                    finalContentToSave = contentToSave;
-                }
-
-                if (finalContentToSave.contains("Request failed")) {
-                    log.warn("用户{}收到错误响应，保存错误信息到数据库", request.getUserId());
-                    saveErrorResponse(request.getSessionId(), request.getUserId(), model.getId(), finalContentToSave);
-                    log.info("错误响应已保存到数据库，会话ID：{}，用户ID：{} - 不计入使用次数", request.getSessionId(), request.getUserId());
-                    aiResponseCompletionHandler.writeCompletion(response, false, false, null);
-                } else {
-                    String aiResponseMessageId = aiResponseCompletionHandler.persistAssistantContent(
-                            request.getSessionId(), request.getUserId(), model.getId(), finalContentToSave);
-                    if (aiResponseMessageId != null && isRealAiResponse && !finalInterruptedStatus) {
-                        aiResponseCompletionHandler.bindNetworkResults(request, aiResponseMessageId);
-                    }
-
-                    // 非错误响应才记录模型使用次数
-                    String modelIdStr = model.getId().toString();
-                    boolean modelRecordSuccess = chatLimitService.recordModelChatUsage(request.getUserId(), modelIdStr);
-                    if (modelRecordSuccess) {
-                        log.info("用户{}模型ID{}使用记录成功", request.getUserId(), modelIdStr);
-                    } else {
-                        log.warn("用户{}模型ID{}使用记录失败", request.getUserId(), modelIdStr);
-                    }
-
-                    String generatedTitle = aiResponseCompletionHandler.generateTitleIfNeeded(
-                            request, willGenerateTitle, isRealAiResponse,
-                            finalInterruptedStatus ? contentToSave : finalContentToSave);
-                    aiResponseCompletionHandler.writeCompletion(response, willGenerateTitle, isRealAiResponse, generatedTitle);
-                }
+                aiResponseCompletionHandler.completeSideEffects(
+                        response,
+                        request,
+                        model,
+                        willGenerateTitle,
+                        isRealAiResponse,
+                        contentToSave,
+                        finalInterruptedStatus,
+                        true
+                );
             } else {
                 aiResponseCompletionHandler.writeCompletion(response, willGenerateTitle, isRealAiResponse, null);
             }

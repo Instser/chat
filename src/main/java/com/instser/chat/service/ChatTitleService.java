@@ -12,5 +12,10 @@ public interface ChatTitleService {
 
     List<Map<String, String>> buildTitleMessages(ChatRequestDTO request, String aiResponse);
 
+    /**
+     * 基于原始消息快照构建标题材料，避免依赖 ChatRequestDTO 运行时字段。
+     */
+    List<Map<String, String>> buildTitleMessages(List<Map<String, String>> originalMessages, String aiResponse);
+
     String generateSessionTitle(String sessionId, List<Map<String, String>> messages);
 }

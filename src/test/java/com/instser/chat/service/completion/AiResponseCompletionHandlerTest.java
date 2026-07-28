@@ -83,7 +83,8 @@ class AiResponseCompletionHandlerTest {
         when(chatLimitService.recordTokenUsage(9L, 5)).thenReturn(true);
         when(webSearchContentService.saveWebSearchContent(eq("ai-msg"), any(SearchResponse.class), eq(9L), eq("s1")))
                 .thenReturn(true);
-        when(chatTitleService.buildTitleMessages(any(), anyString())).thenReturn(List.of(MapLike.user("u"), MapLike.assistant("a")));
+        when(chatTitleService.buildTitleMessages(org.mockito.ArgumentMatchers.<java.util.List<java.util.Map<String, String>>>any(), anyString()))
+                .thenReturn(List.of(MapLike.user("u"), MapLike.assistant("a")));
         when(chatTitleService.generateSessionTitle(eq("s1"), any())).thenReturn("Nice Title");
 
         AiResponseCompletionHandler handler = new AiResponseCompletionHandler(

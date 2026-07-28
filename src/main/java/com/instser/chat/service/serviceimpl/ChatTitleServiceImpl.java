@@ -34,9 +34,19 @@ public class ChatTitleServiceImpl implements ChatTitleService {
 
     @Override
     public List<Map<String, String>> buildTitleMessages(ChatRequestDTO request, String aiResponse) {
+        List<Map<String, String>> original = request == null ? null : request.getOriginalMessages();
+        if ((original == null || original.isEmpty()) && request != null && request.getMessages() != null) {
+            // 兼容旧调用：无原始快照时回退 messages（调用方应尽量传 originalMessages）
+            original = request.getMessages();
+        }
+        return buildTitleMessages(original, aiResponse);
+    }
+
+    @Override
+    public List<Map<String, String>> buildTitleMessages(List<Map<String, String>> originalMessages, String aiResponse) {
         List<Map<String, String>> messagesForTitle = new ArrayList<>();
-        if (request.getOriginalMessages() != null) {
-            for (Map<String, String> originalMsg : request.getOriginalMessages()) {
+        if (originalMessages != null) {
+            for (Map<String, String> originalMsg : originalMessages) {
                 if ("user".equals(originalMsg.get("role"))) {
                     messagesForTitle.add(new HashMap<>(originalMsg));
                 }

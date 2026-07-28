@@ -51,13 +51,17 @@ public class ChatRequestDTO {
     private String filesId;
 
     /**
-     * 联网搜索结果（内部使用，不从请求中解析）
+     * 联网搜索结果（兼容字段：新代码应优先使用 PreparedChatContext/PreparedTurn）。
+     * @deprecated 流程态不应再塞进请求 DTO，保留仅为平滑迁移。
      */
+    @Deprecated
     private List<WebSearchResult> networkSearchResults;
 
     /**
-     * 原始消息列表（用于标题生成，不包含联网搜索内容，内部使用）
+     * 原始消息列表（兼容字段：标题材料应走 original snapshot 参数）。
+     * @deprecated 流程态不应再塞进请求 DTO，保留仅为平滑迁移。
      */
+    @Deprecated
     private List<Map<String, String>> originalMessages;
 
     /**
