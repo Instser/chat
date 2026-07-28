@@ -24,6 +24,7 @@ import com.instser.chat.service.NetworkSearchOrchestrator;
 import com.instser.chat.service.TruncationDetectionService;
 import com.instser.chat.service.WebSearchContentService;
 import com.instser.chat.service.content.ContentPolicy;
+import com.instser.chat.service.continuation.ChatContinuationService;
 import com.instser.chat.service.stream.AiStreamProcessor;
 import com.instser.chat.service.stream.ChatStreamEventWriter;
 import com.instser.chat.service.context.ChatContextBuilder;
@@ -305,6 +306,7 @@ class ChatServiceImplStageOneCharacterizationTest {
                 new ContentPolicy(),
                 new ChatStreamEventWriter(),
                 new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ChatStreamEventWriter(), new ContentPolicy(), chatInterruptService, aiCallMonitor),
+                mock(ChatContinuationService.class),
                 new ChatContextBuilder(chatMessageService, fileUploadService, networkSearchOrchestrator),
                 new ChatPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, networkSearchOrchestrator)),
                 new RetryPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, networkSearchOrchestrator)),

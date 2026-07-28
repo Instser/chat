@@ -21,6 +21,7 @@ import com.instser.chat.service.NetworkSearchOrchestrator;
 import com.instser.chat.service.TruncationDetectionService;
 import com.instser.chat.service.WebSearchContentService;
 import com.instser.chat.service.content.ContentPolicy;
+import com.instser.chat.service.continuation.ChatContinuationService;
 import com.instser.chat.service.stream.AiStreamProcessor;
 import com.instser.chat.service.stream.ChatStreamEventWriter;
 import com.instser.chat.service.context.ChatContextBuilder;
@@ -88,6 +89,7 @@ class ChatServiceImplTest {
                 new ContentPolicy(),
                 new ChatStreamEventWriter(),
                 new AiStreamProcessor(new OpenAiCompatibleChatClient(webClientBuilder), new ChatStreamEventWriter(), new ContentPolicy(), mock(ChatInterruptService.class), mock(AiCallMonitor.class)),
+                mock(ChatContinuationService.class),
                 new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class)),
                 new ChatPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new RetryPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
@@ -186,6 +188,7 @@ class ChatServiceImplTest {
                 new ContentPolicy(),
                 new ChatStreamEventWriter(),
                 new AiStreamProcessor(new OpenAiCompatibleChatClient(webClientBuilder), new ChatStreamEventWriter(), new ContentPolicy(), mock(ChatInterruptService.class), mock(AiCallMonitor.class)),
+                mock(ChatContinuationService.class),
                 new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class)),
                 new ChatPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new RetryPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
@@ -275,6 +278,7 @@ class ChatServiceImplTest {
                 new ContentPolicy(),
                 new ChatStreamEventWriter(),
                 new AiStreamProcessor(new OpenAiCompatibleChatClient(webClientBuilder), new ChatStreamEventWriter(), new ContentPolicy(), mock(ChatInterruptService.class), mock(AiCallMonitor.class)),
+                mock(ChatContinuationService.class),
                 new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class)),
                 new ChatPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new RetryPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),

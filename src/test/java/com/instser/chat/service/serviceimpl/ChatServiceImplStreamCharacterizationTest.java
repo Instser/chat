@@ -20,6 +20,7 @@ import com.instser.chat.service.context.ChatContextBuilder;
 import com.instser.chat.service.prepare.ChatPrepareHandler;
 import com.instser.chat.service.prepare.EditResendPrepareHandler;
 import com.instser.chat.service.prepare.RetryPrepareHandler;
+import com.instser.chat.service.continuation.ChatContinuationService;
 import com.instser.chat.service.stream.AiStreamProcessor;
 import com.instser.chat.service.stream.ChatStreamEventWriter;
 import org.junit.jupiter.api.Test;
@@ -112,6 +113,7 @@ class ChatServiceImplStreamCharacterizationTest {
                 new ContentPolicy(),
                 new ChatStreamEventWriter(),
                 new AiStreamProcessor(new OpenAiCompatibleChatClient(webClientBuilder), new ChatStreamEventWriter(), new ContentPolicy(), mock(ChatInterruptService.class), mock(AiCallMonitor.class)),
+                mock(ChatContinuationService.class),
                 contextBuilder,
                 new ChatPrepareHandler(chatMessageService, fileUploadService, contextBuilder),
                 new RetryPrepareHandler(chatMessageService, fileUploadService, contextBuilder),
