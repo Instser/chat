@@ -1,13 +1,15 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-07-29 01:44:00
+**📅 最后更新**: 2026-07-29 02:35:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v140.0
+**📊 文档版本**: v141.0
 
 ## 当前任务
-- AI 对话解耦一步到位收尾已完成：retry/edit-resend 委托 Preparer，completion 副作用委托 CompletionHandler，Controller 协议写出委托 Writer。ChatService 接口仍暂持 HttpServletResponse（兼容前端），后续若要终局去 Servlet 需 Controller 消费事件流。
+- AI 对话解耦终局 tickets 01-08 已完成（特征测试/Writer唯一出口/StreamProcessor/Continuation/DTO+Completion/清理/去Servlet）。
+- 前序：AI 对话解耦一步到位收尾已完成：retry/edit-resend 委托 Preparer，completion 副作用委托 CompletionHandler，Controller 协议写出委托 Writer。ChatService 接口仍暂持 HttpServletResponse（兼容前端），后续若要终局去 Servlet 需 Controller 消费事件流。
 
 ## 最新完成任务
+✅ **解耦终局 tickets 01-08** — 测试锁、Writer唯一出口、AiStreamProcessor、ChatContinuationService、completeSideEffects、DTO deprecated、无用依赖清理、ChatService→ChatStreamSink。相关测试 19/19 通过。ChatServiceImpl ~1930 行。 (2026-07-29 02:35)
 ✅ **AI 对话解耦一步到位收尾** — retry/edit-resend 全量 Preparer；handleStreamCompletion 落库/联网/标题/完成帧委托；ChatApiController 错误写出改 Writer。相关测试 15/15 通过。 (2026-07-29 01:44)
 ✅ **AI 对话解耦全阶段实施（分 commit）** — 按补丁 v1.1 落地：`2e03e77` 阶段1.5；`12b3e7e` 阶段2；`942e4de` 阶段2-B；`0d3adb0` 阶段4；`c66cf36` 阶段3；`872df3e` 阶段5。 (2026-07-29 01:40)
 ✅ **AI 对话业务模块解耦方案补丁 v1.1** — 不推翻 `docs/plans/26-05-29_12-25_AI对话业务模块解耦方案_v1.0.md`，仅补齐缺口：① 三入口 `Chat/Retry/EditResend PrepareHandler`；② `StreamResponseState` 替代 `boolean[]`；③ 限流时序固化（prepare 之后 guard）；④ 阶段 1.5（可选技术噪声外提）与阶段二/二-B 方法迁移映射、DoD、测试命令；⑤ 明确从阶段二接着做、禁止回退阶段一。产出：`docs/plans/26-07-29_00-58_AI对话业务模块解耦方案补丁_v1.1.md`，并在主方案与思想体系文首增加交叉引用。无 Java/SQL/依赖变更。 (2026-07-29 00:58)
