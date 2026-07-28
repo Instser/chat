@@ -19,9 +19,12 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Edit-resend 用例准备：删除旧 user 及之后消息、保存新用户消息、迁移附件、重建上下文。
+ * Edit-resend 用例准备。
  *
- * <p>限流必须在本 prepare 完成后执行，保证限制场景下会话保留新编辑内容。</p>
+ * <p>时序拆成两段：
+ * 1) {@link #replaceUserMessage}：删除旧消息、保存新用户消息、迁移附件
+ * 2) {@link #buildContext}：在限流通过后构建 AI 上下文
+ * </p>
  */
 @Slf4j
 @Component
@@ -32,12 +35,14 @@ public class EditResendPrepareHandler {
     private final FileUploadService fileUploadService;
     private final ChatContextBuilder chatContextBuilder;
 
-    public PreparedTurn prepare(String sessionId,
-                                String messageId,
-                                String newContent,
-                                Long userId,
-                                ChatSession chatSession,
-                                Boolean network) {
+    /**
+     * 替换用户消息（限流前必须完成）。
+     */
+    public PreparedTurn replaceUserMessage(String sessionId,
+                                           String messageId,
+                                           String newContent,
+                                           Long userId,
+                                           ChatSession chatSession) {
         String originalFilesId = fileUploadService.getFileIdsByMessageId(messageId);
         boolean hasAttachments = originalFilesId != null && !originalFilesId.trim().isEmpty();
 
@@ -91,6 +96,23 @@ public class EditResendPrepareHandler {
             }
         }
 
+        return PreparedTurn.builder()
+                .success(true)
+                .userId(userId)
+                .sessionId(sessionId)
+                .modelId(chatSession.getModelId())
+                .userMessageId(newUserMessage.getMessageId())
+                .build();
+    }
+
+    /**
+     * 限流通过后构建 AI 上下文。
+     */
+    public PreparedTurn buildContext(String sessionId,
+                                     Long userId,
+                                     ChatSession chatSession,
+                                     Boolean network,
+                                     String userMessageId) {
         List<ChatMessage> historyMessages = chatMessageService.getSessionMessagesForAi(sessionId);
         if (historyMessages == null || historyMessages.isEmpty()) {
             return PreparedTurn.failure("会话中没有可用的消息");
@@ -104,7 +126,11 @@ public class EditResendPrepareHandler {
             messages.add(msg);
         }
 
-        String filesId = hasAttachments ? originalFilesId : null;
+        String filesId = null;
+        if (userMessageId != null) {
+            filesId = fileUploadService.getFileIdsByMessageId(userMessageId);
+        }
+
         PreparedChatContext prepared = chatContextBuilder.buildFromMessages(
                 messages, userId, sessionId, filesId, network != null && network);
         if (prepared == null || prepared.getAiMessages().isEmpty()) {
@@ -119,11 +145,27 @@ public class EditResendPrepareHandler {
                 .userId(userId)
                 .sessionId(sessionId)
                 .modelId(chatSession.getModelId())
-                .userMessageId(newUserMessage.getMessageId())
+                .userMessageId(userMessageId)
                 .messages(prepared.getAiMessages())
                 .originalMessages(prepared.getOriginalMessages())
                 .networkSearchResults(prepared.getNetworkSearchResults())
                 .willGenerateTitle(willGenerateTitle)
                 .build();
+    }
+
+    /**
+     * 兼容旧调用：一次完成替换 + 上下文（仅非限流路径可直接使用）。
+     */
+    public PreparedTurn prepare(String sessionId,
+                                String messageId,
+                                String newContent,
+                                Long userId,
+                                ChatSession chatSession,
+                                Boolean network) {
+        PreparedTurn replaced = replaceUserMessage(sessionId, messageId, newContent, userId, chatSession);
+        if (!replaced.isSuccess()) {
+            return replaced;
+        }
+        return buildContext(sessionId, userId, chatSession, network, replaced.getUserMessageId());
     }
 }

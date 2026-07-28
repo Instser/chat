@@ -12,6 +12,7 @@ import com.instser.chat.service.ChatInterruptService;
 import com.instser.chat.service.ChatMessageService;
 import com.instser.chat.service.ChatSessionService;
 import com.instser.chat.service.ChatService;
+import com.instser.chat.service.stream.ChatStreamEventWriter;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -52,6 +53,7 @@ public class ChatApiController {
     private final AiModelService aiModelService;
     private final ChatService chatService;
     private final ChatInterruptService chatInterruptService;
+    private final ChatStreamEventWriter chatStreamEventWriter;
 
     /**
      * 流式聊天接口 - 兼容前端 (POST)
@@ -397,16 +399,12 @@ public class ChatApiController {
     }
 
     /**
-     * 写入错误响应
+     * 写入错误响应（委托统一 SSE Writer）
      */
     private void writeErrorResponse(HttpServletResponse response, String errorMessage) {
         try {
-            response.setContentType("text/event-stream; charset=UTF-8");
-            response.setCharacterEncoding("UTF-8");
-            response.setHeader("Cache-Control", "no-cache");
-            response.setHeader("Connection", "keep-alive");
-            response.getWriter().write("0:\"" + errorMessage + "\"\n");
-            response.getWriter().flush();
+            chatStreamEventWriter.setStreamResponseHeaders(response);
+            chatStreamEventWriter.writeErrorResponse(response, errorMessage);
         } catch (Exception e) {
             LogUtils.logUserError(log, null, "API响应", "写入错误响应失败", e);
         }

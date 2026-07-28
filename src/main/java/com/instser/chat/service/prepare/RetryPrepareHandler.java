@@ -19,7 +19,7 @@ import java.util.Map;
 /**
  * Retry 用例准备：删除目标 assistant 及之后消息，重建 turn 消息与上下文。
  *
- * <p>不负责限流判定与 SSE 写出；调用方必须在 delete 之后再 Guard。</p>
+ * <p>调用方时序：validate → prepare(delete+context) → rateLimit → model/package guard → stream</p>
  */
 @Slf4j
 @Component
@@ -30,6 +30,27 @@ public class RetryPrepareHandler {
     private final FileUploadService fileUploadService;
     private final ChatContextBuilder chatContextBuilder;
 
+    /**
+     * 删除目标消息及后续，并重建 AI 上下文。
+     */
+    public PreparedTurn prepare(String sessionId,
+                                String messageId,
+                                Long userId,
+                                Long modelId,
+                                Boolean network,
+                                ChatSession chatSession) {
+        int deletedCount = chatMessageService.deleteMessagesFromPoint(messageId, sessionId);
+        if (deletedCount == 0) {
+            return PreparedTurn.failure("删除消息失败");
+        }
+        log.info("retry 成功删除{}条消息，sessionId={} messageId={}", deletedCount, sessionId, messageId);
+
+        return prepareAfterDelete(sessionId, userId, modelId, network, chatSession);
+    }
+
+    /**
+     * 删除已完成后的上下文重建（供限流失败后仅需会话状态时也可复用）。
+     */
     public PreparedTurn prepareAfterDelete(String sessionId,
                                            Long userId,
                                            Long modelId,
@@ -40,6 +61,11 @@ public class RetryPrepareHandler {
             return PreparedTurn.failure("会话中没有可用的消息");
         }
 
+        boolean hasUser = historyMessages.stream().anyMatch(m -> "user".equals(m.getRole()));
+        if (!hasUser) {
+            return PreparedTurn.failure("未找到用户消息");
+        }
+
         List<Map<String, String>> messages = new ArrayList<>();
         for (ChatMessage message : historyMessages) {
             Map<String, String> msg = new HashMap<>();
@@ -48,7 +74,6 @@ public class RetryPrepareHandler {
             messages.add(msg);
         }
 
-        // 恢复最后一条用户消息的附件，供上下文构建
         String filesId = null;
         for (int i = historyMessages.size() - 1; i >= 0; i--) {
             ChatMessage msg = historyMessages.get(i);
@@ -66,9 +91,7 @@ public class RetryPrepareHandler {
         }
 
         boolean willGenerateTitle = prepared.getAiMessages().stream()
-                .filter(m -> "assistant".equals(m.get("role")))
-                .findAny()
-                .isEmpty();
+                .noneMatch(m -> "assistant".equals(m.get("role")));
 
         List<WebSearchResult> networkResults = prepared.getNetworkSearchResults();
         return PreparedTurn.builder()

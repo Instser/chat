@@ -1075,55 +1075,9 @@ public class ChatServiceImpl implements ChatService {
      * @return AI响应消息ID，失败时返回null
      */
     public String saveAiResponseAndGetMessageId(String sessionId, Long userId, Long modelId, String content) {
-        log.info("【AI响应保存】开始保存，用户ID：{}，会话ID：{}，模型ID：{}，内容长度：{}",
-                userId, sessionId, modelId, content != null ? content.length() : 0);
-
-        try {
-            if (sessionId != null && userId != null && modelId != null && content != null && !content.trim().isEmpty()) {
-                log.debug("【AI响应保存】参数验证通过，内容预览：{}",
-                        content.length() > 100 ? content.substring(0, 100) + "..." : content);
-
-                // 保存AI响应消息到数据库并获取Token信息（避免额外数据库查询）
-                MessageSaveResult result = chatMessageService.sendMessageWithTokenInfo(sessionId, "assistant", content, userId, modelId);
-
-                log.debug("【AI响应保存】数据库操作完成，成功：{}，Token数：{}",
-                        result.isSuccess(), result.getTokenCount());
-
-                // 检查保存结果并记录Token使用量
-                if (result.isSuccess() && result.getTokenCount() > 0) {
-                    boolean tokenRecorded = chatLimitService.recordTokenUsage(userId, result.getTokenCount());
-                    if (tokenRecorded) {
-                        log.info("【AI响应保存】保存成功，用户ID：{}，会话ID：{}，Token数：{}",
-                                userId, sessionId, result.getTokenCount());
-                        log.debug("【AI响应保存】Token使用记录成功，模型ID：{}，内容长度：{}",
-                                modelId, content.length());
-                    } else {
-                        log.warn("【AI响应保存】Token使用记录失败，用户ID：{}，会话ID：{}，Token数：{}",
-                                userId, sessionId, result.getTokenCount());
-                    }
-                    return result.getMessageUuid(); // 返回AI响应消息UUID
-                } else if (result.isSuccess()) {
-                    log.info("【AI响应保存】保存成功（无Token计费），用户ID：{}，会话ID：{}，内容长度：{}",
-                            userId, sessionId, content.length());
-                    return result.getMessageUuid(); // 返回AI响应消息UUID
-                } else {
-                    log.error("【AI响应保存】数据库保存失败，用户ID：{}，会话ID：{}，模型ID：{}",
-                             userId, sessionId, modelId);
-                    return null;
-                }
-            } else {
-                log.warn("【AI响应保存】参数验证失败，用户ID：{}，会话ID：{}，模型ID：{}，内容长度：{}",
-                        userId, sessionId, modelId, content != null ? content.length() : 0);
-                log.debug("【AI响应保存】参数详细检查 - sessionId null: {}, userId null: {}, modelId null: {}, content null: {}, content empty: {}",
-                         sessionId == null, userId == null, modelId == null, content == null,
-                         content != null ? content.trim().isEmpty() : "N/A");
-                return null;
-            }
-        } catch (Exception e) {
-            log.error("【AI响应保存】保存异常，用户ID：{}，会话ID：{}，模型ID：{}", userId, sessionId, modelId, e);
-            return null;
-        }
+        return aiResponseCompletionHandler.persistAssistantContent(sessionId, userId, modelId, content);
     }
+
 
     @Override
     public void saveErrorResponse(String sessionId, Long userId, Long modelId, String errorContent) {
@@ -1787,41 +1741,30 @@ public class ChatServiceImpl implements ChatService {
                 }
             }
 
-            String generatedTitle = null;
-
-            // 🔥 新增：在标题生成前保存AI响应内容
+            // 阶段一步到位：续写完成后的落库/联网/usage/标题/完成帧 统一委托 CompletionHandler
             String contentToSave = aiResponseContentRef.toString();
-            final String finalContentToSave;
-            if (isRealAiResponse || finalInterruptedStatus) {
-                if (contentToSave != null && !contentToSave.trim().isEmpty()) {
-                    // 如果是中断状态，添加中断标记
-                    if (finalInterruptedStatus && !contentToSave.endsWith("[已中断]")) {
-                        finalContentToSave = contentToSave + " [已中断]";
-                        log.info("添加中断标记到内容末尾，会话ID: {}", request.getSessionId());
-                    } else {
-                        finalContentToSave = contentToSave;
-                    }
-
-                    log.info("在标题生成前保存AI响应，会话ID: {}, 内容长度: {}, 是否中断: {}",
-                            request.getSessionId(), finalContentToSave.length(), finalInterruptedStatus);
-                    String aiResponseMessageId = saveAiResponseAndGetMessageId(request.getSessionId(), request.getUserId(), model.getId(), finalContentToSave);
-
-                    // 保存联网查询结果到AI响应消息（如果有）
-                    if (aiResponseMessageId != null) {
-                        saveWebSearchResultsToAiResponse(request, aiResponseMessageId);
-                    }
+            boolean shouldPersist = isRealAiResponse || finalInterruptedStatus;
+            String finalContentToSave = null;
+            if (shouldPersist && contentToSave != null && !contentToSave.trim().isEmpty()) {
+                if (finalInterruptedStatus && !contentToSave.endsWith("[已中断]")) {
+                    finalContentToSave = contentToSave + " [已中断]";
                 } else {
                     finalContentToSave = contentToSave;
                 }
 
-                // 先检查是否为错误响应，再决定是否记录使用次数
-                if (finalContentToSave != null && finalContentToSave.contains("Request failed")) {
-                    // 处理错误响应
+                if (finalContentToSave.contains("Request failed")) {
                     log.warn("用户{}收到错误响应，保存错误信息到数据库", request.getUserId());
                     saveErrorResponse(request.getSessionId(), request.getUserId(), model.getId(), finalContentToSave);
                     log.info("错误响应已保存到数据库，会话ID：{}，用户ID：{} - 不计入使用次数", request.getSessionId(), request.getUserId());
+                    aiResponseCompletionHandler.writeCompletion(response, false, false, null);
                 } else {
-                    // 非错误响应才记录模型使用次数（使用模型ID）
+                    String aiResponseMessageId = aiResponseCompletionHandler.persistAssistantContent(
+                            request.getSessionId(), request.getUserId(), model.getId(), finalContentToSave);
+                    if (aiResponseMessageId != null && isRealAiResponse && !finalInterruptedStatus) {
+                        aiResponseCompletionHandler.bindNetworkResults(request, aiResponseMessageId);
+                    }
+
+                    // 非错误响应才记录模型使用次数
                     String modelIdStr = model.getId().toString();
                     boolean modelRecordSuccess = chatLimitService.recordModelChatUsage(request.getUserId(), modelIdStr);
                     if (modelRecordSuccess) {
@@ -1829,73 +1772,15 @@ public class ChatServiceImpl implements ChatService {
                     } else {
                         log.warn("用户{}模型ID{}使用记录失败", request.getUserId(), modelIdStr);
                     }
+
+                    String generatedTitle = aiResponseCompletionHandler.generateTitleIfNeeded(
+                            request, willGenerateTitle, isRealAiResponse,
+                            finalInterruptedStatus ? contentToSave : finalContentToSave);
+                    aiResponseCompletionHandler.writeCompletion(response, willGenerateTitle, isRealAiResponse, generatedTitle);
                 }
             } else {
-                finalContentToSave = null;
+                aiResponseCompletionHandler.writeCompletion(response, willGenerateTitle, isRealAiResponse, null);
             }
-
-            // 如果需要生成标题且是真实AI响应，等待标题生成完成
-            if (willGenerateTitle && isRealAiResponse) {
-                log.info("=== 开始标题生成流程 ===");
-                log.info("会话ID: {}, willGenerateTitle: {}, isRealAiResponse: {}",
-                         request.getSessionId(), willGenerateTitle, isRealAiResponse);
-
-                long titleStartTime = System.currentTimeMillis();
-                try {
-                    CompletableFuture<String> titleFuture = CompletableFuture.supplyAsync(() -> {
-                        try {
-                            // 构建标题生成消息：用户原始内容 + 当前AI响应
-                            List<Map<String, String>> messagesForTitle = buildTitleMessages(request, finalContentToSave);
-                            return generateSessionTitle(request.getSessionId(), messagesForTitle);
-                        } catch (Exception e) {
-                            LogUtils.logUserError(log, null, "标题生成", "后台标题生成异常，会话ID: {}，异常类型: {}，异常消息: {}", e, 
-                                    request.getSessionId(), e.getClass().getSimpleName(), e.getMessage());
-                            return null;
-                        }
-                    });
-
-                    log.info("等待标题生成完成，最多等待5秒...");
-                    generatedTitle = titleFuture.get(5, TimeUnit.SECONDS);
-                    long titleDuration = System.currentTimeMillis() - titleStartTime;
-
-                    if (generatedTitle != null && !generatedTitle.equals("New Chat")) {
-                        log.info("标题生成成功: [{}], 耗时: {}ms", generatedTitle, titleDuration);
-                    } else {
-                        LogUtils.logUserWarning(log, null, "标题生成", "标题生成失败或返回默认标题，会话ID: {}，返回标题: [{}]，耗时: {}ms，可能原因: AI返回了默认标题或空标题", 
-                                request.getSessionId(), generatedTitle, titleDuration);
-                        generatedTitle = null;
-                    }
-                } catch (TimeoutException e) {
-                    long titleDuration = System.currentTimeMillis() - titleStartTime;
-                    LogUtils.logUserWarning(log, null, "标题生成", "标题生成超时，会话ID: {}，超时时长: {}ms，原因: 等待标题生成超过5秒限制", 
-                            request.getSessionId(), titleDuration);
-                    generatedTitle = null;
-                } catch (Exception e) {
-                    long titleDuration = System.currentTimeMillis() - titleStartTime;
-                    LogUtils.logUserError(log, null, "标题生成", "标题生成异常，会话ID: {}，耗时: {}ms，异常类型: {}，异常消息: {}", e, 
-                            request.getSessionId(), titleDuration, e.getClass().getSimpleName(), e.getMessage());
-                    generatedTitle = null;
-                }
-                log.info("=== 标题生成流程结束，最终标题: [{}] ===", generatedTitle);
-            } else {
-                log.info("跳过标题生成 - willGenerateTitle: {}, isRealAiResponse: {}",
-                         willGenerateTitle, isRealAiResponse);
-            }
-
-            // 联网搜索结果已在AI流式响应开始前预先发送，这里不再重复发送
-            log.info("联网搜索结果已预先发送，跳过重复发送");
-
-            // 发送完成标记
-            log.info("=== 准备发送完成标记给前端 ===");
-            log.info("发送前状态 - willGenerateTitle: {}, isRealAiResponse: {}, generatedTitle: [{}]",
-                     willGenerateTitle, isRealAiResponse, generatedTitle);
-
-            String completionData = chatStreamEventWriter.buildCompletionData(willGenerateTitle, isRealAiResponse, generatedTitle);
-            response.getWriter().write(completionData);
-            response.getWriter().flush();
-
-            log.info("完成标记已发送给前端");
-            log.info("=== 完成标记发送结束 ===");
 
             // 返回最终中断状态：包括用户手动中断和续写中断
             log.debug("handleStreamCompletionWithInterruptStatus 返回 finalInterruptedStatus: {}", finalInterruptedStatus);
@@ -1904,16 +1789,11 @@ public class ChatServiceImpl implements ChatService {
         } catch (Exception e) {
             log.error("处理完成标记时发生异常", e);
             try {
-                // 异常情况下不发送联网搜索结果，直接发送完成标记
                 log.info("处理完成标记异常，跳过联网搜索结果发送");
-
-                String completionData = chatStreamEventWriter.buildCompletionData(false, false, null);
-                response.getWriter().write(completionData);
-                response.getWriter().flush();
+                aiResponseCompletionHandler.writeCompletion(response, false, false, null);
             } catch (Exception ex) {
                 log.error("发送异常完成标记失败", ex);
             }
-            // 异常情况，返回最终中断状态
             return finalInterruptedStatus;
         } finally {
             // 会话状态清理现在由ChatSessionManager自动处理
@@ -2997,13 +2877,9 @@ public class ChatServiceImpl implements ChatService {
                 sessionId, messageId, modelId, network);
 
         try {
-            // 更新会话更新时间
             chatSessionService.updateSessionUpdateTime(sessionId);
-
-            // 设置响应头
             chatStreamEventWriter.setStreamResponseHeaders(response);
 
-            // 验证聊天权限和会话
             ChatValidationResult validation = validateChatPermissions(sessionId, messageId, "assistant", authentication);
             if (!validation.isSuccess()) {
                 chatStreamEventWriter.writeErrorResponse(response, validation.getErrorMessage());
@@ -3016,149 +2892,27 @@ public class ChatServiceImpl implements ChatService {
             ChatSession chatSession = validation.getChatSession();
             LogUtils.logUserSessionOperation(log, userId, sessionId, "重试验证", "所有权限验证通过，准备删除消息，用户ID: {}，消息ID: {}", userId, messageId);
 
-            // 删除指定AI消息及之后的所有消息
+            // 1) 删除旧消息 2) 限流 3) Preparer 重建上下文
             int deletedCount = chatMessageService.deleteMessagesFromPoint(messageId, sessionId);
             if (deletedCount == 0) {
                 LogUtils.logUserSessionError(log, userId, sessionId, "重试执行", "删除消息失败，没有找到指定的消息或删除操作失败，消息ID: {}", null, messageId);
                 chatStreamEventWriter.writeErrorResponse(response, "删除消息失败");
                 return;
             }
-
             LogUtils.logUserSessionOperation(log, userId, sessionId, "重试执行", "成功删除{}条消息，消息删除安全完成，准备重新生成AI回复", deletedCount);
 
-            // 重试错误响应消息时也需要先清理旧消息，再返回新的限制错误，避免错误消息无限累加
             Long rateLimitModelId = modelId != null ? modelId : chatSession.getModelId();
             ChatResponseDTO rateLimitResult = validateChatRateLimit(userId, sessionId, rateLimitModelId, response);
             if (rateLimitResult != null) {
                 return;
             }
 
-            // 获取删除后的会话消息，构建新的聊天请求（排除错误响应）
-            List<ChatMessage> remainingMessages = chatMessageService.getSessionMessagesForAi(sessionId);
-            if (remainingMessages.isEmpty()) {
-                LogUtils.logUserSessionError(log, userId, sessionId, "重试执行", "重试失败：会话中没有可用的消息，可能是数据异常或消息已被全部删除", null);
-                chatStreamEventWriter.writeErrorResponse(response, "会话中没有可用的消息");
+            PreparedTurn preparedTurn = retryPrepareHandler.prepareAfterDelete(sessionId, userId, modelId, network, chatSession);
+            if (!preparedTurn.isSuccess()) {
+                chatStreamEventWriter.writeErrorResponse(response, preparedTurn.getErrorMessage());
                 return;
             }
 
-            // 找到最后一条用户消息
-            ChatMessage lastUserMessage = null;
-            for (int i = remainingMessages.size() - 1; i >= 0; i--) {
-                ChatMessage message = remainingMessages.get(i);
-                if ("user".equals(message.getRole())) {
-                    lastUserMessage = message;
-                    break;
-                }
-            }
-
-            if (lastUserMessage == null) {
-                chatStreamEventWriter.writeErrorResponse(response, "未找到用户消息");
-                return;
-            }
-
-            // 构建消息列表用于AI请求
-            List<Map<String, String>> messages = new ArrayList<>();
-            ChatMessage lastUserMessageEntity = null;
-            for (ChatMessage message : remainingMessages) {
-                Map<String, String> msgMap = new HashMap<>();
-                msgMap.put("role", message.getRole());
-                msgMap.put("content", message.getContent());
-                messages.add(msgMap);
-
-                // 记录最后一条用户消息实体，用于检查附件
-                if ("user".equals(message.getRole())) {
-                    lastUserMessageEntity = message;
-                }
-            }
-
-            // 检查最后一条用户消息是否有附件，如果有则附加文件内容供AI处理
-            log.debug("检查重试消息附件，lastUserMessageEntity: {}, hasAttachments: {}",
-                    lastUserMessageEntity != null ? lastUserMessageEntity.getMessageId() : "null",
-                    lastUserMessageEntity != null ? lastUserMessageEntity.getHasAttachments() : "null");
-
-            if (lastUserMessageEntity != null && lastUserMessageEntity.getHasAttachments() != null && lastUserMessageEntity.getHasAttachments() > 0) {
-                // 获取该消息关联的文件ID列表
-                String filesId = fileUploadService.getFileIdsByMessageId(lastUserMessageEntity.getMessageId());
-                log.debug("重试消息关联的文件ID列表：{}", filesId);
-
-                if (filesId != null && !filesId.trim().isEmpty()) {
-                    // 找到最后一条用户消息并附加文件内容
-                    for (int i = messages.size() - 1; i >= 0; i--) {
-                        Map<String, String> msg = messages.get(i);
-                        if ("user".equals(msg.get("role"))) {
-                            log.info("开始为重试请求的用户消息附加文件内容，原始内容：{}，文件ID：{}",
-                                    msg.get("content"), filesId);
-
-                            // 处理文件内容并附加到这条消息
-                            List<Map<String, String>> tempMessages = new ArrayList<>();
-                            tempMessages.add(msg);
-                            List<Map<String, String>> processedMessages = processFilesContent(tempMessages, filesId, userId);
-                            if (!processedMessages.isEmpty()) {
-                                // 更新消息内容（仅用于AI处理）
-                                String originalContent = msg.get("content");
-                                String newContent = processedMessages.get(0).get("content");
-                                msg.put("content", newContent);
-                                log.info("已为重试请求的用户消息附加文件内容，原始长度：{}，附加后长度：{}，文件ID：{}",
-                                        originalContent.length(), newContent.length(), filesId);
-                            } else {
-                                log.warn("processFilesContent返回空结果，文件ID：{}", filesId);
-                            }
-                            break;
-                        }
-                    }
-                } else {
-                    log.info("重试消息没有关联的文件ID，messageId：{}", lastUserMessageEntity.getMessageId());
-                }
-            } else {
-                log.info("重试消息没有附件标识，messageId：{}",
-                        lastUserMessageEntity != null ? lastUserMessageEntity.getMessageId() : "null");
-            }
-
-            // 处理联网搜索内容（如果启用）
-            List<WebSearchResult> retrySearchResults = new ArrayList<>();
-            if (network != null && network) {
-                // 提取用户查询内容（从最后一条用户消息中获取）
-                String userQuery = extractUserQuery(messages);
-                if (userQuery != null && !userQuery.trim().isEmpty()) {
-                    log.info("重试请求检测到联网搜索请求，开始处理联网内容，查询：{}", userQuery);
-
-                    // 记录重试场景下处理前的消息状态
-                    log.debug("【联网内容拼接-重试】处理前消息数量：{}", messages.size());
-                    if (!messages.isEmpty()) {
-                        Map<String, String> lastMessage = messages.get(messages.size() - 1);
-                        if ("user".equals(lastMessage.get("role"))) {
-                            String originalContent = lastMessage.get("content");
-                            log.debug("【联网内容拼接-重试】处理前最后一条用户消息长度：{}，内容预览：{}",
-                                    originalContent.length(),
-                                    originalContent.length() > 200 ? originalContent.substring(0, 200) + "..." : originalContent);
-                        }
-                    }
-
-                    NetworkSearchProcessResult networkResult = processNetworkContent(messages, userQuery);
-                    messages = networkResult.getMessages();
-                    retrySearchResults = networkResult.getSearchResults();
-
-                    // 记录重试场景下处理后的消息状态
-                    log.debug("【联网内容拼接-重试】处理后消息数量：{}", messages.size());
-                    if (!messages.isEmpty()) {
-                        Map<String, String> lastMessage = messages.get(messages.size() - 1);
-                        if ("user".equals(lastMessage.get("role"))) {
-                            String updatedContent = lastMessage.get("content");
-                            log.debug("【联网内容拼接-重试】处理后最后一条用户消息长度：{}，内容预览：{}",
-                                    updatedContent.length(),
-                                    updatedContent.length() > 200 ? updatedContent.substring(0, 200) + "..." : updatedContent);
-                        }
-                    }
-
-                    log.info("重试请求联网内容处理完成");
-                } else {
-                    log.warn("重试请求联网搜索但无法提取用户查询内容");
-                }
-            } else {
-                log.debug("重试请求没有启用联网搜索，联网信息将在AI响应删除时自动清理");
-            }
-
-            // 获取并验证AI模型
             Long targetModelId = modelId != null ? modelId : chatSession.getModelId();
             AiModel model = validateAndGetModel(targetModelId, sessionId, chatSession.getUserId(), response);
             if (model == null) {
@@ -3166,33 +2920,22 @@ public class ChatServiceImpl implements ChatService {
                 return;
             }
 
-            // 更新会话模型（如果需要）
             updateSessionModelIfNeeded(sessionId, modelId, chatSession.getModelId());
 
-            // 验证用户聊天权限和套餐限制
             String permissionError = validateChatPermission(userId, sessionId, modelId);
             if (permissionError != null) {
                 log.info("重试请求聊天权限验证失败，会话ID：{}，用户ID：{}，原因：{}", sessionId, userId, permissionError);
-                
                 String errorContent;
                 try {
-                    // 根据错误码返回相应的错误消息
                     if ("PACKAGE_EXPIRED".equals(permissionError)) {
                         errorContent = "Your package has expired.";
-                        chatStreamEventWriter.writeErrorResponse(response, errorContent);
                     } else if ("MODEL_LIMIT_EXCEEDED".equals(permissionError)) {
                         errorContent = "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.";
-                        chatStreamEventWriter.writeErrorResponse(response, errorContent);
                     } else {
                         errorContent = "Request failed. Please try again later.";
-                        chatStreamEventWriter.writeErrorResponse(response, errorContent);
                     }
-                    
-                    // 保存错误响应到数据库
+                    chatStreamEventWriter.writeErrorResponse(response, errorContent);
                     saveErrorResponse(sessionId, userId, model.getId(), errorContent);
-                    log.info("重试请求聊天权限验证失败错误响应已保存到数据库，会话ID：{}，用户ID：{}，原因：{}", 
-                            sessionId, userId, permissionError);
-                    
                 } catch (IOException e) {
                     log.error("发送重试权限错误响应失败", e);
                 } catch (Exception e) {
@@ -3201,37 +2944,27 @@ public class ChatServiceImpl implements ChatService {
                 return;
             }
 
-            // 联网查询结果将在AI响应保存后进行关联
-            log.debug("【联网存储】retry操作联网内容将在AI响应保存后关联，用户ID：{}，会话ID：{}", userId, sessionId);
-
-            // 构建ChatRequestDTO
             ChatRequestDTO retryRequest = new ChatRequestDTO();
-            retryRequest.setMessages(messages);
+            retryRequest.setMessages(preparedTurn.getMessages());
             retryRequest.setUserId(userId);
             retryRequest.setModelId(model.getId());
             retryRequest.setSessionId(sessionId);
-            retryRequest.setDeepThinking(false); // 重新生成时使用默认模式
-            retryRequest.setNetwork(network != null ? network : false); // 使用传入的network参数
-            retryRequest.setNetworkSearchResults(retrySearchResults); // 设置联网搜索结果
+            retryRequest.setDeepThinking(false);
+            retryRequest.setNetwork(network != null ? network : false);
+            retryRequest.setNetworkSearchResults(preparedTurn.getNetworkSearchResults());
+            retryRequest.setOriginalMessages(preparedTurn.getOriginalMessages());
 
-            // 判断是否需要生成标题（如果删除后只剩一条用户消息，则需要生成标题）
-            boolean willGenerateTitle = isFirstAiResponse(messages);
+            boolean willGenerateTitle = preparedTurn.isWillGenerateTitle();
             log.info("重新生成请求 - 是否需要生成标题：{}，用户消息数量：{}", willGenerateTitle,
-                messages.stream().filter(msg -> "user".equals(msg.get("role"))).count());
+                preparedTurn.getMessages().stream().filter(msg -> "user".equals(msg.get("role"))).count());
 
-            // 调用AI服务进行流式响应
             streamChatWithAI(retryRequest, model, response, willGenerateTitle, "retry");
-
-            // 注释掉原有的保存逻辑，现在在handleStreamCompletionWithInterruptStatus中提前保存
-            // handleAiResponseResult(result, userId, sessionId, model, "重新生成");
 
         } catch (Exception e) {
             log.error("处理重新生成请求异常", e);
             try {
                 String errorContent = "Request failed. Please try again later.";
                 chatStreamEventWriter.writeErrorResponse(response, errorContent);
-
-                // 保存错误响应到数据库
                 var chatSession = chatSessionService.getSessionInfo(sessionId);
                 if (chatSession != null) {
                     AiModel model = aiModelService.getById(chatSession.getModelId());
@@ -3250,13 +2983,9 @@ public class ChatServiceImpl implements ChatService {
         log.info("开始处理编辑重发请求，sessionId：{}，messageId：{}，newContent长度：{}，filesId：{}，modelId：{}，network：{}", sessionId, messageId, newContent.length(), filesId, modelId, network);
 
         try {
-            // 更新会话更新时间
             chatSessionService.updateSessionUpdateTime(sessionId);
-
-            // 设置响应头
             chatStreamEventWriter.setStreamResponseHeaders(response);
 
-            // 验证聊天权限和会话
             ChatValidationResult validation = validateChatPermissions(sessionId, messageId, "user", authentication);
             if (!validation.isSuccess()) {
                 chatStreamEventWriter.writeErrorResponse(response, validation.getErrorMessage());
@@ -3267,180 +2996,27 @@ public class ChatServiceImpl implements ChatService {
             ChatSession chatSession = validation.getChatSession();
             LogUtils.logUserSessionOperation(log, userId, sessionId, "编辑重发", "所有权限验证通过，用户ID: {}，消息ID: {}", userId, messageId);
 
-            // 在删除消息之前，先获取被编辑消息的文件关联信息
-            String originalFilesId = fileUploadService.getFileIdsByMessageId(messageId);
-            log.info("被编辑消息的原始文件关联：{}", originalFilesId);
-
-            // edit-resend场景不会传入filesId，只需要处理原有的文件关联
-            boolean hasAttachments = originalFilesId != null && !originalFilesId.trim().isEmpty();
-
-            // 先删除指定用户消息及之后的所有消息，但保留文件关联（如果有的话）
-            if (hasAttachments) {
-                // 如果有文件关联，使用特殊的删除方法保留文件
-                List<String> preserveFileIds = Arrays.asList(originalFilesId.split(","));
-                int deletedCount = chatMessageService.deleteMessagesFromPointWithFilePreservation(messageId, sessionId, preserveFileIds);
-                if (deletedCount == 0) {
-                    chatStreamEventWriter.writeErrorResponse(response, "删除消息失败");
-                    return;
-                }
-                log.info("成功删除{}条消息（保留文件）", deletedCount);
-            } else {
-                // 没有文件关联，正常删除
-                int deletedCount = chatMessageService.deleteMessagesFromPoint(messageId, sessionId);
-                if (deletedCount == 0) {
-                    chatStreamEventWriter.writeErrorResponse(response, "删除消息失败");
-                    return;
-                }
-                log.info("成功删除{}条消息", deletedCount);
-            }
-
-            // 保存新的用户原始消息（不包含文件内容）
-            ChatMessage newUserMessage = new ChatMessage();
-            newUserMessage.setMessageId(java.util.UUID.randomUUID().toString());
-            newUserMessage.setSessionId(sessionId);
-            newUserMessage.setRole("user");
-            newUserMessage.setContent(newContent); // 保存原始内容
-            newUserMessage.setMessageType("text");
-            newUserMessage.setHasAttachments(hasAttachments ? 1 : 0); // 设置附件标识
-            newUserMessage.setHasWebSearch(0); // 初始设置为0，如果有联网搜索会在后续更新
-            newUserMessage.setUserId(userId);
-            newUserMessage.setModelId(chatSession.getModelId());
-            // 计算并设置Token数量
-            int tokenCount = calculateTokenCount(newContent);
-            newUserMessage.setTokenCount(tokenCount);
-            newUserMessage.setStatus(1); // 成功状态
-            newUserMessage.setCreatedTime(LocalDateTime.now());
-            newUserMessage.setUpdateTime(LocalDateTime.now());
-
-            boolean saved = chatMessageService.save(newUserMessage);
-            if (!saved) {
-                chatStreamEventWriter.writeErrorResponse(response, "保存用户消息失败");
+            // 1) 先替换用户消息 2) 限流 3) 再建上下文（保证限制场景也保留新编辑内容）
+            PreparedTurn replaced = editResendPrepareHandler.replaceUserMessage(
+                    sessionId, messageId, newContent, userId, chatSession);
+            if (!replaced.isSuccess()) {
+                chatStreamEventWriter.writeErrorResponse(response, replaced.getErrorMessage());
                 return;
             }
 
-            log.info("成功保存新的用户消息，messageId：{}，附件：{}，Token数：{}", newUserMessage.getMessageId(), hasAttachments ? "有" : "无", tokenCount);
-
-            // 如果有附件，将保留的文件关联转移到新消息
-            if (hasAttachments) {
-                log.info("edit-resend场景：开始转移文件关联，原始文件ID：{}，新消息ID：{}",
-                        originalFilesId, newUserMessage.getMessageId());
-
-                updateFilesAssociation(originalFilesId, newUserMessage.getMessageId(), sessionId, userId);
-
-                // 验证文件关联是否成功转移
-                String updatedFilesId = fileUploadService.getFileIdsByMessageId(newUserMessage.getMessageId());
-                log.info("edit-resend场景：文件关联转移完成，新消息关联的文件ID：{}，预期文件ID：{}",
-                        updatedFilesId, originalFilesId);
-
-                if (updatedFilesId == null || !updatedFilesId.equals(originalFilesId)) {
-                    log.error("edit-resend场景：文件关联转移失败！预期：{}，实际：{}", originalFilesId, updatedFilesId);
-                } else {
-                    log.info("edit-resend场景：文件关联转移成功验证通过");
-                }
-            }
-
-            // edit-resend 命中限制时也要先完成用户编辑内容替换，避免旧内容残留
             Long rateLimitModelId = modelId != null ? modelId : chatSession.getModelId();
             ChatResponseDTO rateLimitResult = validateChatRateLimit(userId, sessionId, rateLimitModelId, response);
             if (rateLimitResult != null) {
                 return;
             }
 
-            // 获取更新后的会话消息，构建新的聊天请求（排除错误响应）
-            List<ChatMessage> remainingMessages = chatMessageService.getSessionMessagesForAi(sessionId);
-            if (remainingMessages.isEmpty()) {
-                LogUtils.logUserSessionError(log, userId, sessionId, "编辑重发", "编辑重发失败：会话中没有可用的消息，可能是数据异常或消息已被全部删除", null);
-                chatStreamEventWriter.writeErrorResponse(response, "会话中没有可用的消息");
+            PreparedTurn preparedTurn = editResendPrepareHandler.buildContext(
+                    sessionId, userId, chatSession, network, replaced.getUserMessageId());
+            if (!preparedTurn.isSuccess()) {
+                chatStreamEventWriter.writeErrorResponse(response, preparedTurn.getErrorMessage());
                 return;
             }
 
-            // 构建消息列表用于AI请求
-            List<Map<String, String>> messages = new ArrayList<>();
-            for (ChatMessage message : remainingMessages) {
-                Map<String, String> msgMap = new HashMap<>();
-                msgMap.put("role", message.getRole());
-                msgMap.put("content", message.getContent());
-                messages.add(msgMap);
-            }
-
-            // 如果最后一条用户消息有附件，需要附加文件内容供AI处理
-            log.debug("检查编辑重发消息附件，hasAttachments: {}, originalFilesId: {}", hasAttachments, originalFilesId);
-
-            if (hasAttachments && !messages.isEmpty()) {
-                // 找到最后一条用户消息
-                for (int i = messages.size() - 1; i >= 0; i--) {
-                    Map<String, String> msg = messages.get(i);
-                    if ("user".equals(msg.get("role"))) {
-                        log.info("开始为编辑重发的用户消息附加文件内容，原始内容：{}，文件ID：{}",
-                                msg.get("content"), originalFilesId);
-
-                        // 处理文件内容并附加到这条消息
-                        List<Map<String, String>> tempMessages = new ArrayList<>();
-                        tempMessages.add(msg);
-                        List<Map<String, String>> processedMessages = processFilesContent(tempMessages, originalFilesId, userId);
-                        if (!processedMessages.isEmpty()) {
-                            // 更新消息内容（仅用于AI处理）
-                            String originalContent = msg.get("content");
-                            String processedContent = processedMessages.get(0).get("content");
-                            msg.put("content", processedContent);
-                            log.info("已为编辑重发的用户消息附加文件内容，原始长度：{}，附加后长度：{}，文件数量：{}",
-                                    originalContent.length(), processedContent.length(), originalFilesId.split(",").length);
-                        } else {
-                            log.warn("processFilesContent返回空结果，文件ID：{}", originalFilesId);
-                        }
-                        break;
-                    }
-                }
-            } else {
-                log.info("编辑重发消息没有附件或消息列表为空，hasAttachments: {}, messagesSize: {}",
-                        hasAttachments, messages.size());
-            }
-
-            // 处理联网搜索内容（如果启用）
-            List<WebSearchResult> editResendSearchResults = new ArrayList<>();
-            if (network != null && network) {
-                // 提取用户查询内容（从最后一条用户消息中获取）
-                String userQuery = extractUserQuery(messages);
-                if (userQuery != null && !userQuery.trim().isEmpty()) {
-                    log.info("编辑重发请求检测到联网搜索请求，开始处理联网内容，查询：{}", userQuery);
-
-                    // 记录编辑重发场景下处理前的消息状态
-                    log.debug("【联网内容拼接-编辑重发】处理前消息数量：{}", messages.size());
-                    if (!messages.isEmpty()) {
-                        Map<String, String> lastMessage = messages.get(messages.size() - 1);
-                        if ("user".equals(lastMessage.get("role"))) {
-                            String originalContent = lastMessage.get("content");
-                            log.debug("【联网内容拼接-编辑重发】处理前最后一条用户消息长度：{}，内容预览：{}",
-                                    originalContent.length(),
-                                    originalContent.length() > 200 ? originalContent.substring(0, 200) + "..." : originalContent);
-                        }
-                    }
-
-                    NetworkSearchProcessResult networkResult = processNetworkContent(messages, userQuery);
-                    messages = networkResult.getMessages();
-                    editResendSearchResults = networkResult.getSearchResults();
-
-                    // 记录编辑重发场景下处理后的消息状态
-                    log.debug("【联网内容拼接-编辑重发】处理后消息数量：{}", messages.size());
-                    if (!messages.isEmpty()) {
-                        Map<String, String> lastMessage = messages.get(messages.size() - 1);
-                        if ("user".equals(lastMessage.get("role"))) {
-                            String updatedContent = lastMessage.get("content");
-                            log.debug("【联网内容拼接-编辑重发】处理后最后一条用户消息长度：{}，内容预览：{}",
-                                    updatedContent.length(),
-                                    updatedContent.length() > 200 ? updatedContent.substring(0, 200) + "..." : updatedContent);
-                        }
-                    }
-
-                    log.info("编辑重发请求联网内容处理完成");
-                } else {
-                    log.warn("编辑重发请求联网搜索但无法提取用户查询内容");
-                }
-            } else {
-                log.debug("编辑重发请求没有启用联网搜索");
-            }
-
-            // 获取并验证AI模型
             Long targetModelId = modelId != null ? modelId : chatSession.getModelId();
             AiModel model = validateAndGetModel(targetModelId, sessionId, chatSession.getUserId(), response);
             if (model == null) {
@@ -3448,33 +3024,22 @@ public class ChatServiceImpl implements ChatService {
                 return;
             }
 
-            // 更新会话模型（如果需要）
             updateSessionModelIfNeeded(sessionId, modelId, chatSession.getModelId());
 
-            // 验证用户聊天权限和套餐限制
             String permissionError = validateChatPermission(userId, sessionId, modelId);
             if (permissionError != null) {
                 log.info("编辑重发请求聊天权限验证失败，会话ID：{}，用户ID：{}，原因：{}", sessionId, userId, permissionError);
-                
                 String errorContent;
                 try {
-                    // 根据错误码返回相应的错误消息
                     if ("PACKAGE_EXPIRED".equals(permissionError)) {
                         errorContent = "Your package has expired.";
-                        chatStreamEventWriter.writeErrorResponse(response, errorContent);
                     } else if ("MODEL_LIMIT_EXCEEDED".equals(permissionError)) {
                         errorContent = "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.";
-                        chatStreamEventWriter.writeErrorResponse(response, errorContent);
                     } else {
                         errorContent = "Request failed. Please try again later.";
-                        chatStreamEventWriter.writeErrorResponse(response, errorContent);
                     }
-                    
-                    // 保存错误响应到数据库
+                    chatStreamEventWriter.writeErrorResponse(response, errorContent);
                     saveErrorResponse(sessionId, userId, model.getId(), errorContent);
-                    log.info("编辑重发请求聊天权限验证失败错误响应已保存到数据库，会话ID：{}，用户ID：{}，原因：{}", 
-                            sessionId, userId, permissionError);
-                    
                 } catch (IOException e) {
                     log.error("发送编辑重发权限错误响应失败", e);
                 } catch (Exception e) {
@@ -3483,37 +3048,27 @@ public class ChatServiceImpl implements ChatService {
                 return;
             }
 
-            // 联网查询结果将在AI响应保存后进行关联
-            log.debug("【联网存储】edit-resend操作联网内容将在AI响应保存后关联，用户ID：{}，会话ID：{}", userId, sessionId);
-
-            // 构建ChatRequestDTO
             ChatRequestDTO editResendRequest = new ChatRequestDTO();
-            editResendRequest.setMessages(messages);
+            editResendRequest.setMessages(preparedTurn.getMessages());
             editResendRequest.setUserId(userId);
             editResendRequest.setModelId(model.getId());
             editResendRequest.setSessionId(sessionId);
-            editResendRequest.setDeepThinking(false); // 编辑重发时使用默认模式
-            editResendRequest.setNetwork(network != null ? network : false); // 使用传入的network参数
-            editResendRequest.setNetworkSearchResults(editResendSearchResults); // 设置联网搜索结果
+            editResendRequest.setDeepThinking(false);
+            editResendRequest.setNetwork(network != null ? network : false);
+            editResendRequest.setNetworkSearchResults(preparedTurn.getNetworkSearchResults());
+            editResendRequest.setOriginalMessages(preparedTurn.getOriginalMessages());
 
-            // 判断是否需要生成标题（如果编辑的是第一条用户消息，则需要生成标题）
-            boolean willGenerateTitle = isFirstAiResponse(messages);
+            boolean willGenerateTitle = preparedTurn.isWillGenerateTitle();
             log.info("编辑重发请求 - 是否需要生成标题：{}，用户消息数量：{}", willGenerateTitle,
-                messages.stream().filter(msg -> "user".equals(msg.get("role"))).count());
+                preparedTurn.getMessages().stream().filter(msg -> "user".equals(msg.get("role"))).count());
 
-            // 调用AI服务进行流式响应
             streamChatWithAI(editResendRequest, model, response, willGenerateTitle, "edit-resend");
-
-            // 注释掉原有的保存逻辑，现在在handleStreamCompletionWithInterruptStatus中提前保存
-            // handleAiResponseResult(result, userId, sessionId, model, "编辑重发");
 
         } catch (Exception e) {
             log.error("处理编辑重发请求异常", e);
             try {
                 String errorContent = "Request failed. Please try again later.";
                 chatStreamEventWriter.writeErrorResponse(response, errorContent);
-
-                // 保存错误响应到数据库
                 var chatSession = chatSessionService.getSessionInfo(sessionId);
                 if (chatSession != null) {
                     AiModel model = aiModelService.getById(chatSession.getModelId());
