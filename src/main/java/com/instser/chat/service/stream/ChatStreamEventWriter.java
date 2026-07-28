@@ -1,0 +1,243 @@
+package com.instser.chat.service.stream;
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.instser.chat.common.util.LogUtils;
+import com.instser.chat.entity.WebSearchResult;
+import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 聊天 SSE 协议写出器（阶段 1.5 / 阶段五过渡实现）。
+ *
+ * <p>当前仍接收 HttpServletResponse，集中所有前端协议字符串拼装：
+ * content(0:)、network(u:)、completion(d:)、error。</p>
+ */
+@Slf4j
+@Component
+public class ChatStreamEventWriter {
+
+    private static final boolean ENABLE_SMART_CHUNKING = true;
+    private static final long CHUNK_DELAY_MS = 30;
+    private static final int MIN_CHUNK_SIZE = 5;
+    private static final int MAX_CHUNK_SIZE = 25;
+
+    private final ObjectMapper objectMapper = new ObjectMapper();
+
+    public void setStreamResponseHeaders(HttpServletResponse response) {
+        response.setContentType("text/event-stream; charset=UTF-8");
+        response.setCharacterEncoding("UTF-8");
+        response.setHeader("x-vercel-ai-data-stream", "v1");
+        response.setHeader("Cache-Control", "no-cache");
+        response.setHeader("Connection", "keep-alive");
+    }
+
+    public void writeErrorResponse(HttpServletResponse response, String errorMessage) throws IOException {
+        response.getWriter().write("0:\"" + errorMessage + "\"\n");
+        response.getWriter().flush();
+    }
+
+    public void writeCustomErrorResponse(HttpServletResponse response, String errorMessage, int errorType) throws IOException {
+        response.getWriter().write(errorType + ":\"" + errorMessage + "\"\n");
+        response.getWriter().flush();
+    }
+
+    /**
+     * 写出内容增量；根据配置选择智能分块或整块发送。
+     */
+    public void writeContent(String content, HttpServletResponse response) {
+        if (content == null || content.isEmpty()) {
+            return;
+        }
+        if (ENABLE_SMART_CHUNKING) {
+            sendContentBySmartChunking(content, response);
+        } else {
+            sendContentAsBlock(content, response);
+        }
+    }
+
+    public void sendContentBySmartChunking(String content, HttpServletResponse response) {
+        try {
+            int optimalChunkSize = getOptimalChunkSize(content);
+            int[] codePoints = content.codePoints().toArray();
+            StringBuilder chunk = new StringBuilder();
+            int sentChars = 0;
+
+            for (int i = 0; i < codePoints.length; i++) {
+                int codePoint = codePoints[i];
+                String character = new String(Character.toChars(codePoint));
+                chunk.append(character);
+
+                if (chunk.length() >= optimalChunkSize || i == codePoints.length - 1) {
+                    try {
+                        String chunkContent = chunk.toString();
+                        String vercelFormat = String.format("0:%s\n", objectMapper.writeValueAsString(chunkContent));
+                        response.getWriter().write(vercelFormat);
+                        response.getWriter().flush();
+
+                        sentChars += chunkContent.length();
+                        chunk.setLength(0);
+
+                        if (CHUNK_DELAY_MS > 0) {
+                            Thread.sleep(CHUNK_DELAY_MS);
+                        }
+                    } catch (InterruptedException e) {
+                        log.warn("续写分块发送被中断: {}", e.getMessage());
+                        Thread.currentThread().interrupt();
+                        log.info("尝试继续发送剩余内容...");
+                    } catch (IOException e) {
+                        log.error("续写发送分块内容失败，尝试重试: {}", e.getMessage());
+                        try {
+                            String chunkContent = chunk.toString();
+                            String vercelFormat = String.format("0:%s\n", objectMapper.writeValueAsString(chunkContent));
+                            response.getWriter().write(vercelFormat);
+                            response.getWriter().flush();
+                            sentChars += chunkContent.length();
+                            log.info("续写分块重试发送成功");
+                        } catch (Exception retryException) {
+                            log.error("续写分块重试也失败，跳过此块: {}", retryException.getMessage());
+                        }
+                        chunk.setLength(0);
+                    }
+                }
+            }
+
+            log.debug("完成智能分块流式发送，总字符数: {}, 实际发送: {}, 分块大小: {}",
+                    codePoints.length, sentChars, optimalChunkSize);
+        } catch (Exception e) {
+            log.error("智能分块发送内容失败: {}", e.getMessage());
+            try {
+                String vercelFormat = String.format("0:%s\n", objectMapper.writeValueAsString(content));
+                response.getWriter().write(vercelFormat);
+                response.getWriter().flush();
+                log.info("回退到块发送模式: [{}]", content);
+            } catch (Exception fallbackException) {
+                log.error("回退发送也失败: {}", fallbackException.getMessage());
+            }
+        }
+    }
+
+    public void sendContentAsBlock(String content, HttpServletResponse response) {
+        try {
+            if (content != null && !content.isEmpty()) {
+                String vercelFormat = String.format("0:%s\n", objectMapper.writeValueAsString(content));
+                response.getWriter().write(vercelFormat);
+                response.getWriter().flush();
+                log.info("块发送模式数据发送成功: [{}]", content);
+            } else {
+                log.debug("块发送模式：内容为空，跳过发送");
+            }
+        } catch (Exception e) {
+            log.error("块发送模式失败: {}", e.getMessage());
+        }
+    }
+
+    public int getOptimalChunkSize(String content) {
+        int length = content == null ? 0 : content.length();
+
+        if (length <= 20) {
+            return length;
+        } else if (length <= 100) {
+            return Math.max(MIN_CHUNK_SIZE, Math.min(length / 4, 10));
+        } else if (length <= 300) {
+            return Math.max(10, Math.min(length / 8, 15));
+        } else {
+            return Math.max(15, Math.min(MAX_CHUNK_SIZE, length / 12));
+        }
+    }
+
+    public String buildInterruptCompletionData() {
+        try {
+            Map<String, Object> interruptMap = new HashMap<>();
+            interruptMap.put("finishReason", "interrupted");
+            interruptMap.put("usage", Map.of(
+                    "promptTokens", 0,
+                    "completionTokens", 0
+            ));
+            interruptMap.put("title", false);
+            interruptMap.put("interrupted", true);
+
+            return String.format("d:%s\n", objectMapper.writeValueAsString(interruptMap));
+        } catch (Exception e) {
+            log.error("构建中断完成标记数据失败", e);
+            return "d:{\"finishReason\":\"interrupted\",\"usage\":{\"promptTokens\":0,\"completionTokens\":0},\"title\":false,\"interrupted\":true}\n";
+        }
+    }
+
+    public void writeInterruptCompletion(HttpServletResponse response) throws IOException {
+        response.getWriter().write(buildInterruptCompletionData());
+        response.getWriter().flush();
+    }
+
+    public String buildCompletionData(boolean willGenerateTitle, boolean isRealAiResponse, String generatedTitle) {
+        try {
+            log.info("=== 构建完成标记数据 ===");
+            log.info("willGenerateTitle: {}, isRealAiResponse: {}, generatedTitle: [{}]",
+                    willGenerateTitle, isRealAiResponse, generatedTitle);
+
+            Map<String, Object> completionMap = new HashMap<>();
+            completionMap.put("finishReason", "stop");
+            completionMap.put("usage", Map.of(
+                    "promptTokens", 10,
+                    "completionTokens", 20
+            ));
+
+            if (isRealAiResponse && willGenerateTitle) {
+                if (generatedTitle != null && !generatedTitle.trim().isEmpty()) {
+                    completionMap.put("title", generatedTitle.trim());
+                    log.info("标题将返回给前端: [{}]", generatedTitle.trim());
+                } else {
+                    completionMap.put("title", false);
+                    LogUtils.logUserWarning(log, null, "标题生成", "标题生成失败或为空，返回false给前端，原因: 生成的标题为null或空字符串");
+                }
+            } else {
+                completionMap.put("title", false);
+                log.info("不需要生成标题，返回false给前端 - willGenerateTitle: {}, isRealAiResponse: {}",
+                        willGenerateTitle, isRealAiResponse);
+            }
+
+            String result = String.format("d:%s\n", objectMapper.writeValueAsString(completionMap));
+            log.info("完成标记数据构建完成: {}", result.trim());
+            log.info("=== 构建完成标记数据结束 ===");
+            return result;
+        } catch (Exception e) {
+            log.error("构建完成标记数据失败", e);
+            return "d:{\"finishReason\":\"stop\",\"usage\":{\"promptTokens\":10,\"completionTokens\":20},\"title\":false}\n";
+        }
+    }
+
+    public void writeCompletion(HttpServletResponse response, boolean willGenerateTitle,
+                                boolean isRealAiResponse, String generatedTitle) throws IOException {
+        response.getWriter().write(buildCompletionData(willGenerateTitle, isRealAiResponse, generatedTitle));
+        response.getWriter().flush();
+    }
+
+    public void sendNetworkSearchResults(HttpServletResponse response, List<WebSearchResult> searchResults) {
+        if (searchResults == null || searchResults.isEmpty()) {
+            return;
+        }
+
+        try {
+            log.info("开始发送{}个联网搜索结果给前端", searchResults.size());
+
+            for (WebSearchResult result : searchResults) {
+                Map<String, String> resultData = new HashMap<>();
+                resultData.put("url", result.getUrl() != null ? result.getUrl() : "");
+                resultData.put("title", result.getTitle() != null ? result.getTitle() : "");
+
+                String resultJson = String.format("u:%s\n", objectMapper.writeValueAsString(resultData));
+                response.getWriter().write(resultJson);
+                response.getWriter().flush();
+            }
+
+            log.info("成功发送{}个联网搜索结果给前端", searchResults.size());
+        } catch (Exception e) {
+            log.error("发送联网搜索结果失败", e);
+        }
+    }
+}

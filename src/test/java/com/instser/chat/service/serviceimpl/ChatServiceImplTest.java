@@ -20,6 +20,8 @@ import com.instser.chat.service.NetworkAiService;
 import com.instser.chat.service.NetworkSearchOrchestrator;
 import com.instser.chat.service.TruncationDetectionService;
 import com.instser.chat.service.WebSearchContentService;
+import com.instser.chat.service.content.ContentPolicy;
+import com.instser.chat.service.stream.ChatStreamEventWriter;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -76,6 +78,8 @@ class ChatServiceImplTest {
                 aiCallMonitor,
                 mock(ChatTitleService.class),
                 mock(NetworkSearchOrchestrator.class),
+                new ContentPolicy(),
+                new ChatStreamEventWriter(),
                 continuationExecutor
         );
 
@@ -165,6 +169,8 @@ class ChatServiceImplTest {
                 aiCallMonitor,
                 mock(ChatTitleService.class),
                 mock(NetworkSearchOrchestrator.class),
+                new ContentPolicy(),
+                new ChatStreamEventWriter(),
                 continuationExecutor
         );
 
@@ -245,6 +251,8 @@ class ChatServiceImplTest {
                 aiCallMonitor,
                 mock(ChatTitleService.class),
                 mock(NetworkSearchOrchestrator.class),
+                new ContentPolicy(),
+                new ChatStreamEventWriter(),
                 continuationExecutor
         );
 

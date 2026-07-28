@@ -1,8 +1,25 @@
 # 项目进度状态
 
-**📅 最后更新**: 2026-07-22 18:54:00
+**📅 最后更新**: 2026-07-29 00:58:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v131.0
+**📊 文档版本**: v132.0
+
+## 🚀 最新完成功能 (2026-07-29)
+
+### AI 对话业务模块解耦方案补丁 v1.1 ✅
+- **实现时间**: 2026年7月29日 00:58
+- **功能描述**: 在不替代主方案的前提下，补齐解耦方案可执行缺口，明确继续采用已有五阶段终局，并从阶段二继续推进。
+- **核心补齐**:
+  - 三入口一等公民：`ChatPrepareHandler` / `RetryPrepareHandler` / `EditResendPrepareHandler`
+  - `StreamResponseState` 替代流式 `boolean[]` 状态机
+  - 限流时序写死为 `prepare → guard → build → stream → complete`
+  - 新增可选阶段 1.5（Writer/Parser/ContentPolicy 技术噪声外提）
+  - 阶段二方法迁移映射、DTO 净化规则、阶段二-B Preparer DoD 与开工清单
+  - 禁止回退阶段一已提取的 Title/Network/Monitor 等服务
+- **文档产出**:
+  - `docs/plans/26-07-29_00-58_AI对话业务模块解耦方案补丁_v1.1.md`
+  - 主方案与思想体系文首增加补丁交叉引用
+- **影响范围**: 纯文档与 memory bank 同步；未修改 Java、SQL、依赖或 JDK。
 
 ## 🚀 最新完成功能 (2026-07-22)
 

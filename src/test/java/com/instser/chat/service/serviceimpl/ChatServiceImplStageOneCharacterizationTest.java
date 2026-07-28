@@ -23,6 +23,8 @@ import com.instser.chat.service.NetworkAiService;
 import com.instser.chat.service.NetworkSearchOrchestrator;
 import com.instser.chat.service.TruncationDetectionService;
 import com.instser.chat.service.WebSearchContentService;
+import com.instser.chat.service.content.ContentPolicy;
+import com.instser.chat.service.stream.ChatStreamEventWriter;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
@@ -293,6 +295,8 @@ class ChatServiceImplStageOneCharacterizationTest {
                 aiCallMonitor,
                 chatTitleService,
                 networkSearchOrchestrator,
+                new ContentPolicy(),
+                new ChatStreamEventWriter(),
                 continuationExecutor
         );
     }
