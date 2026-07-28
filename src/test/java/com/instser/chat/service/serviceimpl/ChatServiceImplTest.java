@@ -23,6 +23,9 @@ import com.instser.chat.service.WebSearchContentService;
 import com.instser.chat.service.content.ContentPolicy;
 import com.instser.chat.service.stream.ChatStreamEventWriter;
 import com.instser.chat.service.context.ChatContextBuilder;
+import com.instser.chat.service.prepare.ChatPrepareHandler;
+import com.instser.chat.service.prepare.EditResendPrepareHandler;
+import com.instser.chat.service.prepare.RetryPrepareHandler;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -82,6 +85,9 @@ class ChatServiceImplTest {
                 new ContentPolicy(),
                 new ChatStreamEventWriter(),
                 new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class)),
+                new ChatPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
+                new RetryPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
+                new EditResendPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 continuationExecutor
         );
 
@@ -174,6 +180,9 @@ class ChatServiceImplTest {
                 new ContentPolicy(),
                 new ChatStreamEventWriter(),
                 new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class)),
+                new ChatPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
+                new RetryPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
+                new EditResendPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 continuationExecutor
         );
 
@@ -257,6 +266,9 @@ class ChatServiceImplTest {
                 new ContentPolicy(),
                 new ChatStreamEventWriter(),
                 new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class)),
+                new ChatPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
+                new RetryPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
+                new EditResendPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 continuationExecutor
         );
 

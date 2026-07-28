@@ -26,6 +26,9 @@ import com.instser.chat.service.WebSearchContentService;
 import com.instser.chat.service.content.ContentPolicy;
 import com.instser.chat.service.stream.ChatStreamEventWriter;
 import com.instser.chat.service.context.ChatContextBuilder;
+import com.instser.chat.service.prepare.ChatPrepareHandler;
+import com.instser.chat.service.prepare.EditResendPrepareHandler;
+import com.instser.chat.service.prepare.RetryPrepareHandler;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
@@ -299,6 +302,9 @@ class ChatServiceImplStageOneCharacterizationTest {
                 new ContentPolicy(),
                 new ChatStreamEventWriter(),
                 new ChatContextBuilder(chatMessageService, fileUploadService, networkSearchOrchestrator),
+                new ChatPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, networkSearchOrchestrator)),
+                new RetryPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, networkSearchOrchestrator)),
+                new EditResendPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, networkSearchOrchestrator)),
                 continuationExecutor
         );
     }

@@ -20,6 +20,10 @@ import com.instser.chat.service.cache.RequestValidationCache;
 import com.instser.chat.service.content.ContentPolicy;
 import com.instser.chat.service.context.ChatContextBuilder;
 import com.instser.chat.service.context.PreparedChatContext;
+import com.instser.chat.service.prepare.ChatPrepareHandler;
+import com.instser.chat.service.prepare.EditResendPrepareHandler;
+import com.instser.chat.service.prepare.PreparedTurn;
+import com.instser.chat.service.prepare.RetryPrepareHandler;
 import com.instser.chat.service.stream.ChatStreamEventWriter;
 import com.instser.chat.service.stream.StreamResponseState;
 import com.instser.chat.util.ChatSessionManager;
@@ -77,6 +81,9 @@ public class ChatServiceImpl implements ChatService {
     private final ContentPolicy contentPolicy;
     private final ChatStreamEventWriter chatStreamEventWriter;
     private final ChatContextBuilder chatContextBuilder;
+    private final ChatPrepareHandler chatPrepareHandler;
+    private final RetryPrepareHandler retryPrepareHandler;
+    private final EditResendPrepareHandler editResendPrepareHandler;
 
     @Qualifier("continuationExecutor")
     private final Executor continuationExecutor;
@@ -133,9 +140,10 @@ public class ChatServiceImpl implements ChatService {
             chatSessionService.updateSessionUpdateTime(request.getSessionId());
 
             // 构建AI请求消息（用户消息已保存，直接构建完整上下文）
-            PreparedChatContext preparedContext = chatContextBuilder.buildFromSessionHistory(request);
-            if (preparedContext == null || preparedContext.getAiMessages().isEmpty()) {
-                String errorContent = "会话中没有可用的消息";
+            PreparedTurn preparedTurn = chatPrepareHandler.prepareContext(request, model, userMessageId);
+            if (!preparedTurn.isSuccess()) {
+                String errorContent = preparedTurn.getErrorMessage() != null
+                        ? preparedTurn.getErrorMessage() : "会话中没有可用的消息";
                 chatStreamEventWriter.writeErrorResponse(response, errorContent);
                 log.info("【聊天结束】用户ID：{}，会话ID：{}，结果：消息构建失败",
                         request.getUserId(), request.getSessionId());
@@ -143,11 +151,11 @@ public class ChatServiceImpl implements ChatService {
             }
 
             // 更新request中的messages为从数据库构建的完整上下文
-            List<Map<String, String>> messages = preparedContext.getAiMessages();
+            List<Map<String, String>> messages = preparedTurn.getMessages();
             request.setMessages(messages);
             // 兼容标题/联网落库：仍写入 DTO 运行时字段，构建逻辑已迁出
-            request.setOriginalMessages(preparedContext.getOriginalMessages());
-            request.setNetworkSearchResults(preparedContext.getNetworkSearchResults());
+            request.setOriginalMessages(preparedTurn.getOriginalMessages());
+            request.setNetworkSearchResults(preparedTurn.getNetworkSearchResults());
 
             log.info("【聊天开始】用户ID：{}，会话ID：{}，模型：{}，消息数：{}",
                     request.getUserId(), request.getSessionId(), model.getModelCode(), messages.size());
