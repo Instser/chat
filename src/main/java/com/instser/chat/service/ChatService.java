@@ -2,7 +2,7 @@ package com.instser.chat.service;
 
 import com.instser.chat.dto.ChatRequestDTO;
 import com.instser.chat.dto.ChatResponseDTO;
-import jakarta.servlet.http.HttpServletResponse;
+import com.instser.chat.service.stream.ChatStreamSink;
 import org.springframework.security.core.Authentication;
 
 import java.util.List;
@@ -21,10 +21,10 @@ public interface ChatService {
      *
      * @param request 聊天请求DTO
      * @param authentication 认证信息
-     * @param response HTTP响应对象
+     * @param response 流写出端口
      * @return 聊天响应结果
      */
-    ChatResponseDTO processStreamChat(ChatRequestDTO request, Authentication authentication, HttpServletResponse response);
+    ChatResponseDTO processStreamChat(ChatRequestDTO request, Authentication authentication, ChatStreamSink sink);
 
     /**
      * 验证聊天请求参数
@@ -103,9 +103,9 @@ public interface ChatService {
      * @param modelId 模型ID（可选，为null时使用会话原有模型）
      * @param network 是否启用网络搜索（可选，为null时默认禁用）
      * @param authentication 认证信息
-     * @param response HTTP响应对象
+     * @param response 流写出端口
      */
-    void processRetryChat(String sessionId, String messageId, Long modelId, Boolean network, Authentication authentication, HttpServletResponse response);
+    void processRetryChat(String sessionId, String messageId, Long modelId, Boolean network, Authentication authentication, ChatStreamSink sink);
 
     /**
      * 处理编辑用户消息并重新生成AI回复请求
@@ -117,9 +117,9 @@ public interface ChatService {
      * @param modelId 模型ID（可选，为null时使用会话原有模型）
      * @param network 是否启用网络搜索（可选，为null时默认禁用）
      * @param authentication 认证信息
-     * @param response HTTP响应对象
+     * @param response 流写出端口
      */
-    void processEditResendChat(String sessionId, String messageId, String newContent, String filesId, Long modelId, Boolean network, Authentication authentication, HttpServletResponse response);
+    void processEditResendChat(String sessionId, String messageId, String newContent, String filesId, Long modelId, Boolean network, Authentication authentication, ChatStreamSink sink);
 
     /**
      * 检查是否为首次AI响应

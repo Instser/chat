@@ -13,6 +13,7 @@ import com.instser.chat.service.ChatMessageService;
 import com.instser.chat.service.ChatSessionService;
 import com.instser.chat.service.ChatService;
 import com.instser.chat.service.stream.ChatStreamEventWriter;
+import com.instser.chat.service.stream.ChatStreamSink;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -73,7 +74,7 @@ public class ChatApiController {
             LogUtils.logUserSessionDebug(log, chatRequest.getUserId(), chatRequest.getSessionId(), "聊天处理", "开始处理聊天请求");
 
             // 调用ChatService处理业务逻辑
-            ChatResponseDTO chatResponse = chatService.processStreamChat(chatRequest, authentication, response);
+            ChatResponseDTO chatResponse = chatService.processStreamChat(chatRequest, authentication, ChatStreamSink.of(response, chatStreamEventWriter));
 
             // 记录处理结果
             if (chatResponse.isSuccess()) {
@@ -317,7 +318,7 @@ public class ChatApiController {
             }
 
             // 调用ChatService处理重新生成逻辑（chatId实际对应sessionId）
-            chatService.processRetryChat(chatId, messageId, modelId, network, authentication, response);
+            chatService.processRetryChat(chatId, messageId, modelId, network, authentication, ChatStreamSink.of(response, chatStreamEventWriter));
 
         } catch (Exception e) {
             handleCommonException(e, "重新生成", response);
@@ -367,7 +368,7 @@ public class ChatApiController {
             }
 
             // 调用ChatService处理编辑重发逻辑（chatId实际对应sessionId）
-            chatService.processEditResendChat(chatId, messageId, newContent, filesId, modelId, network, authentication, response);
+            chatService.processEditResendChat(chatId, messageId, newContent, filesId, modelId, network, authentication, ChatStreamSink.of(response, chatStreamEventWriter));
 
         } catch (Exception e) {
             handleCommonException(e, "编辑重发", response);

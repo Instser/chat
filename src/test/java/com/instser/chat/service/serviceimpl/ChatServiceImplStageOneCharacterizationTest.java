@@ -296,14 +296,10 @@ class ChatServiceImplStageOneCharacterizationTest {
                 chatRateLimitService,
                 fileUploadService,
                 chatInterruptService,
-                WebClient.builder(),
-                restTemplate,
                 truncationDetectionService,
-                webSearchContentService,
                 aiCallMonitor,
                 chatTitleService,
                 networkSearchOrchestrator,
-                new ContentPolicy(),
                 new ChatStreamEventWriter(),
                 new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ChatStreamEventWriter(), new ContentPolicy(), chatInterruptService, aiCallMonitor),
                 mock(ChatContinuationService.class),
@@ -311,9 +307,7 @@ class ChatServiceImplStageOneCharacterizationTest {
                 new ChatPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, networkSearchOrchestrator)),
                 new RetryPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, networkSearchOrchestrator)),
                 new EditResendPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, networkSearchOrchestrator)),
-                new AiResponseCompletionHandler(chatMessageService, chatLimitService, chatTitleService, webSearchContentService, new ChatStreamEventWriter()),
-                new OpenAiCompatibleChatClient(WebClient.builder()),
-                continuationExecutor
+                new AiResponseCompletionHandler(chatMessageService, chatLimitService, chatTitleService, webSearchContentService, new ChatStreamEventWriter())
         );
     }
 }

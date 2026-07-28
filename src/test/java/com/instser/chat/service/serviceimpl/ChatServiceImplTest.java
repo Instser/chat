@@ -24,6 +24,7 @@ import com.instser.chat.service.content.ContentPolicy;
 import com.instser.chat.service.continuation.ChatContinuationService;
 import com.instser.chat.service.stream.AiStreamProcessor;
 import com.instser.chat.service.stream.ChatStreamEventWriter;
+import com.instser.chat.service.stream.ChatStreamSink;
 import com.instser.chat.service.context.ChatContextBuilder;
 import com.instser.chat.service.prepare.ChatPrepareHandler;
 import com.instser.chat.service.prepare.EditResendPrepareHandler;
@@ -79,24 +80,18 @@ class ChatServiceImplTest {
                 chatRateLimitService,
                 fileUploadService,
                 chatInterruptService,
-                webClientBuilder,
-                restTemplate,
                 truncationDetectionService,
-                webSearchContentService,
                 aiCallMonitor,
                 mock(ChatTitleService.class),
                 mock(NetworkSearchOrchestrator.class),
-                new ContentPolicy(),
                 new ChatStreamEventWriter(),
-                new AiStreamProcessor(new OpenAiCompatibleChatClient(webClientBuilder), new ChatStreamEventWriter(), new ContentPolicy(), mock(ChatInterruptService.class), mock(AiCallMonitor.class)),
+                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ChatStreamEventWriter(), new ContentPolicy(), chatInterruptService, aiCallMonitor),
                 mock(ChatContinuationService.class),
                 new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class)),
                 new ChatPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new RetryPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new EditResendPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
-                new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService, new ChatStreamEventWriter()),
-                new OpenAiCompatibleChatClient(webClientBuilder),
-                continuationExecutor
+                new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService, new ChatStreamEventWriter())
         );
 
         Long userId = 1003L;
@@ -133,8 +128,9 @@ class ChatServiceImplTest {
         request.setMessages(List.of(Map.of("role", "user", "content", userContent)));
 
         HttpServletResponse response = new MockHttpServletResponse();
+        ChatStreamSink sink = ChatStreamSink.of(response, new ChatStreamEventWriter());
 
-        ChatResponseDTO result = service.processStreamChat(request, authentication(userId), response);
+        ChatResponseDTO result = service.processStreamChat(request, authentication(userId), sink);
 
         assertEquals(false, result.isSuccess());
         verify(chatMessageService).sendErrorResponseMessage(
@@ -178,24 +174,18 @@ class ChatServiceImplTest {
                 chatRateLimitService,
                 fileUploadService,
                 chatInterruptService,
-                webClientBuilder,
-                restTemplate,
                 truncationDetectionService,
-                webSearchContentService,
                 aiCallMonitor,
                 mock(ChatTitleService.class),
                 mock(NetworkSearchOrchestrator.class),
-                new ContentPolicy(),
                 new ChatStreamEventWriter(),
-                new AiStreamProcessor(new OpenAiCompatibleChatClient(webClientBuilder), new ChatStreamEventWriter(), new ContentPolicy(), mock(ChatInterruptService.class), mock(AiCallMonitor.class)),
+                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ChatStreamEventWriter(), new ContentPolicy(), chatInterruptService, aiCallMonitor),
                 mock(ChatContinuationService.class),
                 new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class)),
                 new ChatPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new RetryPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new EditResendPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
-                new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService, new ChatStreamEventWriter()),
-                new OpenAiCompatibleChatClient(webClientBuilder),
-                continuationExecutor
+                new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService, new ChatStreamEventWriter())
         );
 
         String sessionId = "session-1";
@@ -224,7 +214,7 @@ class ChatServiceImplTest {
 
         HttpServletResponse response = new MockHttpServletResponse();
 
-        service.processRetryChat(sessionId, messageId, session.getModelId(), false, authentication(userId), response);
+        service.processRetryChat(sessionId, messageId, session.getModelId(), false, authentication(userId), ChatStreamSink.of(response, new ChatStreamEventWriter()));
 
         verify(chatMessageService).deleteMessagesFromPoint(messageId, sessionId);
         verify(chatMessageService).sendErrorResponseMessage(
@@ -268,24 +258,18 @@ class ChatServiceImplTest {
                 chatRateLimitService,
                 fileUploadService,
                 chatInterruptService,
-                webClientBuilder,
-                restTemplate,
                 truncationDetectionService,
-                webSearchContentService,
                 aiCallMonitor,
                 mock(ChatTitleService.class),
                 mock(NetworkSearchOrchestrator.class),
-                new ContentPolicy(),
                 new ChatStreamEventWriter(),
-                new AiStreamProcessor(new OpenAiCompatibleChatClient(webClientBuilder), new ChatStreamEventWriter(), new ContentPolicy(), mock(ChatInterruptService.class), mock(AiCallMonitor.class)),
+                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ChatStreamEventWriter(), new ContentPolicy(), chatInterruptService, aiCallMonitor),
                 mock(ChatContinuationService.class),
                 new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class)),
                 new ChatPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new RetryPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new EditResendPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
-                new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService, new ChatStreamEventWriter()),
-                new OpenAiCompatibleChatClient(webClientBuilder),
-                continuationExecutor
+                new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService, new ChatStreamEventWriter())
         );
 
         String sessionId = "session-edit";
@@ -323,7 +307,7 @@ class ChatServiceImplTest {
 
         HttpServletResponse response = new MockHttpServletResponse();
 
-        service.processEditResendChat(sessionId, messageId, newContent, null, session.getModelId(), false, authentication(userId), response);
+        service.processEditResendChat(sessionId, messageId, newContent, null, session.getModelId(), false, authentication(userId), ChatStreamSink.of(response, new ChatStreamEventWriter()));
 
         verify(chatMessageService).deleteMessagesFromPoint(messageId, sessionId);
         verify(chatMessageService).save(argThat(message -> {
