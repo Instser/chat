@@ -1,10 +1,22 @@
 # 项目进度状态
 
-**📅 最后更新**: 2026-07-29 00:58:00
+**📅 最后更新**: 2026-07-29 01:40:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v132.0
+**📊 文档版本**: v133.0
 
 ## 🚀 最新完成功能 (2026-07-29)
+
+### AI 对话业务模块解耦分阶段实施 ✅
+- **实现时间**: 2026年7月29日 01:40
+- **提交记录**:
+  - `2e03e77` 阶段1.5：StreamResponseState / ContentPolicy / ChatStreamEventWriter
+  - `12b3e7e` 阶段2：ChatContextBuilder / PreparedChatContext
+  - `942e4de` 阶段2-B：Chat/Retry/EditResend PrepareHandler
+  - `0d3adb0` 阶段4：AiResponseCompletionHandler
+  - `c66cf36` 阶段3：AiChatClient / OpenAiCompatibleChatClient
+  - `872df3e` 阶段5：ChatStreamEvent + Writer.writeEvent
+- **验证**: ChatServiceImplTest + StageOne + Title + Network 相关测试通过（15/15）
+- **说明**: 外部 SSE/API 兼容；JDK17/依赖未改。后续可继续加深 retry/edit-resend 全量 prepare 迁移与 completion 全路径委托。
 
 ### AI 对话业务模块解耦方案补丁 v1.1 ✅
 - **实现时间**: 2026年7月29日 00:58
