@@ -1,14 +1,15 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-07-29 01:40:00
+**📅 最后更新**: 2026-07-29 01:44:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v139.0
+**📊 文档版本**: v140.0
 
 ## 当前任务
-- AI 对话解耦主线阶段性落地完成（1.5/2/2-B/3/4/5 均有独立 commit）。后续可继续把 retry/edit-resend 删除落库全量迁入 Preparer，以及把 handleStreamCompletion 整段改走 CompletionHandler。
+- AI 对话解耦一步到位收尾已完成：retry/edit-resend 委托 Preparer，completion 副作用委托 CompletionHandler，Controller 协议写出委托 Writer。ChatService 接口仍暂持 HttpServletResponse（兼容前端），后续若要终局去 Servlet 需 Controller 消费事件流。
 
 ## 最新完成任务
-✅ **AI 对话解耦全阶段实施（分 commit）** — 按补丁 v1.1 落地：`2e03e77` 阶段1.5 StreamState/ContentPolicy/Writer；`12b3e7e` 阶段2 ContextBuilder；`942e4de` 阶段2-B Preparer；`0d3adb0` 阶段4 CompletionHandler；`c66cf36` 阶段3 AiChatClient；`c?` 阶段5 ChatStreamEvent。相关回归测试持续通过。 (2026-07-29 01:40)
+✅ **AI 对话解耦一步到位收尾** — retry/edit-resend 全量 Preparer；handleStreamCompletion 落库/联网/标题/完成帧委托；ChatApiController 错误写出改 Writer。相关测试 15/15 通过。 (2026-07-29 01:44)
+✅ **AI 对话解耦全阶段实施（分 commit）** — 按补丁 v1.1 落地：`2e03e77` 阶段1.5；`12b3e7e` 阶段2；`942e4de` 阶段2-B；`0d3adb0` 阶段4；`c66cf36` 阶段3；`872df3e` 阶段5。 (2026-07-29 01:40)
 ✅ **AI 对话业务模块解耦方案补丁 v1.1** — 不推翻 `docs/plans/26-05-29_12-25_AI对话业务模块解耦方案_v1.0.md`，仅补齐缺口：① 三入口 `Chat/Retry/EditResend PrepareHandler`；② `StreamResponseState` 替代 `boolean[]`；③ 限流时序固化（prepare 之后 guard）；④ 阶段 1.5（可选技术噪声外提）与阶段二/二-B 方法迁移映射、DoD、测试命令；⑤ 明确从阶段二接着做、禁止回退阶段一。产出：`docs/plans/26-07-29_00-58_AI对话业务模块解耦方案补丁_v1.1.md`，并在主方案与思想体系文首增加交叉引用。无 Java/SQL/依赖变更。 (2026-07-29 00:58)
 ✅ **推理模型流式响应 nullnull 修复 + CORS 配置化** — 根因是推理模型思考阶段发 `content:null`，Jackson `asText()` 返回字符串 `"null"` 被误当内容推给前端。已在 `processCompleteJson` / `processContinuationJson` 两处增加 `isTextual()` 守卫；同时将 `SecurityConfig`/`WebConfig` CORS 改为读取 `application.yml`，默认域名切到 `chat.instser.xyz`。工作区曾混入回退 `3867e0a` 解耦的约 500 行改动，已恢复 HEAD 解耦版后仅重打两处修复。总结文档：`docs/2026-07-22_18-54_推理模型流式响应nullnull修复总结_v1.0.md`。 (2026-07-22 18:54)
 ✅ **AI 对话业务模块阶段一解耦完成** — 新增 `ChatTitleService` / `ChatTitleServiceImpl`，迁移标题消息构建、固定 4L 标题模型调用、标题清洗和会话标题落库逻辑；新增 `NetworkSearchOrchestrator` / `NetworkSearchOrchestratorImpl` 和 `NetworkSearchProcessResult`，迁移 Gemini 联网完整上下文构建、响应格式化、来源转换和异常降级逻辑；扩展 `NetworkAiService` 接口新增 `queryWithGeminiGrounding`，`ChatServiceImpl` 改为编排委托，不再强转 `NetworkAiServiceImpl`。新增 `ChatTitleServiceImplTest` 与 `NetworkSearchOrchestratorImplTest`，并通过阶段一相关回归测试与编译验证。 (2026-06-06 21:03)

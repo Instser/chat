@@ -1,10 +1,20 @@
 # 项目进度状态
 
-**📅 最后更新**: 2026-07-29 01:40:00
+**📅 最后更新**: 2026-07-29 01:44:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v133.0
+**📊 文档版本**: v134.0
 
 ## 🚀 最新完成功能 (2026-07-29)
+
+### AI 对话解耦一步到位收尾 ✅
+- **实现时间**: 2026年7月29日 01:44
+- **内容**:
+  - `processRetryChat` / `processEditResendChat` 全量委托 Preparer（限流时序保留）
+  - `handleStreamCompletionWithInterruptStatus` 落库/联网/标题/完成帧委托 `AiResponseCompletionHandler`
+  - `saveAiResponseAndGetMessageId` 委托 `persistAssistantContent`
+  - `ChatApiController` 错误写出委托 `ChatStreamEventWriter`
+- **验证**: 15/15 相关测试通过
+- **说明**: ChatService 接口仍暴露 HttpServletResponse 以兼容现网前端；真正去 Servlet 需下一阶段改 Controller 消费 ChatStreamEvent。
 
 ### AI 对话业务模块解耦分阶段实施 ✅
 - **实现时间**: 2026年7月29日 01:40
