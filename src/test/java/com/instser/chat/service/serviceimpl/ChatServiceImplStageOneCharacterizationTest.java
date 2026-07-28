@@ -30,6 +30,7 @@ import com.instser.chat.service.prepare.ChatPrepareHandler;
 import com.instser.chat.service.prepare.EditResendPrepareHandler;
 import com.instser.chat.service.prepare.RetryPrepareHandler;
 import com.instser.chat.service.completion.AiResponseCompletionHandler;
+import com.instser.chat.service.ai.OpenAiCompatibleChatClient;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
@@ -307,6 +308,7 @@ class ChatServiceImplStageOneCharacterizationTest {
                 new RetryPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, networkSearchOrchestrator)),
                 new EditResendPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, networkSearchOrchestrator)),
                 new AiResponseCompletionHandler(chatMessageService, chatLimitService, chatTitleService, webSearchContentService, new ChatStreamEventWriter()),
+                new OpenAiCompatibleChatClient(WebClient.builder()),
                 continuationExecutor
         );
     }

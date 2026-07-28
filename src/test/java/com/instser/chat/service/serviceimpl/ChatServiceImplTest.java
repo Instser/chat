@@ -27,6 +27,7 @@ import com.instser.chat.service.prepare.ChatPrepareHandler;
 import com.instser.chat.service.prepare.EditResendPrepareHandler;
 import com.instser.chat.service.prepare.RetryPrepareHandler;
 import com.instser.chat.service.completion.AiResponseCompletionHandler;
+import com.instser.chat.service.ai.OpenAiCompatibleChatClient;
 import jakarta.servlet.http.HttpServletResponse;
 import org.junit.jupiter.api.Test;
 import org.mockito.InOrder;
@@ -90,6 +91,7 @@ class ChatServiceImplTest {
                 new RetryPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new EditResendPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService, new ChatStreamEventWriter()),
+                new OpenAiCompatibleChatClient(webClientBuilder),
                 continuationExecutor
         );
 
@@ -186,6 +188,7 @@ class ChatServiceImplTest {
                 new RetryPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new EditResendPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService, new ChatStreamEventWriter()),
+                new OpenAiCompatibleChatClient(webClientBuilder),
                 continuationExecutor
         );
 
@@ -273,6 +276,7 @@ class ChatServiceImplTest {
                 new RetryPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new EditResendPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService, new ChatStreamEventWriter()),
+                new OpenAiCompatibleChatClient(webClientBuilder),
                 continuationExecutor
         );
 

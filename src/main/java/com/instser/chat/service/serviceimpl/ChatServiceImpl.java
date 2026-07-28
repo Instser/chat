@@ -20,6 +20,7 @@ import com.instser.chat.service.cache.RequestValidationCache;
 import com.instser.chat.service.content.ContentPolicy;
 import com.instser.chat.service.context.ChatContextBuilder;
 import com.instser.chat.service.context.PreparedChatContext;
+import com.instser.chat.service.ai.AiChatClient;
 import com.instser.chat.service.completion.AiResponseCompletionHandler;
 import com.instser.chat.service.prepare.ChatPrepareHandler;
 import com.instser.chat.service.prepare.EditResendPrepareHandler;
@@ -86,6 +87,7 @@ public class ChatServiceImpl implements ChatService {
     private final RetryPrepareHandler retryPrepareHandler;
     private final EditResendPrepareHandler editResendPrepareHandler;
     private final AiResponseCompletionHandler aiResponseCompletionHandler;
+    private final AiChatClient aiChatClient;
 
     @Qualifier("continuationExecutor")
     private final Executor continuationExecutor;
@@ -1319,17 +1321,8 @@ public class ChatServiceImpl implements ChatService {
             // 添加行缓冲区，用于处理被分割的行
             StringBuilder lineBuffer = new StringBuilder();
 
-            // 构建请求体
-            Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("model", model.getModelCode());
-            requestBody.put("messages", messagesWithPrompt);
-            requestBody.put("stream", true);
-
-            // 只有当provider是Gemini时才添加reasoning_effort参数
-            if ("Gemini".equalsIgnoreCase(model.getProvider())) {
-                requestBody.put("reasoning_effort", "none");
-                log.debug("检测到Gemini模型，添加reasoning_effort=none参数");
-            }
+            // 构建请求体（阶段3：委托 AiChatClient）
+            Map<String, Object> requestBody = aiChatClient.buildStreamRequestBody(model, messagesWithPrompt);
 
             // 记录详细的AI请求信息
             logAiRequestDetails(requestBody, model, request.getUserId());
@@ -1337,26 +1330,12 @@ public class ChatServiceImpl implements ChatService {
             // AI 调用监控：开始追踪
             aiCtxHolder[0] = aiCallMonitor.beginCall(model.getModelCode());
 
-            // 创建WebClient（使用配置的Builder，已禁用SSL验证）
-            WebClient webClient = webClientBuilder
-                    .defaultHeader("Authorization", "Bearer " + model.getApiKey())
-                    .defaultHeader("Content-Type", "application/json; charset=UTF-8")
-                    .defaultHeader("Accept-Charset", "UTF-8")
-                    .defaultHeader("User-Agent", "OpenAI/PowerShell")
-                    .build();
-
             log.info("调用AI API: {}, 模型: {}", model.getBaseUrl(), model.getModelCode());
 
             // 联网结果发送标记在 streamState 中维护
 
             // 发送流式请求并处理响应
-            webClient.post()
-                    .uri(model.getBaseUrl())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .bodyValue(requestBody)
-                    .retrieve()
-                    .bodyToFlux(DataBuffer.class)
-                    .timeout(Duration.ofSeconds(30))
+            aiChatClient.stream(model, requestBody, 30)
                     .map(dataBuffer -> {
                         byte[] bytes = new byte[dataBuffer.readableByteCount()];
                         dataBuffer.read(bytes);
@@ -2578,17 +2557,8 @@ public class ChatServiceImpl implements ChatService {
         boolean[] cleaningDone = {false};
 
         try {
-            // 构建请求体
-            Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("stream", true);
-            requestBody.put("messages", request.getMessages());
-            requestBody.put("model", model.getModelCode());
-
-            // 添加reasoning_effort参数（仅对Gemini模型）
-            if (model.getProvider() != null && model.getProvider().toLowerCase().contains("gemini")) {
-                requestBody.put("reasoning_effort", "none");
-                log.debug("续写请求添加reasoning_effort参数");
-            }
+            // 构建请求体（阶段3：委托 AiChatClient）
+            Map<String, Object> requestBody = aiChatClient.buildStreamRequestBody(model, request.getMessages());
 
             log.debug("构建续写消息列表完成，原始消息数：{}，添加截断内容长度：{}，最终消息数：{}",
                     request.getMessages().size() - 2, originalContent.length(), request.getMessages().size());
@@ -2597,14 +2567,6 @@ public class ChatServiceImpl implements ChatService {
             logAiRequestDetails(requestBody, model, request.getUserId());
 
             log.debug("发送续写请求到AI API: {}", model.getBaseUrl());
-
-            // 创建WebClient（使用配置的Builder，已禁用SSL验证）
-            WebClient webClient = webClientBuilder
-                    .defaultHeader("Authorization", "Bearer " + model.getApiKey())
-                    .defaultHeader("Content-Type", "application/json; charset=UTF-8")
-                    .defaultHeader("Accept-Charset", "UTF-8")
-                    .defaultHeader("User-Agent", "OpenAI/PowerShell")
-                    .build();
 
             // 发送请求并处理流式响应
             final int[] chunkCount = {0};
@@ -2616,13 +2578,7 @@ public class ChatServiceImpl implements ChatService {
 
             log.debug("开始发送续写WebClient请求");
 
-            webClient.post()
-                    .uri(model.getBaseUrl())
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .bodyValue(requestBody)
-                    .retrieve()
-                    .bodyToFlux(DataBuffer.class)
-                    .timeout(Duration.ofSeconds(60))  // 续写设置更长的超时时间
+            aiChatClient.stream(model, requestBody, 60)  // 续写设置更长的超时时间
                     .doOnSubscribe(subscription -> log.debug("续写WebClient订阅成功，开始接收数据流"))
                     .doOnRequest(n -> log.debug("续写WebClient请求 {} 个数据块", n))
                     .map(dataBuffer -> {
