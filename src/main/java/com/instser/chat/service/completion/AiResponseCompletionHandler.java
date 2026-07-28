@@ -137,10 +137,7 @@ public class AiResponseCompletionHandler {
                                 boolean isRealAiResponse,
                                 String generatedTitle) {
         try {
-            String completionData = chatStreamEventWriter.buildCompletionData(
-                    willGenerateTitle, isRealAiResponse, generatedTitle);
-            response.getWriter().write(completionData);
-            response.getWriter().flush();
+            chatStreamEventWriter.writeCompletion(response, willGenerateTitle, isRealAiResponse, generatedTitle);
         } catch (Exception e) {
             log.error("发送完成标记失败", e);
         }

@@ -1339,9 +1339,7 @@ public class ChatServiceImpl implements ChatService {
                             // 发送中断完成标记（只发送一次）
                             if (!streamState.isInterruptSaved() || aiResponseContent.length() == 0) {
                                 try {
-                                    String interruptData = chatStreamEventWriter.buildInterruptCompletionData();
-                                    response.getWriter().write(interruptData);
-                                    response.getWriter().flush();
+                                    chatStreamEventWriter.writeInterruptCompletion(response);
                                     log.info("已发送中断完成标记");
                                     streamState.markInterruptSaved(); // 标记已处理
                                 } catch (Exception e) {
@@ -1474,15 +1472,10 @@ public class ChatServiceImpl implements ChatService {
                         log.error("AI API流式响应处理失败", error);
                         try {
                             String errorContent = "Request failed. Please try again later.";
-                            String vercelFormat = String.format("0:%s\n", new ObjectMapper().writeValueAsString(errorContent));
-                            response.getWriter().write(vercelFormat);
-
+                            chatStreamEventWriter.writeContent(errorContent, response);
                             // AI响应出错时不发送联网搜索结果，直接发送完成标记
                             log.info("AI响应出错，跳过联网搜索结果发送");
-
-                            String completionData = chatStreamEventWriter.buildCompletionData(false, false, null);
-                            response.getWriter().write(completionData);
-                            response.getWriter().flush();
+                            chatStreamEventWriter.writeCompletion(response, false, false, null);
 
                             streamState.markContentSent();
 
@@ -1653,15 +1646,10 @@ public class ChatServiceImpl implements ChatService {
 
             try {
                 String errorContent = "Request failed. Please try again later.";
-                String vercelFormat = String.format("0:%s\n", new ObjectMapper().writeValueAsString(errorContent));
-                response.getWriter().write(vercelFormat);
-
+                chatStreamEventWriter.writeContent(errorContent, response);
                 // AI响应异常时不发送联网搜索结果，直接发送完成标记
                 log.info("AI响应异常，跳过联网搜索结果发送");
-
-                String completionData = chatStreamEventWriter.buildCompletionData(false, false, null);
-                response.getWriter().write(completionData);
-                response.getWriter().flush();
+                chatStreamEventWriter.writeCompletion(response, false, false, null);
 
                 // 保存错误响应到数据库
                 if (request.getSessionId() != null && request.getUserId() != null) {
@@ -2661,9 +2649,7 @@ public class ChatServiceImpl implements ChatService {
                         // 发送错误信息给前端
                         try {
                             String errorContent = "续写请求失败，请重试";
-                            String vercelFormat = String.format("0:%s\n", new ObjectMapper().writeValueAsString(errorContent));
-                            response.getWriter().write(vercelFormat);
-                            response.getWriter().flush();
+                            chatStreamEventWriter.writeContent(errorContent, response);
                             hasContentSent[0] = true;
                             log.info("续写错误消息已发送给前端");
                         } catch (Exception e) {
