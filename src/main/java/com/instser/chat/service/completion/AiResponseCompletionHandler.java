@@ -10,7 +10,7 @@ import com.instser.chat.service.ChatMessageService;
 import com.instser.chat.service.ChatTitleService;
 import com.instser.chat.service.WebSearchContentService;
 import com.instser.chat.service.stream.ChatStreamEventWriter;
-import jakarta.servlet.http.HttpServletResponse;
+import com.instser.chat.service.stream.ChatStreamSink;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -44,9 +44,7 @@ public class AiResponseCompletionHandler {
     private final ChatLimitService chatLimitService;
     private final ChatTitleService chatTitleService;
     private final WebSearchContentService webSearchContentService;
-    private final ChatStreamEventWriter chatStreamEventWriter;
-
-    public String persistAssistantContent(String sessionId, Long userId, Long modelId, String content) {
+public String persistAssistantContent(String sessionId, Long userId, Long modelId, String content) {
         if (sessionId == null || userId == null || modelId == null || content == null || content.trim().isEmpty()) {
             return null;
         }
@@ -142,12 +140,12 @@ public class AiResponseCompletionHandler {
         }
     }
 
-    public void writeCompletion(HttpServletResponse response,
+    public void writeCompletion(ChatStreamSink sink,
                                 boolean willGenerateTitle,
                                 boolean isRealAiResponse,
                                 String generatedTitle) {
         try {
-            chatStreamEventWriter.writeCompletion(response, willGenerateTitle, isRealAiResponse, generatedTitle);
+            sink.writeCompletion(willGenerateTitle, isRealAiResponse, generatedTitle);
         } catch (Exception e) {
             log.error("发送完成标记失败", e);
         }
@@ -158,21 +156,21 @@ public class AiResponseCompletionHandler {
      *
      * @return assistant message id（可能为 null）
      */
-    public String completeSideEffects(HttpServletResponse response,
+    public String completeSideEffects(ChatStreamSink sink,
                                       ChatRequestDTO request,
                                       AiModel model,
                                       boolean willGenerateTitle,
                                       boolean isRealAiResponse,
                                       String contentToSave,
                                       boolean interrupted) {
-        return completeSideEffects(response, request, model, willGenerateTitle, isRealAiResponse,
+        return completeSideEffects(sink, request, model, willGenerateTitle, isRealAiResponse,
                 contentToSave, interrupted, true);
     }
 
     /**
      * @param recordModelUsage 是否记录模型使用次数（错误响应必须 false）
      */
-    public String completeSideEffects(HttpServletResponse response,
+    public String completeSideEffects(ChatStreamSink sink,
                                       ChatRequestDTO request,
                                       AiModel model,
                                       boolean willGenerateTitle,
@@ -186,7 +184,7 @@ public class AiResponseCompletionHandler {
                 // 错误响应：只落错误消息，不扣次、不绑联网、不生成标题
                 chatMessageService.sendErrorResponseMessage(
                         request.getSessionId(), request.getUserId(), model.getId(), contentToSave);
-                writeCompletion(response, false, false, null);
+                writeCompletion(sink, false, false, null);
                 return null;
             }
 
@@ -210,7 +208,7 @@ public class AiResponseCompletionHandler {
 
         String generatedTitle = generateTitleIfNeeded(request, willGenerateTitle, isRealAiResponse,
                 interrupted ? contentToSave : contentToSave);
-        writeCompletion(response, willGenerateTitle, isRealAiResponse, generatedTitle);
+        writeCompletion(sink, willGenerateTitle, isRealAiResponse, generatedTitle);
         return assistantMessageId;
     }
 }

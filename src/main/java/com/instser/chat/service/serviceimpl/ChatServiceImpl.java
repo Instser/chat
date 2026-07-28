@@ -32,7 +32,6 @@ import com.instser.chat.service.stream.ChatStreamSink;
 import com.instser.chat.service.stream.StreamResponseState;
 import com.instser.chat.util.ChatSessionManager;
 import com.instser.chat.vo.ChatLimitVO;
-import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.buffer.DataBuffer;
@@ -74,8 +73,6 @@ public class ChatServiceImpl implements ChatService {
     private final TruncationDetectionService truncationDetectionService;
     private final AiCallMonitor aiCallMonitor;
     private final ChatTitleService chatTitleService;
-    private final NetworkSearchOrchestrator networkSearchOrchestrator;
-    private final ChatStreamEventWriter chatStreamEventWriter;
     private final AiStreamProcessor aiStreamProcessor;
     private final ChatContinuationService chatContinuationService;
     private final ChatContextBuilder chatContextBuilder;
@@ -88,13 +85,13 @@ public class ChatServiceImpl implements ChatService {
     private RequestValidationCache requestValidationCache;
 
     @Override
-    public ChatResponseDTO processStreamChat(ChatRequestDTO request, Authentication authentication, ChatStreamSink response) {
+    public ChatResponseDTO processStreamChat(ChatRequestDTO request, Authentication authentication, ChatStreamSink sink) {
         // 首先从认证信息中获取真实的用户ID
         Long authenticatedUserId = getCurrentUserId(authentication);
         if (authenticatedUserId == null) {
             LogUtils.logUserWarning(log, null, "聊天开始", "用户未认证，拒绝请求");
             try {
-                response.writeError("用户未认证");
+                sink.writeError("用户未认证");
             } catch (IOException e) {
                 LogUtils.logUserError(log, null, "发送错误响应", "发送错误响应失败", e);
             }
@@ -108,24 +105,24 @@ public class ChatServiceImpl implements ChatService {
 
         try {
             // 设置响应头
-            response.setHeaders();
+            sink.setHeaders();
 
             // 获取并验证模型配置（需要提前获取以便保存消息）
-            AiModel model = validateAndGetModel(request.getModelId(), request.getSessionId(), request.getUserId(), response);
+            AiModel model = validateAndGetModel(request.getModelId(), request.getSessionId(), request.getUserId(), sink);
             if (model == null) {
                 LogUtils.logUserSessionOperation(log, request.getUserId(), request.getSessionId(), "聊天结束", "结果：模型验证失败");
                 return ChatResponseDTO.errorWithContent("Request failed. Please try again later.");
             }
 
             // 先保存用户消息到数据库（确保即使权限验证失败也能保存对话记录）
-            String userMessageId = saveUserMessageEarly(request, model, response);
+            String userMessageId = saveUserMessageEarly(request, model, sink);
             if (userMessageId == null) {
                 LogUtils.logUserSessionOperation(log, request.getUserId(), request.getSessionId(), "聊天结束", "结果：用户消息保存失败");
                 return ChatResponseDTO.failure("保存用户消息失败");
             }
 
             // 执行前置验证（权限检查等）
-            ChatResponseDTO validationResult = performPreValidationWithMessageSaving(request, authentication, response, model, userMessageId);
+            ChatResponseDTO validationResult = performPreValidationWithMessageSaving(request, authentication, sink, model, userMessageId);
             if (validationResult != null) {
                 LogUtils.logUserSessionOperation(log, request.getUserId(), request.getSessionId(), "聊天结束", "结果：前置验证失败");
                 return validationResult;
@@ -139,7 +136,7 @@ public class ChatServiceImpl implements ChatService {
             if (!preparedTurn.isSuccess()) {
                 String errorContent = preparedTurn.getErrorMessage() != null
                         ? preparedTurn.getErrorMessage() : "会话中没有可用的消息";
-                response.writeError(errorContent);
+                sink.writeError(errorContent);
                 log.info("【聊天结束】用户ID：{}，会话ID：{}，结果：消息构建失败",
                         request.getUserId(), request.getSessionId());
                 return ChatResponseDTO.failure(errorContent);
@@ -156,7 +153,7 @@ public class ChatServiceImpl implements ChatService {
                     request.getUserId(), request.getSessionId(), model.getModelCode(), messages.size());
 
             // 执行AI流式响应
-            ChatResponseDTO result = executeAiStreamResponse(request, model, response);
+            ChatResponseDTO result = executeAiStreamResponse(request, model, sink);
 
             // 注释掉原有的保存逻辑，现在在handleStreamCompletionWithInterruptStatus中提前保存
             // handleAiResponseProcessing(result, request, model);
@@ -171,7 +168,7 @@ public class ChatServiceImpl implements ChatService {
         } catch (Exception e) {
             log.error("【聊天异常】用户ID：{}，会话ID：{}，错误：{}",
                     request.getUserId(), request.getSessionId(), e.getMessage(), e);
-            return handleStreamChatException(e, request, response);
+            return handleStreamChatException(e, request, sink);
         }
     }
 
@@ -269,19 +266,19 @@ public class ChatServiceImpl implements ChatService {
      * @param response HTTP响应
      * @return 如果验证失败返回错误响应，验证通过返回null
      */
-    private ChatResponseDTO performPreValidation(ChatRequestDTO request, Authentication authentication, ChatStreamSink response) {
+    private ChatResponseDTO performPreValidation(ChatRequestDTO request, Authentication authentication, ChatStreamSink sink) {
         try {
             // 验证请求参数
             String validationError = validateChatRequest(request);
             if (validationError != null) {
-                response.writeError(validationError);
+                sink.writeError(validationError);
                 return ChatResponseDTO.failure(validationError);
             }
 
             // 验证用户权限
             String permissionError = validateUserPermission(authentication, request.getUserId());
             if (permissionError != null) {
-                response.writeError(permissionError);
+                sink.writeError(permissionError);
                 return ChatResponseDTO.failure(permissionError);
             }
 
@@ -290,11 +287,11 @@ public class ChatServiceImpl implements ChatService {
             if (chatPermissionError != null) {
                 try {
                     if ("PACKAGE_EXPIRED".equals(chatPermissionError)) {
-                        response.writeCustomError("Your package has expired.", 0);
+                        sink.writeCustomError("Your package has expired.", 0);
                     } else if ("MODEL_LIMIT_EXCEEDED".equals(chatPermissionError)) {
-                        response.writeCustomError("Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.", 0);
+                        sink.writeCustomError("Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.", 0);
                     } else {
-                        response.writeError("Request failed. Please try again later.");
+                        sink.writeError("Request failed. Please try again later.");
                     }
                     return ChatResponseDTO.failure(chatPermissionError);
                 } catch (IOException e) {
@@ -304,7 +301,7 @@ public class ChatServiceImpl implements ChatService {
             }
 
             // 检查聊天频率限制
-            ChatResponseDTO rateLimitResult = validateChatRateLimit(request.getUserId(), request.getSessionId(), request.getModelId(), response);
+            ChatResponseDTO rateLimitResult = validateChatRateLimit(request.getUserId(), request.getSessionId(), request.getModelId(), sink);
             if (rateLimitResult != null) {
                 return rateLimitResult;
             }
@@ -312,7 +309,7 @@ public class ChatServiceImpl implements ChatService {
             // 检查用户是否已有活跃会话（每个用户只能有一个活跃对话）
             if (chatInterruptService.hasActiveSession(request.getUserId())) {
                 String errorMessage = "Currently chatting, please end the chat and try again";
-                response.writeError(errorMessage);
+                sink.writeError(errorMessage);
                 return ChatResponseDTO.failure(errorMessage);
             }
 
@@ -321,7 +318,7 @@ public class ChatServiceImpl implements ChatService {
             log.error("前置验证异常", e);
             try {
                 String errorContent = "Request failed. Please try again later.";
-                response.writeError(errorContent);
+                sink.writeError(errorContent);
                 return ChatResponseDTO.errorWithContent(errorContent);
             } catch (IOException ioException) {
                 log.error("发送错误响应失败", ioException);
@@ -339,7 +336,7 @@ public class ChatServiceImpl implements ChatService {
      * @param response HTTP响应
      * @return 如果验证通过返回模型对象，否则返回null
      */
-    private AiModel validateAndGetModel(Long modelId, String sessionId, Long userId, ChatStreamSink response) {
+    private AiModel validateAndGetModel(Long modelId, String sessionId, Long userId, ChatStreamSink sink) {
         try {
             AiModel model = aiModelService.getById(modelId);
             if (model == null || model.getIsAvailable() != 1) {
@@ -347,7 +344,7 @@ public class ChatServiceImpl implements ChatService {
 
                 // 尝试获取模型信息，如果模型不存在则使用默认模型ID 1
                 Long modelIdForSave = (model != null) ? model.getId() : 1L;
-                handleErrorResponse(response, errorContent, sessionId, userId, modelIdForSave);
+                handleErrorResponse(sink, errorContent, sessionId, userId, modelIdForSave);
                 log.info("AI模型不可用错误响应已保存到数据库，会话ID：{}，用户ID：{}", sessionId, userId);
 
                 return null;
@@ -356,7 +353,7 @@ public class ChatServiceImpl implements ChatService {
         } catch (Exception e) {
             log.error("验证AI模型配置异常", e);
             String errorContent = "Request failed. Please try again later.";
-            handleErrorResponse(response, errorContent, sessionId, userId, 1L);
+            handleErrorResponse(sink, errorContent, sessionId, userId, 1L);
             return null;
         }
     }
@@ -370,7 +367,7 @@ public class ChatServiceImpl implements ChatService {
      * @param response HTTP响应
      * @return 用户消息ID，如果保存失败返回null
      */
-    private String saveUserMessageEarly(ChatRequestDTO request, AiModel model, ChatStreamSink response) {
+    private String saveUserMessageEarly(ChatRequestDTO request, AiModel model, ChatStreamSink sink) {
         try {
             // 如果没有sessionId，创建新会话
             if (request.getSessionId() == null || request.getSessionId().trim().isEmpty()) {
@@ -384,7 +381,7 @@ public class ChatServiceImpl implements ChatService {
             if (newUserMessageContent == null || newUserMessageContent.trim().isEmpty()) {
                 String errorContent = "用户消息内容不能为空";
                 try {
-                    response.writeError(errorContent);
+                    sink.writeError(errorContent);
                 } catch (IOException e) {
                     log.error("发送错误响应失败", e);
                 }
@@ -428,7 +425,7 @@ public class ChatServiceImpl implements ChatService {
         } catch (Exception e) {
             log.error("早期保存用户消息失败，用户ID：{}，会话ID：{}", request.getUserId(), request.getSessionId(), e);
             try {
-                response.writeError("保存用户消息失败");
+                sink.writeError("保存用户消息失败");
             } catch (IOException ioException) {
                 log.error("发送错误响应失败", ioException);
             }
@@ -447,18 +444,18 @@ public class ChatServiceImpl implements ChatService {
      * @return 如果验证失败返回错误响应，验证通过返回null
      */
     private ChatResponseDTO performPreValidationWithMessageSaving(ChatRequestDTO request, Authentication authentication, 
-                                                                 ChatStreamSink response, AiModel model, String userMessageId) {
+                                                                 ChatStreamSink sink, AiModel model, String userMessageId) {
         try {
             // 验证请求参数
             String validationError = validateChatRequest(request);
             if (validationError != null) {
-                return saveErrorResponseAndReturn(response, validationError, request, model);
+                return saveErrorResponseAndReturn(sink, validationError, request, model);
             }
 
             // 验证用户权限
             String permissionError = validateUserPermission(authentication, request.getUserId());
             if (permissionError != null) {
-                return saveErrorResponseAndReturn(response, permissionError, request, model);
+                return saveErrorResponseAndReturn(sink, permissionError, request, model);
             }
 
             // 验证用户聊天权限（套餐、次数等）- 使用优化版本（如果缓存可用）
@@ -479,12 +476,12 @@ public class ChatServiceImpl implements ChatService {
                 } else {
                     customErrorMessage = "Request failed. Please try again later.";
                 }
-                return saveErrorResponseAndReturn(response, customErrorMessage, request, model);
+                return saveErrorResponseAndReturn(sink, customErrorMessage, request, model);
             }
 
             // 检查聊天频率限制
             ChatResponseDTO rateLimitResult = validateChatRateLimitWithSaving(request.getUserId(), request.getSessionId(), 
-                                                                             request.getModelId(), response, request, model);
+                                                                             request.getModelId(), sink, request, model);
             if (rateLimitResult != null) {
                 return rateLimitResult;
             }
@@ -492,7 +489,7 @@ public class ChatServiceImpl implements ChatService {
             // 检查用户是否已有活跃会话（每个用户只能有一个活跃对话）
             if (chatInterruptService.hasActiveSession(request.getUserId())) {
                 String errorMessage = "Currently chatting, please end the chat and try again";
-                return saveErrorResponseAndReturn(response, errorMessage, request, model);
+                return saveErrorResponseAndReturn(sink, errorMessage, request, model);
             }
 
             return null; // 验证通过
@@ -503,14 +500,14 @@ public class ChatServiceImpl implements ChatService {
             String exceptionMessage = e.getMessage();
             if (exceptionMessage != null) {
                 if (exceptionMessage.contains("PACKAGE_EXPIRED") || exceptionMessage.contains("套餐已过期")) {
-                    return saveErrorResponseAndReturn(response, "Your package has expired.", request, model);
+                    return saveErrorResponseAndReturn(sink, "Your package has expired.", request, model);
                 } else if (exceptionMessage.contains("MODEL_LIMIT_EXCEEDED") || exceptionMessage.contains("模型使用次数已达上限")) {
-                    return saveErrorResponseAndReturn(response, "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.", request, model);
+                    return saveErrorResponseAndReturn(sink, "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.", request, model);
                 }
             }
             
             String errorContent = "Request failed. Please try again later.";
-            return saveErrorResponseAndReturn(response, errorContent, request, model);
+            return saveErrorResponseAndReturn(sink, errorContent, request, model);
         }
     }
 
@@ -523,11 +520,11 @@ public class ChatServiceImpl implements ChatService {
      * @param model AI模型信息
      * @return ChatResponseDTO失败结果
      */
-    private ChatResponseDTO saveErrorResponseAndReturn(ChatStreamSink response, String errorMessage, 
+    private ChatResponseDTO saveErrorResponseAndReturn(ChatStreamSink sink, String errorMessage, 
                                                       ChatRequestDTO request, AiModel model) {
         try {
             // 发送流式错误响应给用户
-            response.writeError(errorMessage);
+            sink.writeError(errorMessage);
             
             // 保存错误响应到数据库，使用status=3避免进入后续聊天上下文
             saveErrorResponse(request.getSessionId(), request.getUserId(), model.getId(), errorMessage);
@@ -555,13 +552,13 @@ public class ChatServiceImpl implements ChatService {
      * @return 如果验证失败返回错误响应，验证通过返回null
      */
     private ChatResponseDTO validateChatRateLimitWithSaving(Long userId, String sessionId, Long modelId, 
-                                                           ChatStreamSink response, ChatRequestDTO request, AiModel model) {
+                                                           ChatStreamSink sink, ChatRequestDTO request, AiModel model) {
         try {
             // 检查用户聊天频率限制（每分钟限制）
             if (!chatRateLimitService.checkUserChatRateLimit(userId)) {
                 log.warn("用户聊天频率超限，用户ID: {}", userId);
                 String errorContent = "The request frequency is too high. Please try again later.";
-                return saveErrorResponseAndReturn(response, errorContent, request, model);
+                return saveErrorResponseAndReturn(sink, errorContent, request, model);
             }
 
             // 检查IP聊天频率限制（每分钟限制）
@@ -569,21 +566,21 @@ public class ChatServiceImpl implements ChatService {
             if (!chatRateLimitService.checkIpChatRateLimit(clientIp)) {
                 log.warn("IP聊天频率超限，IP: {}, 用户ID: {}", clientIp, userId);
                 String errorContent = "The request frequency is too high. Please try again later.";
-                return saveErrorResponseAndReturn(response, errorContent, request, model);
+                return saveErrorResponseAndReturn(sink, errorContent, request, model);
             }
 
             // 检查用户每日聊天限制
             if (!chatRateLimitService.checkDailyChatLimit(userId)) {
                 log.warn("用户每日聊天次数超限，用户ID: {}", userId);
                 String errorContent = "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.";
-                return saveErrorResponseAndReturn(response, errorContent, request, model);
+                return saveErrorResponseAndReturn(sink, errorContent, request, model);
             }
 
             return null; // 验证通过
         } catch (Exception e) {
             log.error("验证聊天频率限制时发生异常，用户ID: {}", userId, e);
             String errorContent = "Request failed. Please try again later.";
-            return saveErrorResponseAndReturn(response, errorContent, request, model);
+            return saveErrorResponseAndReturn(sink, errorContent, request, model);
         }
     }
 
@@ -768,76 +765,7 @@ public class ChatServiceImpl implements ChatService {
 
 
 
-    /**
-     * 准备会话和消息（创建会话、保存用户消息、更新文件关联）
-     *
-     * @param request 聊天请求
-     * @param model AI模型
-     * @param response HTTP响应
-     * @return 如果处理失败返回错误响应，处理成功返回null
-     */
-    private ChatResponseDTO prepareSessionAndMessage(ChatRequestDTO request, AiModel model, ChatStreamSink response) {
-        try {
-            // 如果没有sessionId，创建新会话
-            if (request.getSessionId() == null || request.getSessionId().trim().isEmpty()) {
-                String newSessionId = chatSessionService.createSession(request.getUserId(), model.getId());
-                request.setSessionId(newSessionId);
-                log.info("为用户{}创建新会话，会话ID：{}", request.getUserId(), newSessionId);
-            }
-
-            // 从前端messages参数中提取最新用户消息
-            String newUserMessageContent = extractLatestUserMessage(request.getMessages());
-            if (newUserMessageContent == null || newUserMessageContent.trim().isEmpty()) {
-                String errorContent = "用户消息内容不能为空";
-                response.writeError(errorContent);
-                return ChatResponseDTO.failure(errorContent);
-            }
-
-            // 检查是否有文件附件
-            boolean hasAttachments = request.getFilesId() != null && !request.getFilesId().trim().isEmpty();
-
-            // 保存新的用户消息到数据库（不包含文件内容）
-            Long messageDbId = chatMessageService.sendMessage(request.getSessionId(), "user", newUserMessageContent, request.getUserId(), model.getId(), hasAttachments ? 1 : 0);
-            String userMessageId = null;
-            if (messageDbId != null) {
-                ChatMessage savedMessage = chatMessageService.getById(messageDbId);
-                if (savedMessage != null) {
-                    userMessageId = savedMessage.getMessageId();
-                    log.debug("用户消息已保存到数据库，会话ID：{}，用户ID：{}，消息ID：{}，模型ID：{}，附件：{}，内容长度：{}",
-                            request.getSessionId(), request.getUserId(), userMessageId, model.getId(), hasAttachments ? "有" : "无", newUserMessageContent.length());
-                }
-            }
-
-            if (userMessageId == null) {
-                String errorContent = "保存用户消息失败";
-                response.writeError(errorContent);
-                return ChatResponseDTO.failure(errorContent);
-            }
-
-            // 立即更新文件关联信息（避免AI错误时文件关联丢失）
-            if (request.getFilesId() != null && !request.getFilesId().trim().isEmpty()) {
-                updateFilesAssociationIfNeeded(request.getFilesId(), userMessageId, request.getSessionId(), request.getUserId());
-                log.info("用户{}文件关联已更新，消息ID：{}", request.getUserId(), userMessageId);
-            }
-
-            // 注意：联网查询结果的保存已移到buildAiRequestMessages方法之后进行
-            // 因为需要先执行联网搜索才能获取到搜索结果
-
-            return null; // 处理成功
-        } catch (Exception e) {
-            log.error("准备会话和消息异常", e);
-            try {
-                String errorContent = "Request failed. Please try again later.";
-                response.writeError(errorContent);
-                return ChatResponseDTO.errorWithContent(errorContent);
-            } catch (IOException ioException) {
-                log.error("发送错误响应失败", ioException);
-                return ChatResponseDTO.failure("System error");
-            }
-        }
-    }
-
-        private List<Map<String, String>> buildAiRequestMessages(ChatRequestDTO request) {
+            private List<Map<String, String>> buildAiRequestMessages(ChatRequestDTO request) {
         PreparedChatContext prepared = chatContextBuilder.buildFromSessionHistory(request);
         if (prepared == null) {
             return null;
@@ -855,7 +783,7 @@ public class ChatServiceImpl implements ChatService {
      * @param response HTTP响应
      * @return AI响应结果
      */
-    private ChatResponseDTO executeAiStreamResponse(ChatRequestDTO request, AiModel model, ChatStreamSink response) {
+    private ChatResponseDTO executeAiStreamResponse(ChatRequestDTO request, AiModel model, ChatStreamSink sink) {
         int maxRetries = 3; // 最大重试次数
         int retryCount = 0;
 
@@ -865,7 +793,7 @@ public class ChatServiceImpl implements ChatService {
                 boolean willGenerateTitle = request.getSessionId() != null && isFirstAiResponse(request.getMessages());
 
                 // 调用AI服务进行流式响应
-                return streamChatWithAI(request, model, response, willGenerateTitle, "chat");
+                return streamChatWithAI(request, model, sink, willGenerateTitle, "chat");
             } catch (ContentPolicy.ChatRetryException e) {
                 retryCount++;
                 log.warn("检测到需要重试的错误消息，第{}次重试，最大重试次数: {}", retryCount, maxRetries);
@@ -874,7 +802,7 @@ public class ChatServiceImpl implements ChatService {
                     log.error("重试次数已达上限，停止重试");
                     try {
                         String errorContent = "Request failed. Please try again later.";
-                        response.writeError(errorContent);
+                        sink.writeError(errorContent);
                         return ChatResponseDTO.errorWithContent(errorContent);
                     } catch (IOException ioException) {
                         log.error("发送错误响应失败", ioException);
@@ -894,7 +822,7 @@ public class ChatServiceImpl implements ChatService {
                 log.error("执行AI流式响应异常", e);
                 try {
                     String errorContent = "Request failed. Please try again later.";
-                    response.writeError(errorContent);
+                    sink.writeError(errorContent);
                     return ChatResponseDTO.errorWithContent(errorContent);
                 } catch (IOException ioException) {
                     log.error("发送错误响应失败", ioException);
@@ -906,7 +834,7 @@ public class ChatServiceImpl implements ChatService {
         // 如果到这里说明重试失败
         try {
             String errorContent = "Request failed. Please try again later.";
-            response.writeError(errorContent);
+            sink.writeError(errorContent);
             return ChatResponseDTO.errorWithContent(errorContent);
         } catch (IOException ioException) {
             log.error("发送错误响应失败", ioException);
@@ -924,11 +852,11 @@ public class ChatServiceImpl implements ChatService {
      * @param response HTTP响应
      * @return 错误响应
      */
-    private ChatResponseDTO handleStreamChatException(Exception e, ChatRequestDTO request, ChatStreamSink response) {
+    private ChatResponseDTO handleStreamChatException(Exception e, ChatRequestDTO request, ChatStreamSink sink) {
         log.error("处理流式聊天请求异常", e);
         try {
             String errorContent = "Request failed. Please try again later.";
-            response.writeError(errorContent);
+            sink.writeError(errorContent);
 
             // 保存错误响应到数据库
             if (request.getSessionId() != null && request.getUserId() != null) {
@@ -1199,10 +1127,10 @@ public class ChatServiceImpl implements ChatService {
      * @param modelId 模型ID（可选）
      * @return 错误响应DTO
      */
-    private ChatResponseDTO handleErrorResponse(ChatStreamSink response, String errorMessage,
+    private ChatResponseDTO handleErrorResponse(ChatStreamSink sink, String errorMessage,
                                               String sessionId, Long userId, Long modelId) {
         try {
-            response.writeError(errorMessage);
+            sink.writeError(errorMessage);
 
             // 如果有会话信息，保存错误响应到数据库
             if (sessionId != null && userId != null && modelId != null) {
@@ -1220,11 +1148,11 @@ public class ChatServiceImpl implements ChatService {
     /**
      * 调用AI服务进行流式响应
      */
-    private ChatResponseDTO streamChatWithAI(ChatRequestDTO request, AiModel model, ChatStreamSink response, boolean willGenerateTitle, String interfaceType) {
+    private ChatResponseDTO streamChatWithAI(ChatRequestDTO request, AiModel model, ChatStreamSink sink, boolean willGenerateTitle, String interfaceType) {
         return aiStreamProcessor.stream(
                 request,
                 model,
-                response.rawResponse(),
+                sink,
                 willGenerateTitle,
                 interfaceType,
                 this::handleStreamCompletionWithInterruptStatus,
@@ -1236,7 +1164,7 @@ public class ChatServiceImpl implements ChatService {
         );
     }
 
-    private boolean handleStreamCompletionWithInterruptStatus(HttpServletResponse response, boolean willGenerateTitle, boolean isRealAiResponse,
+    private boolean handleStreamCompletionWithInterruptStatus(ChatStreamSink sink, boolean willGenerateTitle, boolean isRealAiResponse,
                                       ChatRequestDTO request, StringBuilder aiResponseContentRef, AiModel model, String interfaceType, boolean wasManuallyInterrupted) {
         // 使用局部变量跟踪最终的中断状态（包括主流程中断和续写中断）
         boolean finalInterruptedStatus = wasManuallyInterrupted;
@@ -1268,7 +1196,7 @@ public class ChatServiceImpl implements ChatService {
                     log.info("检测到内容被截断，开始续写流程，会话ID：{}", request.getSessionId());
 
                     // 执行多次续写（最多2次）
-                    String finalContent = performMultipleContinuations(response, request, model, currentContent, aiResponseContentRef);
+                    String finalContent = performMultipleContinuations(sink, request, model, currentContent, aiResponseContentRef);
 
                     // 检查续写结果
                     if (finalContent != null) {
@@ -1295,7 +1223,7 @@ public class ChatServiceImpl implements ChatService {
             boolean shouldPersist = isRealAiResponse || finalInterruptedStatus;
             if (shouldPersist && contentToSave != null && !contentToSave.trim().isEmpty()) {
                 aiResponseCompletionHandler.completeSideEffects(
-                        response,
+                        sink,
                         request,
                         model,
                         willGenerateTitle,
@@ -1305,7 +1233,7 @@ public class ChatServiceImpl implements ChatService {
                         true
                 );
             } else {
-                aiResponseCompletionHandler.writeCompletion(response, willGenerateTitle, isRealAiResponse, null);
+                aiResponseCompletionHandler.writeCompletion(sink, willGenerateTitle, isRealAiResponse, null);
             }
 
             // 返回最终中断状态：包括用户手动中断和续写中断
@@ -1316,7 +1244,7 @@ public class ChatServiceImpl implements ChatService {
             log.error("处理完成标记时发生异常", e);
             try {
                 log.info("处理完成标记异常，跳过联网搜索结果发送");
-                aiResponseCompletionHandler.writeCompletion(response, false, false, null);
+                aiResponseCompletionHandler.writeCompletion(sink, false, false, null);
             } catch (Exception ex) {
                 log.error("发送异常完成标记失败", ex);
             }
@@ -1328,66 +1256,16 @@ public class ChatServiceImpl implements ChatService {
         }
     }
 
-    /**
-     * 验证JSON字符串是否完整有效
-     */
-    private boolean isValidJson(String jsonString) {
-        if (jsonString == null || jsonString.trim().isEmpty()) {
-            return false;
-        }
-
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-            mapper.readTree(jsonString);
-            return true;
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-
-        private String performMultipleContinuations(HttpServletResponse response, ChatRequestDTO request,
+        private String performMultipleContinuations(ChatStreamSink sink, ChatRequestDTO request,
                                               AiModel model, String originalContent, StringBuilder aiResponseContentRef) {
-        return chatContinuationService.performMultipleContinuations(response, request, model, originalContent, aiResponseContentRef);
+        return chatContinuationService.performMultipleContinuations(sink, request, model, originalContent, aiResponseContentRef);
     }
 
 
 
 
 
-            /**
-     * 构建标题生成消息：用户原始内容 + 当前AI响应
-     */
-    private List<Map<String, String>> buildTitleMessages(ChatRequestDTO request, String aiResponse) {
-        return chatTitleService.buildTitleMessages(request, aiResponse);
-    }
-
-    /**
-     * 提取用户原始内容，移除文件和联网搜索内容
-     */
-    private String extractOriginalUserContent(String content) {
-        if (content == null || content.trim().isEmpty()) {
-            return content;
-        }
-
-        String originalContent = content.trim();
-
-        // 移除文件内容：格式为 "原始内容。以下是文件内容：[...]"
-        if (originalContent.contains("。以下是文件内容：[")) {
-            int fileIndex = originalContent.indexOf("。以下是文件内容：[");
-            originalContent = originalContent.substring(0, fileIndex).trim();
-        }
-
-        // 移除联网搜索结果：格式为 "原始内容以下是你自己联网搜索得到的结果：[...]"
-        if (originalContent.contains("以下是你自己联网搜索得到的结果：[")) {
-            int searchIndex = originalContent.indexOf("以下是你自己联网搜索得到的结果：[");
-            originalContent = originalContent.substring(0, searchIndex).trim();
-        }
-
-        return originalContent.isEmpty() ? content : originalContent;
-    }
-
-    @Override
+                    @Override
     public String generateSessionTitle(String sessionId, List<Map<String, String>> messages) {
         return chatTitleService.generateSessionTitle(sessionId, messages);
     }
@@ -1397,50 +1275,11 @@ public class ChatServiceImpl implements ChatService {
         return chatContextBuilder.processFilesContent(messages, filesId, userId);
     }
 
-        private NetworkSearchProcessResult processNetworkContent(List<Map<String, String>> messages, String query) {
-        return networkSearchOrchestrator.processNetworkContent(messages, query);
-    }
-
-    /**
-     * 将WebSearchResult列表转换为SearchResponse格式
-     * 用于兼容现有的存储逻辑
-     */
-    private com.instser.chat.entity.SearchResponse convertWebSearchResultsToSearchResponse(List<WebSearchResult> webSearchResults) {
-        com.instser.chat.entity.SearchResponse searchResponse = new com.instser.chat.entity.SearchResponse();
-
-        if (webSearchResults != null && !webSearchResults.isEmpty()) {
-            searchResponse.setResults(webSearchResults);
-        }
-
-        return searchResponse;
-    }
-
-        private String extractUserQuery(List<Map<String, String>> messages) {
+                private String extractUserQuery(List<Map<String, String>> messages) {
         return chatContextBuilder.extractUserQuery(messages);
     }
 
-    /**
-     * 转义JSON字符串中的特殊字符
-     */
-    private String escapeJsonString(String str) {
-        if (str == null) {
-            return "";
-        }
-        return str.replace("\\", "\\\\")
-                  .replace("\"", "\\\"")
-                  .replace("\n", "\\n")
-                  .replace("\r", "\\r")
-                  .replace("\t", "\\t")
-                  .replace("\b", "\\b")
-                  .replace("\f", "\\f")
-                  .replace("/", "\\/")
-                  // 移除或替换可能导致问题的控制字符
-                  .replaceAll("[\\x00-\\x1F\\x7F]", " ");
-    }
-
-
-
-    /**
+        /**
      * 记录详细的AI请求信息
      */
     private void logAiRequestDetails(Map<String, Object> requestBody, AiModel model, Long userId) {
@@ -1542,17 +1381,17 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
-    public void processRetryChat(String sessionId, String messageId, Long modelId, Boolean network, Authentication authentication, ChatStreamSink response) {
+    public void processRetryChat(String sessionId, String messageId, Long modelId, Boolean network, Authentication authentication, ChatStreamSink sink) {
         log.info("【重试开始】用户重试请求，会话ID：{}，消息ID：{}，模型ID：{}，联网：{}",
                 sessionId, messageId, modelId, network);
 
         try {
             chatSessionService.updateSessionUpdateTime(sessionId);
-            response.setHeaders();
+            sink.setHeaders();
 
             ChatValidationResult validation = validateChatPermissions(sessionId, messageId, "assistant", authentication);
             if (!validation.isSuccess()) {
-                response.writeError(validation.getErrorMessage());
+                sink.writeError(validation.getErrorMessage());
                 log.info("【重试结束】验证失败，会话ID：{}，消息ID：{}，原因：{}",
                         sessionId, messageId, validation.getErrorMessage());
                 return;
@@ -1566,25 +1405,25 @@ public class ChatServiceImpl implements ChatService {
             int deletedCount = chatMessageService.deleteMessagesFromPoint(messageId, sessionId);
             if (deletedCount == 0) {
                 LogUtils.logUserSessionError(log, userId, sessionId, "重试执行", "删除消息失败，没有找到指定的消息或删除操作失败，消息ID: {}", null, messageId);
-                response.writeError("删除消息失败");
+                sink.writeError("删除消息失败");
                 return;
             }
             LogUtils.logUserSessionOperation(log, userId, sessionId, "重试执行", "成功删除{}条消息，消息删除安全完成，准备重新生成AI回复", deletedCount);
 
             Long rateLimitModelId = modelId != null ? modelId : chatSession.getModelId();
-            ChatResponseDTO rateLimitResult = validateChatRateLimit(userId, sessionId, rateLimitModelId, response);
+            ChatResponseDTO rateLimitResult = validateChatRateLimit(userId, sessionId, rateLimitModelId, sink);
             if (rateLimitResult != null) {
                 return;
             }
 
             PreparedTurn preparedTurn = retryPrepareHandler.prepareAfterDelete(sessionId, userId, modelId, network, chatSession);
             if (!preparedTurn.isSuccess()) {
-                response.writeError(preparedTurn.getErrorMessage());
+                sink.writeError(preparedTurn.getErrorMessage());
                 return;
             }
 
             Long targetModelId = modelId != null ? modelId : chatSession.getModelId();
-            AiModel model = validateAndGetModel(targetModelId, sessionId, chatSession.getUserId(), response);
+            AiModel model = validateAndGetModel(targetModelId, sessionId, chatSession.getUserId(), sink);
             if (model == null) {
                 log.info("重试请求AI模型不可用，会话ID：{}，用户ID：{}", sessionId, chatSession.getUserId());
                 return;
@@ -1604,7 +1443,7 @@ public class ChatServiceImpl implements ChatService {
                     } else {
                         errorContent = "Request failed. Please try again later.";
                     }
-                    response.writeError(errorContent);
+                    sink.writeError(errorContent);
                     saveErrorResponse(sessionId, userId, model.getId(), errorContent);
                 } catch (IOException e) {
                     log.error("发送重试权限错误响应失败", e);
@@ -1628,13 +1467,13 @@ public class ChatServiceImpl implements ChatService {
             log.info("重新生成请求 - 是否需要生成标题：{}，用户消息数量：{}", willGenerateTitle,
                 preparedTurn.getMessages().stream().filter(msg -> "user".equals(msg.get("role"))).count());
 
-            streamChatWithAI(retryRequest, model, response, willGenerateTitle, "retry");
+            streamChatWithAI(retryRequest, model, sink, willGenerateTitle, "retry");
 
         } catch (Exception e) {
             log.error("处理重新生成请求异常", e);
             try {
                 String errorContent = "Request failed. Please try again later.";
-                response.writeError(errorContent);
+                sink.writeError(errorContent);
                 var chatSession = chatSessionService.getSessionInfo(sessionId);
                 if (chatSession != null) {
                     AiModel model = aiModelService.getById(chatSession.getModelId());
@@ -1649,16 +1488,16 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
-    public void processEditResendChat(String sessionId, String messageId, String newContent, String filesId, Long modelId, Boolean network, Authentication authentication, ChatStreamSink response) {
+    public void processEditResendChat(String sessionId, String messageId, String newContent, String filesId, Long modelId, Boolean network, Authentication authentication, ChatStreamSink sink) {
         log.info("开始处理编辑重发请求，sessionId：{}，messageId：{}，newContent长度：{}，filesId：{}，modelId：{}，network：{}", sessionId, messageId, newContent.length(), filesId, modelId, network);
 
         try {
             chatSessionService.updateSessionUpdateTime(sessionId);
-            response.setHeaders();
+            sink.setHeaders();
 
             ChatValidationResult validation = validateChatPermissions(sessionId, messageId, "user", authentication);
             if (!validation.isSuccess()) {
-                response.writeError(validation.getErrorMessage());
+                sink.writeError(validation.getErrorMessage());
                 return;
             }
 
@@ -1670,12 +1509,12 @@ public class ChatServiceImpl implements ChatService {
             PreparedTurn replaced = editResendPrepareHandler.replaceUserMessage(
                     sessionId, messageId, newContent, userId, chatSession);
             if (!replaced.isSuccess()) {
-                response.writeError(replaced.getErrorMessage());
+                sink.writeError(replaced.getErrorMessage());
                 return;
             }
 
             Long rateLimitModelId = modelId != null ? modelId : chatSession.getModelId();
-            ChatResponseDTO rateLimitResult = validateChatRateLimit(userId, sessionId, rateLimitModelId, response);
+            ChatResponseDTO rateLimitResult = validateChatRateLimit(userId, sessionId, rateLimitModelId, sink);
             if (rateLimitResult != null) {
                 return;
             }
@@ -1683,12 +1522,12 @@ public class ChatServiceImpl implements ChatService {
             PreparedTurn preparedTurn = editResendPrepareHandler.buildContext(
                     sessionId, userId, chatSession, network, replaced.getUserMessageId());
             if (!preparedTurn.isSuccess()) {
-                response.writeError(preparedTurn.getErrorMessage());
+                sink.writeError(preparedTurn.getErrorMessage());
                 return;
             }
 
             Long targetModelId = modelId != null ? modelId : chatSession.getModelId();
-            AiModel model = validateAndGetModel(targetModelId, sessionId, chatSession.getUserId(), response);
+            AiModel model = validateAndGetModel(targetModelId, sessionId, chatSession.getUserId(), sink);
             if (model == null) {
                 log.info("编辑重发请求AI模型不可用，会话ID：{}，用户ID：{}", sessionId, chatSession.getUserId());
                 return;
@@ -1708,7 +1547,7 @@ public class ChatServiceImpl implements ChatService {
                     } else {
                         errorContent = "Request failed. Please try again later.";
                     }
-                    response.writeError(errorContent);
+                    sink.writeError(errorContent);
                     saveErrorResponse(sessionId, userId, model.getId(), errorContent);
                 } catch (IOException e) {
                     log.error("发送编辑重发权限错误响应失败", e);
@@ -1732,13 +1571,13 @@ public class ChatServiceImpl implements ChatService {
             log.info("编辑重发请求 - 是否需要生成标题：{}，用户消息数量：{}", willGenerateTitle,
                 preparedTurn.getMessages().stream().filter(msg -> "user".equals(msg.get("role"))).count());
 
-            streamChatWithAI(editResendRequest, model, response, willGenerateTitle, "edit-resend");
+            streamChatWithAI(editResendRequest, model, sink, willGenerateTitle, "edit-resend");
 
         } catch (Exception e) {
             log.error("处理编辑重发请求异常", e);
             try {
                 String errorContent = "Request failed. Please try again later.";
-                response.writeError(errorContent);
+                sink.writeError(errorContent);
                 var chatSession = chatSessionService.getSessionInfo(sessionId);
                 if (chatSession != null) {
                     AiModel model = aiModelService.getById(chatSession.getModelId());
@@ -1877,13 +1716,13 @@ public class ChatServiceImpl implements ChatService {
      * @param response HTTP响应
      * @return 如果验证失败返回错误响应，验证通过返回null
      */
-    private ChatResponseDTO validateChatRateLimit(Long userId, String sessionId, Long modelId, ChatStreamSink response) {
+    private ChatResponseDTO validateChatRateLimit(Long userId, String sessionId, Long modelId, ChatStreamSink sink) {
         try {
             // 检查用户聊天频率限制（每分钟限制）
             if (!chatRateLimitService.checkUserChatRateLimit(userId)) {
                 log.warn("用户聊天频率超限，用户ID: {}", userId);
                 String errorContent = "The request frequency is too high. Please try again later.";
-                return handleErrorResponse(response, errorContent, sessionId, userId, modelId);
+                return handleErrorResponse(sink, errorContent, sessionId, userId, modelId);
             }
 
             // 检查IP聊天频率限制（每分钟限制）
@@ -1891,40 +1730,22 @@ public class ChatServiceImpl implements ChatService {
             if (!chatRateLimitService.checkIpChatRateLimit(clientIp)) {
                 log.warn("IP聊天频率超限，IP: {}, 用户ID: {}", clientIp, userId);
                 String errorContent = "The request frequency is too high. Please try again later.";
-                return handleErrorResponse(response, errorContent, sessionId, userId, modelId);
+                return handleErrorResponse(sink, errorContent, sessionId, userId, modelId);
             }
 
             // 检查用户每日聊天限制
             if (!chatRateLimitService.checkDailyChatLimit(userId)) {
                 log.warn("用户每日聊天次数超限，用户ID: {}", userId);
                 String errorContent = "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.";
-                return handleErrorResponse(response, errorContent, sessionId, userId, modelId);
+                return handleErrorResponse(sink, errorContent, sessionId, userId, modelId);
             }
 
             return null; // 验证通过
         } catch (Exception e) {
             log.error("验证聊天频率限制时发生异常，用户ID: {}", userId, e);
             String errorContent = "Request failed. Please try again later.";
-            return handleErrorResponse(response, errorContent, sessionId, userId, modelId);
+            return handleErrorResponse(sink, errorContent, sessionId, userId, modelId);
         }
     }
 
-    /**
-     * 保存联网查询结果到AI响应消息
-     *
-     * @param request 聊天请求
-     * @param aiResponseMessageId AI响应消息ID
-     */
-    private void saveWebSearchResultsToAiResponse(ChatRequestDTO request, String aiResponseMessageId) {
-        // 阶段4：委托完成副作用处理器
-        aiResponseCompletionHandler.bindNetworkResults(request, aiResponseMessageId);
     }
-
-
-
-
-
-
-
-
-}

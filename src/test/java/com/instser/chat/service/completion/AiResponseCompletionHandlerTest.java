@@ -10,6 +10,7 @@ import com.instser.chat.service.ChatMessageService;
 import com.instser.chat.service.ChatTitleService;
 import com.instser.chat.service.WebSearchContentService;
 import com.instser.chat.service.stream.ChatStreamEventWriter;
+import com.instser.chat.service.stream.ChatStreamSink;
 import org.junit.jupiter.api.Test;
 import org.springframework.mock.web.MockHttpServletResponse;
 
@@ -41,8 +42,7 @@ class AiResponseCompletionHandlerTest {
                 chatMessageService,
                 chatLimitService,
                 mock(ChatTitleService.class),
-                mock(WebSearchContentService.class),
-                new ChatStreamEventWriter()
+                mock(WebSearchContentService.class)
         );
 
         String id = handler.persistAssistantContent("s1", 1L, 2L, "hi");
@@ -58,8 +58,7 @@ class AiResponseCompletionHandlerTest {
                 chatMessageService,
                 mock(ChatLimitService.class),
                 mock(ChatTitleService.class),
-                webSearchContentService,
-                new ChatStreamEventWriter()
+                webSearchContentService
         );
 
         ChatRequestDTO request = new ChatRequestDTO();
@@ -91,8 +90,7 @@ class AiResponseCompletionHandlerTest {
                 chatMessageService,
                 chatLimitService,
                 chatTitleService,
-                webSearchContentService,
-                new ChatStreamEventWriter()
+                webSearchContentService
         );
 
         ChatRequestDTO request = new ChatRequestDTO();
@@ -106,7 +104,7 @@ class AiResponseCompletionHandlerTest {
         model.setId(3L);
 
         MockHttpServletResponse response = new MockHttpServletResponse();
-        String messageId = handler.completeSideEffects(response, request, model, true, true, "answer", false);
+        String messageId = handler.completeSideEffects(ChatStreamSink.of(response, new ChatStreamEventWriter()), request, model, true, true, "answer", false);
 
         assertEquals("ai-msg", messageId);
         verify(webSearchContentService).saveWebSearchContent(eq("ai-msg"), any(SearchResponse.class), eq(9L), eq("s1"));

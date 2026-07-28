@@ -88,7 +88,7 @@ class ChatServiceImplStageOneCharacterizationTest {
 
     @Test
     void buildTitleMessagesShouldUseOnlyOriginalUserMessagesAndCurrentAiResponse() {
-        ChatServiceImpl service = createService(mock(NetworkAiService.class));
+        ChatTitleService service = chatTitleService;
         ChatRequestDTO request = new ChatRequestDTO();
         request.setOriginalMessages(List.of(
                 Map.of("role", "user", "content", "first user question"),
@@ -96,12 +96,7 @@ class ChatServiceImplStageOneCharacterizationTest {
                 Map.of("role", "user", "content", "second user question")
         ));
 
-        List<Map<String, String>> titleMessages = ReflectionTestUtils.invokeMethod(
-                service,
-                "buildTitleMessages",
-                request,
-                "current ai answer"
-        );
+        List<Map<String, String>> titleMessages = service.buildTitleMessages(request, "current ai answer");
 
         assertEquals(3, titleMessages.size());
         assertEquals(Map.of("role", "user", "content", "first user question"), titleMessages.get(0));
@@ -175,7 +170,7 @@ class ChatServiceImplStageOneCharacterizationTest {
     @Test
     void processNetworkContentShouldAppendFormattedGeminiResponseAndReturnSearchResults() {
         GeminiNetworkService geminiNetworkService = mock(GeminiNetworkService.class);
-        ChatServiceImpl service = createService(new NetworkAiServiceImpl(geminiNetworkService));
+        NetworkSearchOrchestrator orchestrator = new NetworkSearchOrchestratorImpl(new NetworkAiServiceImpl(geminiNetworkService));
         List<Map<String, String>> messages = new ArrayList<>();
         messages.add(Map.of("role", "assistant", "content", "previous answer"));
         messages.add(new java.util.HashMap<>(Map.of("role", "user", "content", "What changed?")));
@@ -191,9 +186,9 @@ class ChatServiceImplStageOneCharacterizationTest {
         );
         when(geminiNetworkService.queryWithGrounding(any())).thenReturn(response);
 
-        Object networkResult = ReflectionTestUtils.invokeMethod(service, "processNetworkContent", messages, "What changed?");
-        List<Map<String, String>> updatedMessages = ReflectionTestUtils.invokeMethod(networkResult, "getMessages");
-        List<WebSearchResult> searchResults = ReflectionTestUtils.invokeMethod(networkResult, "getSearchResults");
+        var networkResult = orchestrator.processNetworkContent(messages, "What changed?");
+        List<Map<String, String>> updatedMessages = networkResult.getMessages();
+        List<WebSearchResult> searchResults = networkResult.getSearchResults();
 
         assertNotSame(messages, updatedMessages);
         assertEquals(2, updatedMessages.size());
@@ -212,14 +207,14 @@ class ChatServiceImplStageOneCharacterizationTest {
     @Test
     void processNetworkContentShouldReturnOriginalMessagesAndEmptyResultsWhenGeminiFails() {
         GeminiNetworkService geminiNetworkService = mock(GeminiNetworkService.class);
-        ChatServiceImpl service = createService(new NetworkAiServiceImpl(geminiNetworkService));
+        NetworkSearchOrchestrator orchestrator = new NetworkSearchOrchestratorImpl(new NetworkAiServiceImpl(geminiNetworkService));
         List<Map<String, String>> messages = List.of(Map.of("role", "user", "content", "query"));
 
         when(geminiNetworkService.queryWithGrounding(any())).thenThrow(new RuntimeException("network down"));
 
-        Object networkResult = ReflectionTestUtils.invokeMethod(service, "processNetworkContent", messages, "query");
-        List<Map<String, String>> updatedMessages = ReflectionTestUtils.invokeMethod(networkResult, "getMessages");
-        List<WebSearchResult> searchResults = ReflectionTestUtils.invokeMethod(networkResult, "getSearchResults");
+        var networkResult = orchestrator.processNetworkContent(messages, "query");
+        List<Map<String, String>> updatedMessages = networkResult.getMessages();
+        List<WebSearchResult> searchResults = networkResult.getSearchResults();
 
         assertSame(messages, updatedMessages);
         assertTrue(searchResults.isEmpty());
@@ -227,7 +222,8 @@ class ChatServiceImplStageOneCharacterizationTest {
 
     @Test
     void saveWebSearchResultsToAiResponseShouldPersistResultsAndMarkAiMessageWhenNetworkEnabled() {
-        ChatServiceImpl service = createService(mock(NetworkAiService.class));
+        AiResponseCompletionHandler handler = new AiResponseCompletionHandler(
+                chatMessageService, chatLimitService, chatTitleService, webSearchContentService);
         ChatRequestDTO request = new ChatRequestDTO();
         request.setNetwork(true);
         request.setUserId(1001L);
@@ -249,7 +245,7 @@ class ChatServiceImplStageOneCharacterizationTest {
         )).thenReturn(true);
         when(chatMessageService.updateWebSearchFlag("ai-message-id", true)).thenReturn(true);
 
-        ReflectionTestUtils.invokeMethod(service, "saveWebSearchResultsToAiResponse", request, "ai-message-id");
+        handler.bindNetworkResults(request, "ai-message-id");
 
         ArgumentCaptor<SearchResponse> responseCaptor = ArgumentCaptor.forClass(SearchResponse.class);
         InOrder order = inOrder(webSearchContentService, chatMessageService);
@@ -266,7 +262,8 @@ class ChatServiceImplStageOneCharacterizationTest {
 
     @Test
     void saveWebSearchResultsToAiResponseShouldDoNothingWhenNetworkDisabled() {
-        ChatServiceImpl service = createService(mock(NetworkAiService.class));
+        AiResponseCompletionHandler handler = new AiResponseCompletionHandler(
+                chatMessageService, chatLimitService, chatTitleService, webSearchContentService);
         ChatRequestDTO request = new ChatRequestDTO();
         request.setNetwork(false);
         request.setUserId(1001L);
@@ -280,7 +277,7 @@ class ChatServiceImplStageOneCharacterizationTest {
                 null
         )));
 
-        ReflectionTestUtils.invokeMethod(service, "saveWebSearchResultsToAiResponse", request, "ai-message-id");
+        handler.bindNetworkResults(request, "ai-message-id");
 
         verify(webSearchContentService, never()).saveWebSearchContent(any(), any(), any(), any());
         verify(chatMessageService, never()).updateWebSearchFlag(any(), eq(true));
@@ -299,15 +296,13 @@ class ChatServiceImplStageOneCharacterizationTest {
                 truncationDetectionService,
                 aiCallMonitor,
                 chatTitleService,
-                networkSearchOrchestrator,
-                new ChatStreamEventWriter(),
-                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ChatStreamEventWriter(), new ContentPolicy(), chatInterruptService, aiCallMonitor),
+                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ContentPolicy(), chatInterruptService, aiCallMonitor),
                 mock(ChatContinuationService.class),
                 new ChatContextBuilder(chatMessageService, fileUploadService, networkSearchOrchestrator),
                 new ChatPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, networkSearchOrchestrator)),
                 new RetryPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, networkSearchOrchestrator)),
                 new EditResendPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, networkSearchOrchestrator)),
-                new AiResponseCompletionHandler(chatMessageService, chatLimitService, chatTitleService, webSearchContentService, new ChatStreamEventWriter())
+                new AiResponseCompletionHandler(chatMessageService, chatLimitService, chatTitleService, webSearchContentService)
         );
     }
 }

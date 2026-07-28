@@ -25,12 +25,6 @@ public interface ChatStreamSink {
 
     void writeInterruptCompletion() throws IOException;
 
-    /**
-     * 过渡期：少数底层组件仍需要原生 response。
-     * 终局可删除此方法。
-     */
-    HttpServletResponse rawResponse();
-
     static ChatStreamSink of(HttpServletResponse response, ChatStreamEventWriter writer) {
         return new ChatStreamSink() {
             @Override
@@ -66,11 +60,6 @@ public interface ChatStreamSink {
             @Override
             public void writeInterruptCompletion() throws IOException {
                 writer.writeInterruptCompletion(response);
-            }
-
-            @Override
-            public HttpServletResponse rawResponse() {
-                return response;
             }
         };
     }

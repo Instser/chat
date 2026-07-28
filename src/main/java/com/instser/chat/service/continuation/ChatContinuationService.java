@@ -9,7 +9,7 @@ import com.instser.chat.service.TruncationDetectionService;
 import com.instser.chat.service.ai.AiChatClient;
 import com.instser.chat.service.content.ContentPolicy;
 import com.instser.chat.service.stream.ChatStreamEventWriter;
-import jakarta.servlet.http.HttpServletResponse;
+import com.instser.chat.service.stream.ChatStreamSink;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.buffer.DataBuffer;
@@ -38,7 +38,6 @@ public class ChatContinuationService {
     private final TruncationDetectionService truncationDetectionService;
     private final ChatInterruptService chatInterruptService;
     private final ContentPolicy contentPolicy;
-    private final ChatStreamEventWriter chatStreamEventWriter;
     private final AiChatClient aiChatClient;
     private final WebClient.Builder webClientBuilder;
     private final Executor continuationExecutor;
@@ -47,15 +46,13 @@ public class ChatContinuationService {
             TruncationDetectionService truncationDetectionService,
             ChatInterruptService chatInterruptService,
             ContentPolicy contentPolicy,
-            ChatStreamEventWriter chatStreamEventWriter,
             AiChatClient aiChatClient,
             WebClient.Builder webClientBuilder,
             @Qualifier("continuationExecutor") Executor continuationExecutor) {
         this.truncationDetectionService = truncationDetectionService;
         this.chatInterruptService = chatInterruptService;
         this.contentPolicy = contentPolicy;
-        this.chatStreamEventWriter = chatStreamEventWriter;
-        this.aiChatClient = aiChatClient;
+this.aiChatClient = aiChatClient;
         this.webClientBuilder = webClientBuilder;
         this.continuationExecutor = continuationExecutor;
     }
@@ -69,7 +66,7 @@ public class ChatContinuationService {
 /**
      * 处理续写的JSON数据（使用自适应缓存策略）
      */
-    private String processContinuationJson(String jsonData, HttpServletResponse response, String originalContent,
+    private String processContinuationJson(String jsonData, ChatStreamSink sink, String originalContent,
                                          StringBuilder continuationContent, StringBuilder alignedContentForSaving,
                                          boolean[] alignmentDone, StringBuilder cacheBuffer, long[] cacheStartTime,
                                          int[] cacheBlockCount, boolean[] cleaningDone) throws ContentPolicy.ChatRetryException {
@@ -120,8 +117,7 @@ public class ChatContinuationService {
 
                                         // 处理清理后的内容
                                         if (!cleanedCache.isEmpty()) {
-                                            return processCachedContent(cleanedCache, originalContent, continuationContent,
-                                                                      alignedContentForSaving, alignmentDone, response, mapper);
+                                            return processCachedContent(cleanedCache, originalContent, continuationContent, alignedContentForSaving, alignmentDone, sink, mapper);
                                         } else {
                                             // 如果清理后内容为空（被过滤），不进行任何处理
                                             log.debug("续写缓存内容被过滤，跳过处理");
@@ -155,7 +151,7 @@ public class ChatContinuationService {
                                     continuationContent.append(content);
 
                                     // 发送后续内容给前端
-                                    chatStreamEventWriter.writeContent(content, response);
+                                    sink.writeContent(content);
                                     return content;
                                 }
                             }
@@ -290,7 +286,7 @@ public class ChatContinuationService {
      */
     private String processCachedContent(String cleanedCache, String originalContent, StringBuilder continuationContent,
                                       StringBuilder alignedContentForSaving, boolean[] alignmentDone,
-                                      HttpServletResponse response, ObjectMapper mapper) {
+                                      ChatStreamSink sink, ObjectMapper mapper) {
         if (!alignmentDone[0]) {
             // 第一次处理，需要对齐
             log.info("续写首次内容处理，开始执行对齐算法");
@@ -332,7 +328,7 @@ public class ChatContinuationService {
             // 发送对齐后的内容给前端
             if (!contentToSend.isEmpty()) {
                 log.debug("续写发送对齐后内容给前端，使用智能分块: {}", true);
-                chatStreamEventWriter.writeContent(contentToSend, response);
+                sink.writeContent(contentToSend);
                 log.debug("续写对齐后内容发送完成");
             } else {
                 log.warn("续写对齐后内容为空，跳过发送");
@@ -346,7 +342,7 @@ public class ChatContinuationService {
             continuationContent.append(cleanedCache);
 
             log.debug("续写发送后续内容给前端，使用智能分块: {}", true);
-            chatStreamEventWriter.writeContent(cleanedCache, response);
+            sink.writeContent(cleanedCache);
             log.debug("续写后续内容发送完成");
             return cleanedCache;
         }
@@ -355,7 +351,7 @@ public class ChatContinuationService {
     /**
      * 处理完整的JSON数据
      */
-    private String processCompleteJson(String jsonData, HttpServletResponse response) {
+    private String processCompleteJson(String jsonData, ChatStreamSink sink) {
         try {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode jsonNode = mapper.readTree(jsonData);
@@ -393,7 +389,7 @@ public class ChatContinuationService {
                             if (!cleanContent.isEmpty()) {
                                 log.debug("AI响应内容: [{}]", cleanContent.length() > 50 ? cleanContent.substring(0, 50) + "..." : cleanContent);
 
-                                chatStreamEventWriter.writeContent(cleanContent, response);
+                                sink.writeContent(cleanContent);
                                 return cleanContent;
                             }
                         }
@@ -420,7 +416,7 @@ public class ChatContinuationService {
      * @param aiResponseContentRef 用于累积内容的StringBuilder引用
      * @return 最终状态标识，如果被中断返回CONTINUATION_INTERRUPTED:内容，否则返回"SUCCESS"
      */
-    public String performMultipleContinuations(HttpServletResponse response, ChatRequestDTO request,
+    public String performMultipleContinuations(ChatStreamSink sink, ChatRequestDTO request,
                                               AiModel model, String originalContent, StringBuilder aiResponseContentRef) {
         final int maxContinuations = 2; // 最多续写2次
         String currentContent = originalContent;
@@ -437,7 +433,7 @@ public class ChatContinuationService {
                 .supplyAsync(() -> {
                     log.debug("第{}次续写任务开始执行，线程：{}, 会话ID：{}",
                             continuationRound, Thread.currentThread().getName(), request.getSessionId());
-                    return continueAiResponse(response, request, model, contentForThisRound);
+                    return continueAiResponse(sink, request, model, contentForThisRound);
                 }, continuationExecutor)
                 .exceptionally(throwable -> {
                     log.error("第{}次续写操作异常，线程：{}, 会话ID：{}",
@@ -526,7 +522,7 @@ public class ChatContinuationService {
      * 执行AI响应续写（带重试机制）
      * @return 续写内容，如果失败返回null
      */
-    private String continueAiResponse(HttpServletResponse response, ChatRequestDTO request, AiModel model, String originalContent) {
+    private String continueAiResponse(ChatStreamSink sink, ChatRequestDTO request, AiModel model, String originalContent) {
         int maxRetries = 3; // 最大重试次数
         int retryCount = 0;
 
@@ -562,7 +558,7 @@ public class ChatContinuationService {
                 final boolean[] wasInterrupted = {false}; // 记录续写过程中是否被中断
 
                 // 执行续写请求（带对齐的流式处理）
-                boolean success = executeContinuationRequestWithAlignment(continuationRequest, model, response,
+                boolean success = executeContinuationRequestWithAlignment(continuationRequest, model, sink,
                         originalContent, continuationContent, alignedContentForSaving, hasContentSent, isRealAiResponseArray, alignmentDone, wasInterrupted);
 
                 // 如果续写过程中被中断，返回已生成的部分内容给主流程处理
@@ -664,7 +660,7 @@ public class ChatContinuationService {
     /**
      * 执行续写请求（带对齐的流式处理）
      */
-    private boolean executeContinuationRequestWithAlignment(ChatRequestDTO request, AiModel model, HttpServletResponse response,
+    private boolean executeContinuationRequestWithAlignment(ChatRequestDTO request, AiModel model, ChatStreamSink sink,
                                                           String originalContent, StringBuilder continuationContent,
                                                           StringBuilder alignedContentForSaving, boolean[] hasContentSent,
                                                           boolean[] isRealAiResponse, boolean[] alignmentDone, boolean[] wasInterrupted) throws ContentPolicy.ChatRetryException {
@@ -771,7 +767,7 @@ public class ChatContinuationService {
                                 if (isValidJson(bufferedJson)) {
                                     // JSON验证通过，开始处理
                                     try {
-                                        String contentSent = processContinuationJson(bufferedJson, response,
+                                        String contentSent = processContinuationJson(bufferedJson, sink,
                                                 originalContent, continuationContent, alignedContentForSaving, alignmentDone,
                                                 cacheBuffer, cacheStartTime, cacheBlockCount, cleaningDone);
                                         if (contentSent != null) {
@@ -813,7 +809,7 @@ public class ChatContinuationService {
                                 if (isValidJson(bufferedJson)) {
                                     log.debug("续写跨行JSON重组成功，长度: {}", bufferedJson.length());
                                     try {
-                                        String contentSent = processContinuationJson(bufferedJson, response,
+                                        String contentSent = processContinuationJson(bufferedJson, sink,
                                                 originalContent, continuationContent, alignedContentForSaving, alignmentDone,
                                                 cacheBuffer, cacheStartTime, cacheBlockCount, cleaningDone);
                                         if (contentSent != null) {
@@ -861,7 +857,7 @@ public class ChatContinuationService {
                                             if (isValidJson(bufferedJson)) {
                                                 log.debug("续写处理剩余JSON成功");
                                                 try {
-                                                    String contentSent = processContinuationJson(bufferedJson, response,
+                                                    String contentSent = processContinuationJson(bufferedJson, sink,
                                                             originalContent, continuationContent, alignedContentForSaving, alignmentDone,
                                                             cacheBuffer, cacheStartTime, cacheBlockCount, cleaningDone);
                                                     if (contentSent != null) {
@@ -901,7 +897,7 @@ public class ChatContinuationService {
                         // 发送错误信息给前端
                         try {
                             String errorContent = "续写请求失败，请重试";
-                            chatStreamEventWriter.writeContent(errorContent, response);
+                            sink.writeContent(errorContent);
                             hasContentSent[0] = true;
                             log.info("续写错误消息已发送给前端");
                         } catch (Exception e) {

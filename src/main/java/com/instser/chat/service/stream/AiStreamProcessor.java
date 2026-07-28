@@ -1,4 +1,5 @@
 package com.instser.chat.service.stream;
+import com.instser.chat.service.stream.ChatStreamSink;
 
 import com.instser.chat.constants.PromptConstants;
 import com.instser.chat.dto.ChatRequestDTO;
@@ -9,7 +10,6 @@ import com.instser.chat.service.ai.AiChatClient;
 import com.instser.chat.service.content.ContentPolicy;
 import com.instser.chat.util.ChatSessionManager;
 import com.instser.chat.service.ChatInterruptService;
-import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.buffer.DataBuffer;
@@ -34,7 +34,6 @@ import java.util.function.BiFunction;
 public class AiStreamProcessor {
 
     private final AiChatClient aiChatClient;
-    private final ChatStreamEventWriter chatStreamEventWriter;
     private final ContentPolicy contentPolicy;
     private final ChatInterruptService chatInterruptService;
     private final AiCallMonitor aiCallMonitor;
@@ -44,7 +43,7 @@ public class AiStreamProcessor {
         /**
          * @return 是否最终中断
          */
-        boolean onComplete(HttpServletResponse response,
+        boolean onComplete(ChatStreamSink sink,
                            boolean willGenerateTitle,
                            boolean isRealAiResponse,
                            ChatRequestDTO request,
@@ -61,7 +60,7 @@ public class AiStreamProcessor {
 
     public ChatResponseDTO stream(ChatRequestDTO request,
                                   AiModel model,
-                                  HttpServletResponse response,
+                                  ChatStreamSink sink,
                                   boolean willGenerateTitle,
                                   String interfaceType,
                                   CompletionCallback completionCallback,
@@ -125,7 +124,7 @@ public class AiStreamProcessor {
                                     streamState.markInterruptSaved();
                                 }
                                 try {
-                                    chatStreamEventWriter.writeInterruptCompletion(response);
+                                    sink.writeInterruptCompletion();
                                     log.info("已发送中断完成标记");
                                     streamState.markInterruptSaved();
                                 } catch (Exception e) {
@@ -141,8 +140,7 @@ public class AiStreamProcessor {
                                     if (line.equals("data: [DONE]")) {
                                         boolean wasInterrupted = request.getSessionId() != null
                                                 && chatInterruptService.isInterrupted(request.getSessionId());
-                                        boolean completionInterrupted = completionCallback.onComplete(
-                                                response, willGenerateTitle, streamState.isRealAiResponse(),
+                                        boolean completionInterrupted = completionCallback.onComplete(sink, willGenerateTitle, streamState.isRealAiResponse(),
                                                 request, aiResponseContent, model, interfaceType, wasInterrupted);
                                         if (completionInterrupted) {
                                             streamState.markInterrupted();
@@ -156,9 +154,9 @@ public class AiStreamProcessor {
                                     String bufferedJson = jsonBuffer.toString();
                                     if (isValidJson(bufferedJson)) {
                                         try {
-                                            String contentSent = processCompleteJson(bufferedJson, response);
+                                            String contentSent = processCompleteJson(bufferedJson, sink);
                                             if (contentSent != null) {
-                                                maybeSendNetwork(request, response, streamState);
+                                                maybeSendNetwork(request, sink, streamState);
                                                 streamState.markRealAiResponse();
                                                 aiResponseContent.append(contentSent);
                                                 if (!streamState.isFirstTokenMarked()) {
@@ -180,9 +178,9 @@ public class AiStreamProcessor {
                                     String bufferedJson = jsonBuffer.toString();
                                     if (isValidJson(bufferedJson)) {
                                         try {
-                                            String contentSent = processCompleteJson(bufferedJson, response);
+                                            String contentSent = processCompleteJson(bufferedJson, sink);
                                             if (contentSent != null) {
-                                                maybeSendNetwork(request, response, streamState);
+                                                maybeSendNetwork(request, sink, streamState);
                                                 streamState.markRealAiResponse();
                                                 aiResponseContent.append(contentSent);
                                                 if (!streamState.isFirstTokenMarked()) {
@@ -206,8 +204,8 @@ public class AiStreamProcessor {
                             log.error("AI API流式响应处理失败", error);
                             try {
                                 String errorContent = "Request failed. Please try again later.";
-                                chatStreamEventWriter.writeContent(errorContent, response);
-                                chatStreamEventWriter.writeCompletion(response, false, false, null);
+                                sink.writeContent(errorContent);
+                                sink.writeCompletion(false, false, null);
                                 streamState.markContentSent();
                                 if (request.getSessionId() != null && request.getUserId() != null) {
                                     errorPersister.saveError(request.getSessionId(), request.getUserId(), model.getId(), errorContent);
@@ -228,9 +226,9 @@ public class AiStreamProcessor {
                                     String bufferedJson = jsonBuffer.toString();
                                     if (isValidJson(bufferedJson)) {
                                         try {
-                                            String contentSent = processCompleteJson(bufferedJson, response);
+                                            String contentSent = processCompleteJson(bufferedJson, sink);
                                             if (contentSent != null) {
-                                                maybeSendNetwork(request, response, streamState);
+                                                maybeSendNetwork(request, sink, streamState);
                                                 streamState.markRealAiResponse();
                                                 aiResponseContent.append(contentSent);
                                                 if (!streamState.isFirstTokenMarked()) {
@@ -248,8 +246,7 @@ public class AiStreamProcessor {
                                 jsonBuffer.setLength(0);
                             }
                             if (streamState.canHandleCompletion()) {
-                                boolean completionInterrupted = completionCallback.onComplete(
-                                        response, willGenerateTitle, streamState.isRealAiResponse(),
+                                boolean completionInterrupted = completionCallback.onComplete(sink, willGenerateTitle, streamState.isRealAiResponse(),
                                         request, aiResponseContent, model, interfaceType, wasManuallyInterrupted);
                                 if (completionInterrupted) {
                                     streamState.markInterrupted();
@@ -273,8 +270,8 @@ public class AiStreamProcessor {
                 aiCallMonitor.recordFailure(aiCtxHolder[0], e.getClass().getSimpleName(), e.getMessage());
                 try {
                     String errorContent = "Request failed. Please try again later.";
-                    chatStreamEventWriter.writeContent(errorContent, response);
-                    chatStreamEventWriter.writeCompletion(response, false, false, null);
+                    sink.writeContent(errorContent);
+                    sink.writeCompletion(false, false, null);
                     if (request.getSessionId() != null && request.getUserId() != null) {
                         errorPersister.saveError(request.getSessionId(), request.getUserId(), model.getId(), errorContent);
                     }
@@ -305,11 +302,11 @@ public class AiStreamProcessor {
         return messagesWithPrompt;
     }
 
-    private void maybeSendNetwork(ChatRequestDTO request, HttpServletResponse response, StreamResponseState streamState) {
+    private void maybeSendNetwork(ChatRequestDTO request, ChatStreamSink sink, StreamResponseState streamState) {
         if (!streamState.isNetworkResultsSent()
                 && request.getNetworkSearchResults() != null
                 && !request.getNetworkSearchResults().isEmpty()) {
-            chatStreamEventWriter.sendNetworkSearchResults(response, request.getNetworkSearchResults());
+            sink.writeNetworkResults(request.getNetworkSearchResults());
             streamState.markNetworkResultsSent();
         }
     }
@@ -326,7 +323,7 @@ public class AiStreamProcessor {
         }
     }
 
-    private String processCompleteJson(String jsonData, HttpServletResponse response) {
+    private String processCompleteJson(String jsonData, ChatStreamSink sink) {
         try {
             com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
             com.fasterxml.jackson.databind.JsonNode jsonNode = mapper.readTree(jsonData);
@@ -347,7 +344,7 @@ public class AiStreamProcessor {
                             }
                             String cleanContent = detectionResult.getCleanedContent();
                             if (cleanContent != null && !cleanContent.isEmpty()) {
-                                chatStreamEventWriter.writeContent(cleanContent, response);
+                                sink.writeContent(cleanContent);
                                 return cleanContent;
                             }
                         }

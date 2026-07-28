@@ -106,15 +106,13 @@ class ChatServiceImplStreamCharacterizationTest {
                 mock(TruncationDetectionService.class),
                 mock(AiCallMonitor.class),
                 mock(ChatTitleService.class),
-                networkSearchOrchestrator,
-                new ChatStreamEventWriter(),
-                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ChatStreamEventWriter(), new ContentPolicy(), mock(ChatInterruptService.class), mock(AiCallMonitor.class)),
+                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ContentPolicy(), mock(ChatInterruptService.class), mock(AiCallMonitor.class)),
                 mock(ChatContinuationService.class),
                 contextBuilder,
                 new ChatPrepareHandler(chatMessageService, fileUploadService, contextBuilder),
                 new RetryPrepareHandler(chatMessageService, fileUploadService, contextBuilder),
                 new EditResendPrepareHandler(chatMessageService, fileUploadService, contextBuilder),
-                new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), mock(WebSearchContentService.class), new ChatStreamEventWriter())
+                new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), mock(WebSearchContentService.class))
         );
     }
 }
