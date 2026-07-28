@@ -1,5 +1,15 @@
 package com.instser.chat.service.serviceimpl;
 
+import com.instser.chat.service.stream.AiRequestLogger;
+
+import com.instser.chat.service.usage.ChatUsageRecorder;
+
+import com.instser.chat.service.completion.StreamCompletionCoordinator;
+
+import com.instser.chat.service.persistence.ChatPersistenceService;
+
+import com.instser.chat.service.validation.ChatRequestValidator;
+
 import com.instser.chat.dto.MessageSaveResult;
 import com.instser.chat.monitor.AiCallMonitor;
 import com.instser.chat.service.AiModelService;
@@ -54,9 +64,9 @@ class ChatServiceImplStreamCharacterizationTest {
         when(chatLimitService.recordTokenUsage(1L, 8)).thenReturn(true);
 
         ChatServiceImpl service = createService(chatMessageService, chatLimitService);
-        String id = service.saveAiResponseAndGetMessageId("s", 1L, 2L, "ok");
+        // 终态：接口仅保留 saveAiResponse；内部仍走 completion persist + token 记录
+        service.saveAiResponse("s", 1L, 2L, "ok");
 
-        assertEquals("m-uuid", id);
         verify(chatMessageService).sendMessageWithTokenInfo("s", "assistant", "ok", 1L, 2L);
         verify(chatLimitService).recordTokenUsage(1L, 8);
         verify(chatLimitService, never()).recordModelChatUsage(anyLong(), anyString());
@@ -99,20 +109,16 @@ class ChatServiceImplStreamCharacterizationTest {
                 chatMessageService,
                 mock(ChatSessionService.class),
                 mock(AiModelService.class),
-                chatLimitService,
-                mock(ChatRateLimitService.class),
-                fileUploadService,
-                mock(ChatInterruptService.class),
-                mock(TruncationDetectionService.class),
-                mock(AiCallMonitor.class),
                 mock(ChatTitleService.class),
-                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ContentPolicy(), mock(ChatInterruptService.class), mock(AiCallMonitor.class)),
-                mock(ChatContinuationService.class),
                 contextBuilder,
                 new ChatPrepareHandler(chatMessageService, fileUploadService, contextBuilder),
                 new RetryPrepareHandler(chatMessageService, fileUploadService, contextBuilder),
                 new EditResendPrepareHandler(chatMessageService, fileUploadService, contextBuilder),
-                new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), mock(WebSearchContentService.class))
+                new ChatRequestValidator(mock(AiModelService.class), chatLimitService, mock(ChatRateLimitService.class), mock(ChatInterruptService.class), mock(ChatSessionService.class), chatMessageService, new ChatPersistenceService(chatMessageService, mock(ChatSessionService.class), fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), mock(WebSearchContentService.class)))),
+                new ChatPersistenceService(chatMessageService, mock(ChatSessionService.class), fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), mock(WebSearchContentService.class))),
+                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ContentPolicy(), mock(ChatInterruptService.class), mock(AiCallMonitor.class)),
+                new StreamCompletionCoordinator(mock(TruncationDetectionService.class), mock(ChatContinuationService.class), new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), mock(WebSearchContentService.class)), new ChatUsageRecorder()),
+                new AiRequestLogger()
         );
     }
 }

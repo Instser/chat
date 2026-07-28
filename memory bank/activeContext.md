@@ -1,14 +1,15 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-07-29 02:35:00
+**📅 最后更新**: 2026-07-29 03:25:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v141.0
+**📊 文档版本**: v142.0
 
 ## 当前任务
-- AI 对话解耦终局 tickets 01-08 已完成（特征测试/Writer唯一出口/StreamProcessor/Continuation/DTO+Completion/清理/去Servlet）。
-- 前序：AI 对话解耦一步到位收尾已完成：retry/edit-resend 委托 Preparer，completion 副作用委托 CompletionHandler，Controller 协议写出委托 Writer。ChatService 接口仍暂持 HttpServletResponse（兼容前端），后续若要终局去 Servlet 需 Controller 消费事件流。
+- AI 对话解耦**方案终态**已落地：`ChatServiceImpl` 收敛为纯编排（~411 行），校验/落库/用量/完成协调已下沉。
+- 可选后续：物理删除 DTO 废弃运行时字段；更完整 e2e 流式/中断集成测试。
 
 ## 最新完成任务
+✅ **ChatServiceImpl 方案终态收敛** — 新增 `ChatRequestValidator`、`ChatPersistenceService`、`ChatUsageRecorder`、`StreamCompletionCoordinator`、`AiRequestLogger`；`ChatServiceImpl` 仅编排 chat/retry/edit-resend。相关测试 25/25 通过。`ChatServiceImpl` ~411 行。 (2026-07-29 03:25)
 ✅ **解耦终局 tickets 01-08** — 测试锁、Writer唯一出口、AiStreamProcessor、ChatContinuationService、completeSideEffects、DTO deprecated、无用依赖清理、ChatService→ChatStreamSink。相关测试 19/19 通过。ChatServiceImpl ~1930 行。 (2026-07-29 02:35)
 ✅ **AI 对话解耦一步到位收尾** — retry/edit-resend 全量 Preparer；handleStreamCompletion 落库/联网/标题/完成帧委托；ChatApiController 错误写出改 Writer。相关测试 15/15 通过。 (2026-07-29 01:44)
 ✅ **AI 对话解耦全阶段实施（分 commit）** — 按补丁 v1.1 落地：`2e03e77` 阶段1.5；`12b3e7e` 阶段2；`942e4de` 阶段2-B；`0d3adb0` 阶段4；`c66cf36` 阶段3；`872df3e` 阶段5。 (2026-07-29 01:40)

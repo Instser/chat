@@ -44,7 +44,8 @@ public class AiResponseCompletionHandler {
     private final ChatLimitService chatLimitService;
     private final ChatTitleService chatTitleService;
     private final WebSearchContentService webSearchContentService;
-public String persistAssistantContent(String sessionId, Long userId, Long modelId, String content) {
+
+    public String persistAssistantContent(String sessionId, Long userId, Long modelId, String content) {
         if (sessionId == null || userId == null || modelId == null || content == null || content.trim().isEmpty()) {
             return null;
         }

@@ -1,14 +1,25 @@
 # 项目进度状态
 
-**📅 最后更新**: 2026-07-29 02:35:00
+**📅 最后更新**: 2026-07-29 03:25:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v135.0
+**📊 文档版本**: v136.0
 
 ## 🚀 最新完成功能 (2026-07-29)
 
+### ChatServiceImpl 方案终态收敛 ✅
+- **实现时间**: 2026年7月29日 03:25
+- **新增组件**:
+  - `ChatRequestValidator` / `SessionCommandValidation`：参数/用户/模型/套餐/频控/会话命令校验
+  - `ChatPersistenceService`：用户/AI/错误/部分消息保存 + 文件关联
+  - `ChatUsageRecorder`：token 估算
+  - `StreamCompletionCoordinator`：续写 + completeSideEffects
+  - `AiRequestLogger`：请求体截断日志
+- **ChatServiceImpl**：仅编排 chat / retry / edit-resend（~411 行）
+- **验证**: 相关回归 25/25 通过；JDK17/依赖未改；SSE 经 ChatStreamSink 兼容
+
 ### 解耦终局 tickets 01-08 ✅
 - 01 特征测试 02 Writer唯一出口 03 AiStreamProcessor 04 Continuation 05/06 DTO+Completion 07 清理 08 ChatStreamSink
-- ChatServiceImpl ~1930 行；相关测试通过
+- ChatServiceImpl 曾 ~1930 行；现已终态收敛到编排层
 
 ### AI 对话解耦一步到位收尾 ✅
 - **实现时间**: 2026年7月29日 01:44

@@ -1,5 +1,15 @@
 package com.instser.chat.service.serviceimpl;
 
+import com.instser.chat.service.stream.AiRequestLogger;
+
+import com.instser.chat.service.usage.ChatUsageRecorder;
+
+import com.instser.chat.service.completion.StreamCompletionCoordinator;
+
+import com.instser.chat.service.persistence.ChatPersistenceService;
+
+import com.instser.chat.service.validation.ChatRequestValidator;
+
 import com.instser.chat.dto.ChatRequestDTO;
 import com.instser.chat.dto.ChatResponseDTO;
 import com.instser.chat.entity.AiModel;
@@ -76,20 +86,16 @@ class ChatServiceImplTest {
                 chatMessageService,
                 chatSessionService,
                 aiModelService,
-                chatLimitService,
-                chatRateLimitService,
-                fileUploadService,
-                chatInterruptService,
-                truncationDetectionService,
-                aiCallMonitor,
                 mock(ChatTitleService.class),
-                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ContentPolicy(), chatInterruptService, aiCallMonitor),
-                mock(ChatContinuationService.class),
                 new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class)),
                 new ChatPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new RetryPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new EditResendPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
-                new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService)
+                new ChatRequestValidator(aiModelService, chatLimitService, chatRateLimitService, chatInterruptService, chatSessionService, chatMessageService, new ChatPersistenceService(chatMessageService, chatSessionService, fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService))),
+                new ChatPersistenceService(chatMessageService, chatSessionService, fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService)),
+                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ContentPolicy(), chatInterruptService, aiCallMonitor),
+                new StreamCompletionCoordinator(truncationDetectionService, mock(ChatContinuationService.class), new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService), new ChatUsageRecorder()),
+                new AiRequestLogger()
         );
 
         Long userId = 1003L;
@@ -168,20 +174,16 @@ class ChatServiceImplTest {
                 chatMessageService,
                 chatSessionService,
                 aiModelService,
-                chatLimitService,
-                chatRateLimitService,
-                fileUploadService,
-                chatInterruptService,
-                truncationDetectionService,
-                aiCallMonitor,
                 mock(ChatTitleService.class),
-                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ContentPolicy(), chatInterruptService, aiCallMonitor),
-                mock(ChatContinuationService.class),
                 new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class)),
                 new ChatPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new RetryPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new EditResendPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
-                new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService)
+                new ChatRequestValidator(aiModelService, chatLimitService, chatRateLimitService, chatInterruptService, chatSessionService, chatMessageService, new ChatPersistenceService(chatMessageService, chatSessionService, fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService))),
+                new ChatPersistenceService(chatMessageService, chatSessionService, fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService)),
+                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ContentPolicy(), chatInterruptService, aiCallMonitor),
+                new StreamCompletionCoordinator(truncationDetectionService, mock(ChatContinuationService.class), new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService), new ChatUsageRecorder()),
+                new AiRequestLogger()
         );
 
         String sessionId = "session-1";
@@ -250,20 +252,16 @@ class ChatServiceImplTest {
                 chatMessageService,
                 chatSessionService,
                 aiModelService,
-                chatLimitService,
-                chatRateLimitService,
-                fileUploadService,
-                chatInterruptService,
-                truncationDetectionService,
-                aiCallMonitor,
                 mock(ChatTitleService.class),
-                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ContentPolicy(), chatInterruptService, aiCallMonitor),
-                mock(ChatContinuationService.class),
                 new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class)),
                 new ChatPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new RetryPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new EditResendPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
-                new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService)
+                new ChatRequestValidator(aiModelService, chatLimitService, chatRateLimitService, chatInterruptService, chatSessionService, chatMessageService, new ChatPersistenceService(chatMessageService, chatSessionService, fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService))),
+                new ChatPersistenceService(chatMessageService, chatSessionService, fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService)),
+                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ContentPolicy(), chatInterruptService, aiCallMonitor),
+                new StreamCompletionCoordinator(truncationDetectionService, mock(ChatContinuationService.class), new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService), new ChatUsageRecorder()),
+                new AiRequestLogger()
         );
 
         String sessionId = "session-edit";
