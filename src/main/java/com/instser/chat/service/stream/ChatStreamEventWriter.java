@@ -240,4 +240,28 @@ public class ChatStreamEventWriter {
             log.error("发送联网搜索结果失败", e);
         }
     }
+
+    /**
+     * 阶段五：业务内部事件 -> 前端 SSE 协议唯一出口。
+     * 当前仍持有 HttpServletResponse，作为去 Servlet 化前的过渡适配层。
+     */
+    public void writeEvent(HttpServletResponse response, ChatStreamEvent event) throws IOException {
+        if (event == null || event.getType() == null) {
+            return;
+        }
+        switch (event.getType()) {
+            case CONTENT_DELTA -> writeContent(event.getText(), response);
+            case NETWORK_EVIDENCE -> sendNetworkSearchResults(response, event.getNetworkResults());
+            case COMPLETED -> writeCompletion(response, event.isWillGenerateTitle(), event.isRealAiResponse(), event.getGeneratedTitle());
+            case FAILED -> {
+                if (event.getErrorType() != null && event.getErrorType() != 0) {
+                    writeCustomErrorResponse(response, event.getErrorMessage(), event.getErrorType());
+                } else {
+                    writeErrorResponse(response, event.getErrorMessage());
+                }
+            }
+            case INTERRUPTED -> writeInterruptCompletion(response);
+            default -> log.warn("未知 ChatStreamEvent 类型: {}", event.getType());
+        }
+    }
 }
