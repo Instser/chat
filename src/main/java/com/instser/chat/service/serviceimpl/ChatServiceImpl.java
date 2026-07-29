@@ -340,6 +340,7 @@ public class ChatServiceImpl implements ChatService {
                     sessionId, messageId, "assistant", authentication);
             if (!validation.isSuccess()) {
                 sink.writeError(validation.getErrorMessage());
+                completeSinkIfAsync(sink);
                 log.info("【重试结束】验证失败，会话ID：{}，消息ID：{}，原因：{}",
                         sessionId, messageId, validation.getErrorMessage());
                 return;
@@ -356,6 +357,7 @@ public class ChatServiceImpl implements ChatService {
                 LogUtils.logUserSessionError(log, userId, sessionId, "重试执行",
                         "删除消息失败，没有找到指定的消息或删除操作失败，消息ID: {}", null, messageId);
                 sink.writeError("删除消息失败");
+                completeSinkIfAsync(sink);
                 return;
             }
             LogUtils.logUserSessionOperation(log, userId, sessionId, "重试执行",
@@ -365,12 +367,14 @@ public class ChatServiceImpl implements ChatService {
             ChatResponseDTO rateLimitResult = chatRequestValidator.validateChatRateLimit(
                     userId, sessionId, rateLimitModelId, sink);
             if (rateLimitResult != null) {
+                completeSinkIfAsync(sink);
                 return;
             }
 
             PreparedTurn preparedTurn = retryPrepareHandler.prepareAfterDelete(sessionId, userId, modelId, network, chatSession);
             if (!preparedTurn.isSuccess()) {
                 sink.writeError(preparedTurn.getErrorMessage());
+                completeSinkIfAsync(sink);
                 return;
             }
 
@@ -378,6 +382,7 @@ public class ChatServiceImpl implements ChatService {
             AiModel model = chatRequestValidator.validateAndGetModel(targetModelId, sessionId, chatSession.getUserId(), sink);
             if (model == null) {
                 log.info("重试请求AI模型不可用，会话ID：{}，用户ID：{}", sessionId, chatSession.getUserId());
+                completeSinkIfAsync(sink);
                 return;
             }
 
@@ -387,6 +392,7 @@ public class ChatServiceImpl implements ChatService {
             if (permissionError != null) {
                 log.info("重试请求聊天权限验证失败，会话ID：{}，用户ID：{}，原因：{}", sessionId, userId, permissionError);
                 chatRequestValidator.writePermissionFailure(sink, sessionId, userId, model, permissionError);
+                completeSinkIfAsync(sink);
                 return;
             }
 
@@ -446,6 +452,7 @@ public class ChatServiceImpl implements ChatService {
                     sessionId, messageId, "user", authentication);
             if (!validation.isSuccess()) {
                 sink.writeError(validation.getErrorMessage());
+                completeSinkIfAsync(sink);
                 return;
             }
 
@@ -459,6 +466,7 @@ public class ChatServiceImpl implements ChatService {
                     sessionId, messageId, newContent, userId, chatSession);
             if (!replaced.isSuccess()) {
                 sink.writeError(replaced.getErrorMessage());
+                completeSinkIfAsync(sink);
                 return;
             }
 
@@ -466,6 +474,7 @@ public class ChatServiceImpl implements ChatService {
             ChatResponseDTO rateLimitResult = chatRequestValidator.validateChatRateLimit(
                     userId, sessionId, rateLimitModelId, sink);
             if (rateLimitResult != null) {
+                completeSinkIfAsync(sink);
                 return;
             }
 
@@ -473,6 +482,7 @@ public class ChatServiceImpl implements ChatService {
                     sessionId, userId, chatSession, network, replaced.getUserMessageId());
             if (!preparedTurn.isSuccess()) {
                 sink.writeError(preparedTurn.getErrorMessage());
+                completeSinkIfAsync(sink);
                 return;
             }
 
@@ -480,6 +490,7 @@ public class ChatServiceImpl implements ChatService {
             AiModel model = chatRequestValidator.validateAndGetModel(targetModelId, sessionId, chatSession.getUserId(), sink);
             if (model == null) {
                 log.info("编辑重发请求AI模型不可用，会话ID：{}，用户ID：{}", sessionId, chatSession.getUserId());
+                completeSinkIfAsync(sink);
                 return;
             }
 
@@ -489,6 +500,7 @@ public class ChatServiceImpl implements ChatService {
             if (permissionError != null) {
                 log.info("编辑重发请求聊天权限验证失败，会话ID：{}，用户ID：{}，原因：{}", sessionId, userId, permissionError);
                 chatRequestValidator.writePermissionFailure(sink, sessionId, userId, model, permissionError);
+                completeSinkIfAsync(sink);
                 return;
             }
 
@@ -649,6 +661,19 @@ public class ChatServiceImpl implements ChatService {
             }
         } catch (Exception ex) {
             log.error("发送命令错误消息失败", ex);
+        } finally {
+            completeSinkIfAsync(sink);
+        }
+    }
+
+    /** 异步 emitter 在同步失败路径必须 complete，避免前端挂起。 */
+    private void completeSinkIfAsync(ChatStreamSink sink) {
+        if (sink != null && sink.isAsync()) {
+            try {
+                sink.complete();
+            } catch (Exception e) {
+                log.debug("complete async sink failed: {}", e.getMessage());
+            }
         }
     }
 }

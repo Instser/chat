@@ -1,9 +1,12 @@
 package com.instser.chat.service.stream;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 /**
  * 流式响应过程状态，替代 ChatServiceImpl 中多个 final boolean[] 状态数组。
  *
  * <p>仅描述一次 AI 流式调用过程中的游标与互斥标记，不承载业务决策。</p>
+ * <p>完成闸门字段使用原子变量，便于非阻塞回调并发下只收尾一次。</p>
  */
 public final class StreamResponseState {
 
@@ -11,9 +14,10 @@ public final class StreamResponseState {
     private boolean realAiResponse;
     private boolean interrupted;
     private boolean interruptSaved;
-    private boolean completionHandled;
+    private final AtomicBoolean completionHandled = new AtomicBoolean(false);
     private boolean firstTokenMarked;
     private boolean networkResultsSent;
+    private final StreamCompletionGate completionGate = new StreamCompletionGate();
 
     public boolean hasContentSent() {
         return hasContentSent;
@@ -32,7 +36,22 @@ public final class StreamResponseState {
     }
 
     public boolean isCompletionHandled() {
-        return completionHandled;
+        return completionHandled.get();
+    }
+
+    /**
+     * 线程安全完成闸门：与 {@link #canHandleCompletion()}/{@link #markCompletionHandled()} 等价的 CAS 入口。
+     */
+    public boolean tryHandleCompletion() {
+        boolean entered = completionHandled.compareAndSet(false, true);
+        if (entered) {
+            completionGate.tryEnter();
+        }
+        return entered;
+    }
+
+    public StreamCompletionGate completionGate() {
+        return completionGate;
     }
 
     public boolean isFirstTokenMarked() {
@@ -61,7 +80,8 @@ public final class StreamResponseState {
     }
 
     public void markCompletionHandled() {
-        this.completionHandled = true;
+        this.completionHandled.set(true);
+        this.completionGate.tryEnter();
     }
 
     public void markFirstToken() {
@@ -82,9 +102,10 @@ public final class StreamResponseState {
 
     /**
      * 是否允许执行完成处理：尚未处理完成逻辑。
+     * 异步路径优先使用 {@link #tryHandleCompletion()}。
      */
     public boolean canHandleCompletion() {
-        return !completionHandled;
+        return !completionHandled.get();
     }
 
     /**

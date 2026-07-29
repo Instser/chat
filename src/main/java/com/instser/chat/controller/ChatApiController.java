@@ -14,6 +14,7 @@ import com.instser.chat.service.ChatSessionService;
 import com.instser.chat.service.ChatService;
 import com.instser.chat.service.stream.ChatStreamEventWriter;
 import com.instser.chat.service.stream.ChatStreamSink;
+import com.instser.chat.service.stream.StreamSubscriptionRegistry;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -21,6 +22,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
@@ -55,42 +57,88 @@ public class ChatApiController {
     private final ChatService chatService;
     private final ChatInterruptService chatInterruptService;
     private final ChatStreamEventWriter chatStreamEventWriter;
+    private final StreamSubscriptionRegistry streamSubscriptionRegistry;
 
     /**
      * 流式聊天接口 - 兼容前端 (POST)
+     *
+     * <p>返回 {@link ResponseBodyEmitter} 使请求线程可在订阅启动后立即返回。
+     * 注意：不能用 SseEmitter，否则会再包一层 data: 帧，破坏 Vercel AI data stream 协议。</p>
      */
     @PostMapping(value = "", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public void chat(@RequestBody Map<String, Object> request, Authentication authentication,
-                     HttpServletRequest httpRequest, HttpServletResponse response) {
+    public ResponseBodyEmitter chat(@RequestBody Map<String, Object> request, Authentication authentication,
+                                    HttpServletRequest httpRequest, HttpServletResponse response) {
         LogUtils.logUserOperation(log, getCurrentUserId(authentication), "API调用", "聊天接口，请求参数：{}", LogUtils.formatRequestParams(request));
 
-        // 动态设置跨域头
+        // 动态设置跨域头 + 流式协议头（必须在返回 emitter 前）
         setCorsHeaders(httpRequest, response);
+        chatStreamEventWriter.setStreamResponseHeaders(response);
+        response.setHeader("X-Accel-Buffering", "no");
 
+        // 0L = 不由 emitter 主动超时；仍受 MVC/网关超时约束（见非阻塞方案 6.5）
+        ResponseBodyEmitter emitter = new ResponseBodyEmitter(0L);
+        ChatStreamSink sink = ChatStreamSink.of(emitter, chatStreamEventWriter);
+
+        String sessionIdForCancel = null;
         try {
-            // 将请求Map转换为DTO
             ChatRequestDTO chatRequest = ChatRequestDTO.fromMap(request);
+            sessionIdForCancel = chatRequest.getSessionId();
+            final String sessionId = sessionIdForCancel;
 
-            LogUtils.logUserSessionDebug(log, chatRequest.getUserId(), chatRequest.getSessionId(), "聊天处理", "开始处理聊天请求");
-
-            // 调用ChatService处理业务逻辑
-            ChatResponseDTO chatResponse = chatService.processStreamChat(chatRequest, authentication, ChatStreamSink.of(response, chatStreamEventWriter));
-
-            // 记录处理结果
-            if (chatResponse.isSuccess()) {
-                LogUtils.logUserSessionOperation(log, chatRequest.getUserId(), chatRequest.getSessionId(), "API响应", "聊天请求处理成功");
-            } else {
-                String errorMsg = chatResponse.getErrorMessage();
-                if (errorMsg == null || errorMsg.trim().isEmpty()) {
-                    errorMsg = "未知错误";
+            emitter.onCompletion(() -> {
+                if (sessionId != null) {
+                    streamSubscriptionRegistry.cancel(sessionId);
                 }
-                LogUtils.logUserSessionWarning(log, chatRequest.getUserId(), chatRequest.getSessionId(), "API响应", "聊天请求处理失败，错误：{}", errorMsg);
+            });
+            emitter.onTimeout(() -> {
+                LogUtils.logUserSessionWarning(log, chatRequest.getUserId(), sessionId, "API超时", "聊天流 emitter 超时");
+                if (sessionId != null) {
+                    streamSubscriptionRegistry.cancel(sessionId);
+                    chatInterruptService.interruptChat(sessionId, chatRequest.getUserId());
+                }
+                try {
+                    emitter.complete();
+                } catch (Exception ignored) {
+                }
+            });
+            emitter.onError(ex -> {
+                LogUtils.logUserSessionWarning(log, chatRequest.getUserId(), sessionId, "API通道错误", "emitter error: {}",
+                        ex != null ? ex.getMessage() : "null");
+                if (sessionId != null) {
+                    streamSubscriptionRegistry.cancel(sessionId);
+                }
+            });
+
+            LogUtils.logUserSessionDebug(log, chatRequest.getUserId(), chatRequest.getSessionId(), "聊天处理", "开始处理聊天请求(非阻塞)");
+
+            // 准备段仍同步；流式段在 async sink 下立即返回，不阻塞 Tomcat worker
+            ChatResponseDTO chatResponse = chatService.processStreamChat(chatRequest, authentication, sink);
+
+            // 准备失败等同步错误：确保通道关闭；成功启动异步流时由 processor complete
+            if (chatResponse != null && !chatResponse.isSuccess() && !chatResponse.isInterrupted()) {
+                LogUtils.logUserSessionWarning(log, chatRequest.getUserId(), chatRequest.getSessionId(), "API响应",
+                        "聊天请求准备/启动失败，错误：{}",
+                        chatResponse.getErrorMessage() != null ? chatResponse.getErrorMessage() : "未知错误");
+                try {
+                    sink.complete();
+                } catch (Exception ignored) {
+                }
+            } else {
+                LogUtils.logUserSessionOperation(log, chatRequest.getUserId(), chatRequest.getSessionId(), "API响应",
+                        "聊天流已启动(异步)，最终成功/失败见完成回调日志");
             }
 
         } catch (Exception e) {
             LogUtils.logUserError(log, getCurrentUserId(authentication), "API异常", "聊天接口异常：{}", e, e.getMessage());
-            // 异常情况下的错误处理已在ChatService中完成
+            if (sessionIdForCancel != null) {
+                streamSubscriptionRegistry.cancel(sessionIdForCancel);
+            }
+            try {
+                sink.completeWithError(e);
+            } catch (Exception ignored) {
+            }
         }
+        return emitter;
     }
 
     /**
@@ -298,63 +346,94 @@ public class ChatApiController {
      * 重新生成AI回复
      */
     @PostMapping(value = "/retry", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public void retryChat(@RequestBody Map<String, Object> request, Authentication authentication,
-                         HttpServletRequest httpRequest, HttpServletResponse response) {
+    public ResponseBodyEmitter retryChat(@RequestBody Map<String, Object> request, Authentication authentication,
+                                         HttpServletRequest httpRequest, HttpServletResponse response) {
         LogUtils.logUserOperation(log, getCurrentUserId(authentication), "API调用", "收到重新生成请求：{}", request);
 
-        // 动态设置跨域头
         setCorsHeaders(httpRequest, response);
+        chatStreamEventWriter.setStreamResponseHeaders(response);
+        response.setHeader("X-Accel-Buffering", "no");
+
+        ResponseBodyEmitter emitter = new ResponseBodyEmitter(0L);
+        ChatStreamSink sink = ChatStreamSink.of(emitter, chatStreamEventWriter);
+        String sessionIdForCancel = null;
 
         try {
-            // 提取参数 - 前端传入chatId，后端映射为sessionId
             String chatId = (String) request.get("chatId");
             String messageId = (String) request.get("messageId");
             Long modelId = extractModelId(request, response);
             Boolean network = extractNetwork(request);
+            sessionIdForCancel = chatId;
 
-            // 验证基础参数
             if (!validateBasicParams(chatId, messageId, response)) {
-                return;
+                try {
+                    sink.writeError("Request failed. Please try again later.");
+                } catch (Exception ignored) {
+                }
+                sink.complete();
+                return emitter;
             }
 
-            // 调用ChatService处理重新生成逻辑（chatId实际对应sessionId）
-            chatService.processRetryChat(chatId, messageId, modelId, network, authentication, ChatStreamSink.of(response, chatStreamEventWriter));
+            final String sessionId = chatId;
+            final Long userId = getCurrentUserId(authentication);
+            registerEmitterCancelHooks(emitter, sessionId, userId);
+
+            chatService.processRetryChat(chatId, messageId, modelId, network, authentication, sink);
+            // retry 为 void：准备失败时 Service 已写错误帧；成功启动后由 processor complete
 
         } catch (Exception e) {
-            handleCommonException(e, "重新生成", response);
+            LogUtils.logUserError(log, getCurrentUserId(authentication), "API异常", "重新生成接口异常：{}", e, e.getMessage());
+            if (sessionIdForCancel != null) {
+                streamSubscriptionRegistry.cancel(sessionIdForCancel);
+            }
+            try {
+                sink.completeWithError(e);
+            } catch (Exception ignored) {
+            }
         }
+        return emitter;
     }
 
     /**
      * 编辑用户消息并重新生成AI回复
      */
     @PostMapping(value = "/edit-resend", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public void editResendChat(@RequestBody Map<String, Object> request, Authentication authentication,
-                              HttpServletRequest httpRequest, HttpServletResponse response) {
+    public ResponseBodyEmitter editResendChat(@RequestBody Map<String, Object> request, Authentication authentication,
+                                              HttpServletRequest httpRequest, HttpServletResponse response) {
         LogUtils.logUserOperation(log, getCurrentUserId(authentication), "API调用", "收到编辑重发请求：{}", request);
 
-        // 动态设置跨域头
         setCorsHeaders(httpRequest, response);
+        chatStreamEventWriter.setStreamResponseHeaders(response);
+        response.setHeader("X-Accel-Buffering", "no");
+
+        ResponseBodyEmitter emitter = new ResponseBodyEmitter(0L);
+        ChatStreamSink sink = ChatStreamSink.of(emitter, chatStreamEventWriter);
+        String sessionIdForCancel = null;
 
         try {
-            // 提取参数 - 前端传入chatId，后端映射为sessionId
             String chatId = (String) request.get("chatId");
             String messageId = (String) request.get("messageId");
             String newContent = (String) request.get("newContent");
             String filesId = (String) request.get("filesId");
             Long modelId = extractModelId(request, response);
             Boolean network = extractNetwork(request);
+            sessionIdForCancel = chatId;
 
-            // 验证基础参数
             if (!validateBasicParams(chatId, messageId, response)) {
-                return;
+                try {
+                    sink.writeError("Request failed. Please try again later.");
+                } catch (Exception ignored) {
+                }
+                sink.complete();
+                return emitter;
             }
 
             if (newContent == null || newContent.trim().isEmpty()) {
                 String errorContent = "Request failed. Please try again later.";
-                writeErrorResponse(response, errorContent);
-
-                // 尝试保存错误响应到数据库
+                try {
+                    sink.writeError(errorContent);
+                } catch (Exception ignored) {
+                }
                 try {
                     Long userId = getCurrentUserId(authentication);
                     if (userId != null) {
@@ -364,15 +443,55 @@ public class ChatApiController {
                 } catch (Exception e) {
                     LogUtils.logUserWarning(log, null, "参数验证", "保存编辑重发参数验证错误响应失败", e);
                 }
-                return;
+                sink.complete();
+                return emitter;
             }
 
-            // 调用ChatService处理编辑重发逻辑（chatId实际对应sessionId）
-            chatService.processEditResendChat(chatId, messageId, newContent, filesId, modelId, network, authentication, ChatStreamSink.of(response, chatStreamEventWriter));
+            final String sessionId = chatId;
+            final Long userId = getCurrentUserId(authentication);
+            registerEmitterCancelHooks(emitter, sessionId, userId);
+
+            chatService.processEditResendChat(chatId, messageId, newContent, filesId, modelId, network, authentication, sink);
 
         } catch (Exception e) {
-            handleCommonException(e, "编辑重发", response);
+            LogUtils.logUserError(log, getCurrentUserId(authentication), "API异常", "编辑重发接口异常：{}", e, e.getMessage());
+            if (sessionIdForCancel != null) {
+                streamSubscriptionRegistry.cancel(sessionIdForCancel);
+            }
+            try {
+                sink.completeWithError(e);
+            } catch (Exception ignored) {
+            }
         }
+        return emitter;
+    }
+
+    private void registerEmitterCancelHooks(ResponseBodyEmitter emitter, String sessionId, Long userId) {
+        emitter.onCompletion(() -> {
+            if (sessionId != null) {
+                streamSubscriptionRegistry.cancel(sessionId);
+            }
+        });
+        emitter.onTimeout(() -> {
+            LogUtils.logUserSessionWarning(log, userId, sessionId, "API超时", "流 emitter 超时");
+            if (sessionId != null) {
+                streamSubscriptionRegistry.cancel(sessionId);
+                if (userId != null) {
+                    chatInterruptService.interruptChat(sessionId, userId);
+                }
+            }
+            try {
+                emitter.complete();
+            } catch (Exception ignored) {
+            }
+        });
+        emitter.onError(ex -> {
+            LogUtils.logUserSessionWarning(log, userId, sessionId, "API通道错误", "emitter error: {}",
+                    ex != null ? ex.getMessage() : "null");
+            if (sessionId != null) {
+                streamSubscriptionRegistry.cancel(sessionId);
+            }
+        });
     }
 
     /**
@@ -483,8 +602,9 @@ public class ChatApiController {
 
             LogUtils.logUserSessionOperation(log, userId, sessionId, "API调用", "请求中断聊天会话");
 
-            // 执行中断操作
+            // 执行中断操作：业务标志 + 取消上游订阅
             boolean success = chatInterruptService.interruptChat(sessionId, userId);
+            streamSubscriptionRegistry.cancel(sessionId);
 
             if (success) {
                 LogUtils.logUserSessionOperation(log, userId, sessionId, "API响应", "成功中断聊天会话");

@@ -30,6 +30,15 @@ class StreamResponseStateTest {
     }
 
     @Test
+    void tryHandleCompletionSucceedsOnlyOnce() {
+        StreamResponseState state = new StreamResponseState();
+        assertTrue(state.tryHandleCompletion());
+        assertFalse(state.tryHandleCompletion());
+        assertTrue(state.isCompletionHandled());
+        assertFalse(state.canHandleCompletion());
+    }
+
+    @Test
     void firstTokenMarksContentAndRealResponseHelpers() {
         StreamResponseState state = new StreamResponseState();
         state.markFirstToken();

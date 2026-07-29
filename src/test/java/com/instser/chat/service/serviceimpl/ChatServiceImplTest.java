@@ -93,7 +93,7 @@ class ChatServiceImplTest {
                 new EditResendPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new ChatRequestValidator(aiModelService, chatLimitService, chatRateLimitService, chatInterruptService, chatSessionService, chatMessageService, new ChatPersistenceService(chatMessageService, chatSessionService, fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService))),
                 new ChatPersistenceService(chatMessageService, chatSessionService, fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService)),
-                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ContentPolicy(), chatInterruptService, aiCallMonitor),
+                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ContentPolicy(), chatInterruptService, aiCallMonitor, new com.instser.chat.service.stream.StreamSubscriptionRegistry()),
                 new StreamCompletionCoordinator(truncationDetectionService, mock(ChatContinuationService.class), new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService), new ChatUsageRecorder()),
                 new AiRequestLogger()
         );
@@ -181,7 +181,7 @@ class ChatServiceImplTest {
                 new EditResendPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new ChatRequestValidator(aiModelService, chatLimitService, chatRateLimitService, chatInterruptService, chatSessionService, chatMessageService, new ChatPersistenceService(chatMessageService, chatSessionService, fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService))),
                 new ChatPersistenceService(chatMessageService, chatSessionService, fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService)),
-                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ContentPolicy(), chatInterruptService, aiCallMonitor),
+                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ContentPolicy(), chatInterruptService, aiCallMonitor, new com.instser.chat.service.stream.StreamSubscriptionRegistry()),
                 new StreamCompletionCoordinator(truncationDetectionService, mock(ChatContinuationService.class), new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService), new ChatUsageRecorder()),
                 new AiRequestLogger()
         );
@@ -259,7 +259,7 @@ class ChatServiceImplTest {
                 new EditResendPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, mock(NetworkSearchOrchestrator.class))),
                 new ChatRequestValidator(aiModelService, chatLimitService, chatRateLimitService, chatInterruptService, chatSessionService, chatMessageService, new ChatPersistenceService(chatMessageService, chatSessionService, fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService))),
                 new ChatPersistenceService(chatMessageService, chatSessionService, fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService)),
-                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ContentPolicy(), chatInterruptService, aiCallMonitor),
+                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ContentPolicy(), chatInterruptService, aiCallMonitor, new com.instser.chat.service.stream.StreamSubscriptionRegistry()),
                 new StreamCompletionCoordinator(truncationDetectionService, mock(ChatContinuationService.class), new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), webSearchContentService), new ChatUsageRecorder()),
                 new AiRequestLogger()
         );

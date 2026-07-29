@@ -116,7 +116,7 @@ class ChatServiceImplStreamCharacterizationTest {
                 new EditResendPrepareHandler(chatMessageService, fileUploadService, contextBuilder),
                 new ChatRequestValidator(mock(AiModelService.class), chatLimitService, mock(ChatRateLimitService.class), mock(ChatInterruptService.class), mock(ChatSessionService.class), chatMessageService, new ChatPersistenceService(chatMessageService, mock(ChatSessionService.class), fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), mock(WebSearchContentService.class)))),
                 new ChatPersistenceService(chatMessageService, mock(ChatSessionService.class), fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), mock(WebSearchContentService.class))),
-                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ContentPolicy(), mock(ChatInterruptService.class), mock(AiCallMonitor.class)),
+                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ContentPolicy(), mock(ChatInterruptService.class), mock(AiCallMonitor.class), new com.instser.chat.service.stream.StreamSubscriptionRegistry()),
                 new StreamCompletionCoordinator(mock(TruncationDetectionService.class), mock(ChatContinuationService.class), new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), mock(WebSearchContentService.class)), new ChatUsageRecorder()),
                 new AiRequestLogger()
         );

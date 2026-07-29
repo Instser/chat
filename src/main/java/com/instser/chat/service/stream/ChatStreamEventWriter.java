@@ -38,13 +38,52 @@ public class ChatStreamEventWriter {
     }
 
     public void writeErrorResponse(HttpServletResponse response, String errorMessage) throws IOException {
-        response.getWriter().write("0:\"" + errorMessage + "\"\n");
+        response.getWriter().write(formatError(errorMessage));
         response.getWriter().flush();
     }
 
     public void writeCustomErrorResponse(HttpServletResponse response, String errorMessage, int errorType) throws IOException {
-        response.getWriter().write(errorType + ":\"" + errorMessage + "\"\n");
+        response.getWriter().write(formatCustomError(errorMessage, errorType));
         response.getWriter().flush();
+    }
+
+    /** 协议编码：错误帧（默认 0: 前缀）。 */
+    public String formatError(String errorMessage) {
+        return "0:\"" + (errorMessage == null ? "" : errorMessage) + "\"\n";
+    }
+
+    /** 协议编码：带类型错误帧。 */
+    public String formatCustomError(String errorMessage, int errorType) {
+        return errorType + ":\"" + (errorMessage == null ? "" : errorMessage) + "\"\n";
+    }
+
+    /** 协议编码：整块 content（无 sleep 分块，供异步路径使用）。 */
+    public String formatContentBlock(String content) {
+        try {
+            return String.format("0:%s\n", objectMapper.writeValueAsString(content == null ? "" : content));
+        } catch (Exception e) {
+            log.error("编码 content 失败: {}", e.getMessage());
+            return "0:\"\"\n";
+        }
+    }
+
+    /** 协议编码：联网结果多行。 */
+    public List<String> formatNetworkResults(List<WebSearchResult> searchResults) {
+        java.util.ArrayList<String> lines = new java.util.ArrayList<>();
+        if (searchResults == null || searchResults.isEmpty()) {
+            return lines;
+        }
+        for (WebSearchResult result : searchResults) {
+            try {
+                Map<String, String> resultData = new HashMap<>();
+                resultData.put("url", result.getUrl() != null ? result.getUrl() : "");
+                resultData.put("title", result.getTitle() != null ? result.getTitle() : "");
+                lines.add(String.format("u:%s\n", objectMapper.writeValueAsString(resultData)));
+            } catch (Exception e) {
+                log.error("编码联网结果失败", e);
+            }
+        }
+        return lines;
     }
 
     /**
@@ -125,8 +164,7 @@ public class ChatStreamEventWriter {
     public void sendContentAsBlock(String content, HttpServletResponse response) {
         try {
             if (content != null && !content.isEmpty()) {
-                String vercelFormat = String.format("0:%s\n", objectMapper.writeValueAsString(content));
-                response.getWriter().write(vercelFormat);
+                response.getWriter().write(formatContentBlock(content));
                 response.getWriter().flush();
                 log.info("块发送模式数据发送成功: [{}]", content);
             } else {
@@ -225,13 +263,8 @@ public class ChatStreamEventWriter {
         try {
             log.info("开始发送{}个联网搜索结果给前端", searchResults.size());
 
-            for (WebSearchResult result : searchResults) {
-                Map<String, String> resultData = new HashMap<>();
-                resultData.put("url", result.getUrl() != null ? result.getUrl() : "");
-                resultData.put("title", result.getTitle() != null ? result.getTitle() : "");
-
-                String resultJson = String.format("u:%s\n", objectMapper.writeValueAsString(resultData));
-                response.getWriter().write(resultJson);
+            for (String line : formatNetworkResults(searchResults)) {
+                response.getWriter().write(line);
                 response.getWriter().flush();
             }
 
