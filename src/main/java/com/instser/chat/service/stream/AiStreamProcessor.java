@@ -120,15 +120,16 @@ public class AiStreamProcessor {
                             if (request.getSessionId() != null && chatInterruptService.isInterrupted(request.getSessionId())) {
                                 log.info("检测到聊天中断信号，停止流处理，会话ID：{}", request.getSessionId());
                                 streamState.markInterrupted();
+                                // 立即给前端中断完成帧；后续 complete 只做落库副作用，不再写普通 d:stop
                                 if (!streamState.isInterruptSaved()) {
-                                    streamState.markInterruptSaved();
-                                }
-                                try {
-                                    sink.writeInterruptCompletion();
-                                    log.info("已发送中断完成标记");
-                                    streamState.markInterruptSaved();
-                                } catch (Exception e) {
-                                    log.error("发送中断完成标记失败", e);
+                                    try {
+                                        sink.writeInterruptCompletion();
+                                        log.info("已发送中断完成标记");
+                                    } catch (Exception e) {
+                                        log.error("发送中断完成标记失败", e);
+                                    } finally {
+                                        streamState.markInterruptSaved();
+                                    }
                                 }
                                 return false;
                             }

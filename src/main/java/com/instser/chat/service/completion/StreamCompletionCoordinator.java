@@ -73,9 +73,29 @@ public class StreamCompletionCoordinator {
             String contentToSave = aiResponseContentRef.toString();
             boolean shouldPersist = isRealAiResponse || finalInterruptedStatus;
             if (shouldPersist && contentToSave != null && !contentToSave.trim().isEmpty()) {
+                // interrupted=true 时 completeSideEffects 不再写普通完成帧
                 aiResponseCompletionHandler.completeSideEffects(
                         sink, request, model, willGenerateTitle, isRealAiResponse,
                         contentToSave, finalInterruptedStatus, true);
+                // 用户手动 stop：AiStreamProcessor 已写过 d:interrupted
+                // 续写中断：流层未写中断帧，这里补发一次，保证前端仍能结束
+                if (finalInterruptedStatus && !wasManuallyInterrupted) {
+                    try {
+                        sink.writeInterruptCompletion();
+                        log.info("续写中断完成帧已发送，会话ID：{}", request.getSessionId());
+                    } catch (Exception ex) {
+                        log.error("发送续写中断完成帧失败，会话ID：{}", request.getSessionId(), ex);
+                    }
+                }
+            } else if (finalInterruptedStatus) {
+                // 无内容可落库时：用户 stop 通常已在流层写过中断帧；续写中断则补写
+                if (!wasManuallyInterrupted) {
+                    try {
+                        sink.writeInterruptCompletion();
+                    } catch (Exception ex) {
+                        log.error("发送空内容中断完成帧失败，会话ID：{}", request.getSessionId(), ex);
+                    }
+                }
             } else {
                 aiResponseCompletionHandler.writeCompletion(sink, willGenerateTitle, isRealAiResponse, null);
             }

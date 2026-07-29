@@ -185,7 +185,9 @@ public class AiResponseCompletionHandler {
                 // 错误响应：只落错误消息，不扣次、不绑联网、不生成标题
                 chatMessageService.sendErrorResponseMessage(
                         request.getSessionId(), request.getUserId(), model.getId(), contentToSave);
-                writeCompletion(sink, false, false, null);
+                if (!interrupted) {
+                    writeCompletion(sink, false, false, null);
+                }
                 return null;
             }
 
@@ -207,8 +209,15 @@ public class AiResponseCompletionHandler {
             }
         }
 
-        String generatedTitle = generateTitleIfNeeded(request, willGenerateTitle, isRealAiResponse,
-                interrupted ? contentToSave : contentToSave);
+        // 中断场景：流处理层（或续写协调层）负责中断完成帧 d:interrupted；
+        // 这里只做落库/扣次等副作用，禁止再写普通 d:stop，避免双完成帧。
+        if (interrupted) {
+            log.debug("中断完成副作用结束，跳过普通完成帧，sessionId={}",
+                    request != null ? request.getSessionId() : null);
+            return assistantMessageId;
+        }
+
+        String generatedTitle = generateTitleIfNeeded(request, willGenerateTitle, isRealAiResponse, contentToSave);
         writeCompletion(sink, willGenerateTitle, isRealAiResponse, generatedTitle);
         return assistantMessageId;
     }
