@@ -123,9 +123,10 @@ public class ChatApiController {
      * 获取可见模型列表
      */
     @GetMapping("/models")
-    public Result<List<AiModel>> getModels() {
+    public Result<List<com.instser.chat.vo.AiModelVO>> getModels() {
+        // 必须走 VO 脱敏，禁止直接返回 AiModel（含 apiKey/baseUrl）
         List<AiModel> models = aiModelService.getVisibleModels();
-        return Result.success(models);
+        return Result.success(com.instser.chat.vo.converter.VOConverter.toAiModelVOList(models));
     }
 
     /**
@@ -176,27 +177,69 @@ public class ChatApiController {
     }
 
     /**
-     * 获取会话消息
+     * 获取会话消息（仅会话所有者）
      */
     @GetMapping("/sessions/{sessionId}/messages")
-    public Result<List<ChatMessage>> getSessionMessages(@PathVariable String sessionId) {
+    public Result<List<ChatMessage>> getSessionMessages(@PathVariable String sessionId, Authentication authentication) {
+        Long userId = getCurrentUserId(authentication);
+        if (userId == null) {
+            return Result.unauthorized("用户未认证");
+        }
+        ChatSession session = chatSessionService.getSessionInfo(sessionId);
+        if (session == null) {
+            return Result.failed("会话不存在");
+        }
+        if (!userId.equals(session.getUserId())) {
+            LogUtils.logUserSessionWarning(log, userId, sessionId, "API拒绝", "无权访问他人会话消息");
+            return Result.forbidden("无权访问该会话");
+        }
         List<ChatMessage> messages = chatMessageService.getSessionMessages(sessionId);
         return Result.success(messages);
     }
 
     /**
-     * 删除会话
+     * 删除会话（仅会话所有者）
      */
     @DeleteMapping("/sessions/{sessionId}")
-    public Result<Void> deleteSession(@PathVariable String sessionId) {
+    public Result<Void> deleteSession(@PathVariable String sessionId, Authentication authentication) {
+        Long userId = getCurrentUserId(authentication);
+        if (userId == null) {
+            return Result.unauthorized("用户未认证");
+        }
+        ChatSession session = chatSessionService.getSessionInfo(sessionId);
+        if (session == null) {
+            return Result.failed("会话不存在");
+        }
+        if (!userId.equals(session.getUserId())) {
+            LogUtils.logUserSessionWarning(log, userId, sessionId, "API拒绝", "无权删除他人会话");
+            return Result.forbidden("无权删除该会话");
+        }
         boolean deleted = chatSessionService.deleteSession(sessionId);
         if (!deleted) {
             return Result.failed("会话删除失败");
         }
         return Result.success(null, "会话删除成功");
     }
-@DeleteMapping("/sessions")
-    public Result<Void> deleteSessions(@RequestBody DeleteSessionRequest request) {
+
+    @DeleteMapping("/sessions")
+    public Result<Void> deleteSessions(@RequestBody DeleteSessionRequest request, Authentication authentication) {
+        Long userId = getCurrentUserId(authentication);
+        if (userId == null) {
+            return Result.unauthorized("用户未认证");
+        }
+        if (request == null || request.getSessionIds() == null || request.getSessionIds().isEmpty()) {
+            return Result.validateFailed("会话ID列表不能为空");
+        }
+        for (String sessionId : request.getSessionIds()) {
+            ChatSession session = chatSessionService.getSessionInfo(sessionId);
+            if (session == null) {
+                return Result.failed("会话不存在: " + sessionId);
+            }
+            if (!userId.equals(session.getUserId())) {
+                LogUtils.logUserSessionWarning(log, userId, sessionId, "API拒绝", "批量删除含他人会话");
+                return Result.forbidden("无权删除他人会话");
+            }
+        }
         boolean allDeleted = chatSessionService.deleteSessions(request.getSessionIds());
         if (!allDeleted) {
             return Result.failed("部分会话删除失败");

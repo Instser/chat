@@ -63,13 +63,5 @@ public class AiModelVO implements Serializable {
      */
     private Integer isAvailable;
 
-    /**
-     * API基础URL
-     */
-    private String baseUrl;
-
-    /**
-     * API密钥
-     */
-    private String apiKey;
+    // 注意：禁止对前端暴露 baseUrl / apiKey。上游地址与密钥仅服务端内部使用。
 }

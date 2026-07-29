@@ -1,14 +1,15 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-07-29 20:42:00
+**📅 最后更新**: 2026-07-30 00:12:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v143.0
+**📊 文档版本**: v144.0
 
 ## 当前任务
-- AI 聊天**非阻塞流式改造 01–08 已代码落地**（ResponseBodyEmitter + subscribe，非 SseEmitter）。
-- 可选后续：真实 AI e2e 联调；续写单轮 blockLast 链式化；多实例订阅外置；DTO 废弃字段物理删除。
+- P0/P1 安全修复已落地（模型脱敏、会话归属、POST /chat 鉴权、admin 支付角色）；**未**轮换 Key、**未**改 yml。
+- 可选：密钥轮换；yml 默认 secret 清理；多实例中断/限流 Redis 化。
 
 ## 最新完成任务
+✅ **安全 P0/P1 修复（不含 yml/轮换）** — `/chat/models` 返回脱敏 VO；ChatApi/ChatController 会话读写删归属校验；`POST /chat` 取消 permitAll；`/user/status/admin/{id}` 需 admin；探针通过；`mvn test` 75 绿。 (2026-07-30 00:12)
 ✅ **非阻塞流式改造 tickets 01–08** — `StreamSubscriptionRegistry`/`StreamCompletionGate`；三入口 `ResponseBodyEmitter`；async 无 `blockLast`；续写去 `join`；完成收尾 `publishOn(boundedElastic)`；`spring.mvc.async.request-timeout=-1`；stop/超时 cancel；相关测试 35/35 通过。票据：`.scratch/chat-nonblocking-stream/`。 (2026-07-29 20:42)
 ✅ **ChatServiceImpl 方案终态收敛** — 新增 `ChatRequestValidator`、`ChatPersistenceService`、`ChatUsageRecorder`、`StreamCompletionCoordinator`、`AiRequestLogger`；`ChatServiceImpl` 仅编排 chat/retry/edit-resend。相关测试 25/25 通过。`ChatServiceImpl` ~411 行。 (2026-07-29 03:25)
 ✅ **解耦终局 tickets 01-08** — 测试锁、Writer唯一出口、AiStreamProcessor、ChatContinuationService、completeSideEffects、DTO deprecated、无用依赖清理、ChatService→ChatStreamSink。相关测试 19/19 通过。ChatServiceImpl ~1930 行。 (2026-07-29 02:35)

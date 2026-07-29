@@ -60,7 +60,16 @@ public class VOConverter {
             return null;
         }
         AiModelVO aiModelVO = new AiModelVO();
-        BeanUtils.copyProperties(aiModel, aiModelVO);
+        // 仅拷贝前端可见字段；apiKey/baseUrl 不在 AiModelVO 中，避免误序列化泄露
+        aiModelVO.setId(aiModel.getId());
+        aiModelVO.setModelCode(aiModel.getModelCode());
+        aiModelVO.setModelName(aiModel.getModelName());
+        aiModelVO.setDescription(aiModel.getDescription());
+        aiModelVO.setProvider(aiModel.getProvider());
+        aiModelVO.setVersion(aiModel.getVersion());
+        aiModelVO.setTokenLimit(aiModel.getTokenLimit());
+        aiModelVO.setPricePer1kTokens(aiModel.getPricePer1kTokens());
+        aiModelVO.setIsAvailable(aiModel.getIsAvailable());
         return aiModelVO;
     }
 

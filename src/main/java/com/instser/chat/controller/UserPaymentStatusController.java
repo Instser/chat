@@ -240,8 +240,12 @@ public class UserPaymentStatusController {
                 return ResponseEntity.ok(Result.unauthorized("用户未登录"));
             }
 
-            // 检查管理员权限（这里简化处理，实际应该检查用户角色）
-            // TODO: 添加管理员权限检查
+            // 仅管理员可查询他人支付状态
+            if (!isAdmin(authentication)) {
+                LogUtils.logAdminOperation(log, "查询用户支付状态",
+                        "非管理员用户{}尝试查询用户{}支付状态，已拒绝", currentUserId, userId);
+                return ResponseEntity.ok(Result.forbidden("需要管理员权限"));
+            }
 
             Map<String, Object> status = new HashMap<>();
             status.put("userId", userId);
@@ -258,5 +262,18 @@ public class UserPaymentStatusController {
             LogUtils.logAdminOperation(log, "查询用户支付状态", "管理员查询用户支付状态异常", e);
             return ResponseEntity.ok(Result.failed("查询失败"));
         }
+    }
+
+    private boolean isAdmin(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return false;
+        }
+        Object principal = authentication.getPrincipal();
+        if (principal instanceof UserDetailsServiceImpl.CustomUserDetails details) {
+            String role = details.getRole();
+            return role != null && "admin".equalsIgnoreCase(role);
+        }
+        return authentication.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equalsIgnoreCase(a.getAuthority()));
     }
 }

@@ -1,8 +1,17 @@
 # 项目进度状态
 
-**📅 最后更新**: 2026-07-29 20:42:00
+**📅 最后更新**: 2026-07-30 00:12:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v137.0
+**📊 文档版本**: v138.0
+
+## 🚀 最新完成功能 (2026-07-30)
+
+### 安全 P0/P1 修复（不含 yml/密钥轮换） ✅
+- 模型列表脱敏：`AiModelVO` 去掉 apiKey/baseUrl；`ChatApiController.getModels` 走 VO
+- 会话归属：`ChatApiController` 消息读/删/批量删校验所有者；`ChatController` 禁止参数 userId 越权
+- `SecurityConfig`：`POST /chat` 改为 authenticated
+- 支付画像 admin 接口：非 admin 返回 403
+- 验证：HTTP 探针 + `mvn test` 75/75
 
 ## 🚀 最新完成功能 (2026-07-29)
 

@@ -158,4 +158,11 @@ public class Result<T> implements Serializable {
     public static <T> Result<T> forbidden(T data) {
         return new Result<T>(ResultCode.FORBIDDEN.getCode(), ResultCode.FORBIDDEN.getMessage(), data);
     }
+
+    /**
+     * 未授权返回结果（自定义消息）
+     */
+    public static <T> Result<T> forbidden(String message) {
+        return new Result<T>(ResultCode.FORBIDDEN.getCode(), message);
+    }
 }

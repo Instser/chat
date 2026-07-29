@@ -7,7 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
+
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
@@ -199,9 +199,9 @@ public class SecurityConfig {
                 // 运维接口 - 通过 ManagementApiKeyService 鉴权
                 .requestMatchers("/ops/**").permitAll()
 
-                // 聊天接口 - 允许已认证用户访问，但排除SSE流式响应
-                .requestMatchers(HttpMethod.POST, "/chat").permitAll()  // 临时允许SSE流式响应绕过Spring Security
-                .requestMatchers("/chat/**").authenticated()
+                // 聊天接口：含 POST /chat 流式入口，统一要求 JWT（Cookie/Bearer）
+                // 不再 permitAll；业务层未认证拒绝无法替代 Security 层鉴权
+                .requestMatchers("/chat", "/chat/**").authenticated()
 
                 // SSE流式响应接口 - 特殊处理，避免异步权限检查问题
                 .requestMatchers("/sse/**").authenticated()
