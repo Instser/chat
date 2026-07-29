@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 
@@ -157,8 +158,53 @@ public class AiStreamProcessor {
             Flux<String> lineFlux = buildLineFlux(request, model, sink, willGenerateTitle, interfaceType,
                     completionCallback, errorPersister, requestLogger, streamState, aiResponseContent, aiCtxHolder);
 
+            // dispose/cancel 不会触发 subscribe 的 complete 回调，必须在 doOnCancel 里关闭 emitter，
+            // 否则 stop 后客户端会一直挂到超时。
+            final AtomicBoolean terminalClosed = new AtomicBoolean(false);
+            Runnable closeTerminal = () -> {
+                if (!terminalClosed.compareAndSet(false, true)) {
+                    return;
+                }
+                try {
+                    cleanupAsync(request.getSessionId(), sessionManager, disposableRef);
+                } finally {
+                    try {
+                        sink.complete();
+                    } catch (Exception e) {
+                        log.warn("sink.complete 失败 sessionId={}", request.getSessionId(), e);
+                    }
+                }
+            };
+
             Disposable disposable = lineFlux
-                    .doOnCancel(() -> log.info("上游流被取消 sessionId={}", request.getSessionId()))
+                    .doOnCancel(() -> {
+                        log.info("上游流被取消 sessionId={}", request.getSessionId());
+                        streamState.markInterrupted();
+                        if (!streamState.isInterruptSaved()) {
+                            try {
+                                sink.writeInterruptCompletion();
+                                log.info("取消路径已发送中断完成帧 sessionId={}", request.getSessionId());
+                            } catch (Exception e) {
+                                log.error("取消路径发送中断完成帧失败 sessionId={}", request.getSessionId(), e);
+                            } finally {
+                                streamState.markInterruptSaved();
+                            }
+                        }
+                        // 中断时尽量落部分内容（tryHandleCompletion 幂等）
+                        try {
+                            if (streamState.tryHandleCompletion()) {
+                                boolean wasInterrupted = request.getSessionId() != null
+                                        && chatInterruptService.isInterrupted(request.getSessionId());
+                                completionCallback.onComplete(sink, willGenerateTitle, streamState.isRealAiResponse(),
+                                        request, aiResponseContent, model, interfaceType, true);
+                            }
+                        } catch (Exception e) {
+                            log.error("取消路径完成收尾失败 sessionId={}", request.getSessionId(), e);
+                        }
+                        log.info("STREAM_TERMINAL sessionId={} reason=cancelled contentLen={}",
+                                request.getSessionId(), aiResponseContent.length());
+                        closeTerminal.run();
+                    })
                     .subscribe(
                             line -> {
                                 // 行处理已在 doOnNext（publishOn 后 content 写在 boundedElastic）
@@ -174,8 +220,7 @@ public class AiStreamProcessor {
                                 } catch (Exception e) {
                                     log.error("异步错误收尾失败", e);
                                 } finally {
-                                    cleanupAsync(request.getSessionId(), sessionManager, disposableRef);
-                                    sink.complete();
+                                    closeTerminal.run();
                                 }
                             },
                             () -> {
@@ -186,8 +231,7 @@ public class AiStreamProcessor {
                                             request.getSessionId(), reason, streamState.isInterrupted(),
                                             aiResponseContent.length());
                                 } finally {
-                                    cleanupAsync(request.getSessionId(), sessionManager, disposableRef);
-                                    sink.complete();
+                                    closeTerminal.run();
                                 }
                             }
                     );
