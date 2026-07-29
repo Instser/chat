@@ -1,10 +1,21 @@
 # 项目进度状态
 
-**📅 最后更新**: 2026-07-29 03:25:00
+**📅 最后更新**: 2026-07-29 20:42:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v136.0
+**📊 文档版本**: v137.0
 
 ## 🚀 最新完成功能 (2026-07-29)
+
+### 非阻塞流式改造 01–08 ✅
+- **实现时间**: 2026年7月29日 20:42
+- **要点**:
+  - 三入口返回 `ResponseBodyEmitter`（**不用** SseEmitter，保 Vercel `0:`/`d:`/`u:`）
+  - `AiStreamProcessor` async：subscribe + registry；sync 仍 blockLast 兼容测试
+  - 完成收尾 `publishOn(boundedElastic)`；续写去掉 `join`
+  - stop/超时/写出失败统一 cancel；`STREAM_TERMINAL` 日志
+  - `spring.mvc.async.request-timeout: -1`
+- **验证**: 35/35 相关测试通过
+- **技术债**: `.scratch/chat-nonblocking-stream/TECH_DEBT.md`
 
 ### ChatServiceImpl 方案终态收敛 ✅
 - **实现时间**: 2026年7月29日 03:25

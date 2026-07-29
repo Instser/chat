@@ -12,6 +12,9 @@ import org.springframework.stereotype.Component;
 
 /**
  * 流完成后的续写 + 副作用总协调（从 ChatServiceImpl 下沉）。
+ *
+ * <p>调用方应在 boundedElastic / 业务池线程上调用，避免在 reactor-http 或 Tomcat 请求线程上
+ * 执行续写 block / DB 落库。</p>
  */
 @Slf4j
 @Component
@@ -32,8 +35,10 @@ public class StreamCompletionCoordinator {
                             String interfaceType,
                             boolean wasManuallyInterrupted) {
         boolean finalInterruptedStatus = wasManuallyInterrupted;
-        log.debug("StreamCompletionCoordinator 开始 - wasManuallyInterrupted: {}, finalInterruptedStatus: {}",
-                wasManuallyInterrupted, finalInterruptedStatus);
+        log.info("StreamCompletionCoordinator 开始 sessionId={} thread={} wasManuallyInterrupted={}",
+                request != null ? request.getSessionId() : null,
+                Thread.currentThread().getName(),
+                wasManuallyInterrupted);
 
         try {
             String currentContent = aiResponseContentRef.toString();

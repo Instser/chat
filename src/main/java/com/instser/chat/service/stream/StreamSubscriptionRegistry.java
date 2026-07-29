@@ -76,6 +76,15 @@ public class StreamSubscriptionRegistry {
         return subscriptions.size();
     }
 
+    /**
+     * 统一收敛：按终态原因取消订阅（日志可检索 STREAM_TERMINAL）。
+     */
+    public boolean cancel(String sessionId, StreamTerminalReason reason) {
+        log.info("STREAM_TERMINAL sessionId={} reason={} action=cancel_subscription",
+                sessionId, reason != null ? reason : StreamTerminalReason.CANCELLED);
+        return cancel(sessionId);
+    }
+
     private void safeDispose(Disposable disposable, String sessionId, String reason) {
         try {
             if (!disposable.isDisposed()) {

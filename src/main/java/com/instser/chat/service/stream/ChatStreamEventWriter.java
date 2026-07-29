@@ -23,7 +23,8 @@ import java.util.Map;
 public class ChatStreamEventWriter {
 
     private static final boolean ENABLE_SMART_CHUNKING = true;
-    private static final long CHUNK_DELAY_MS = 30;
+    /** 非阻塞改造：分块 sleep 会占线程；保持 0。需要“打字机”观感应由前端控制。 */
+    private static final long CHUNK_DELAY_MS = 0;
     private static final int MIN_CHUNK_SIZE = 5;
     private static final int MAX_CHUNK_SIZE = 25;
 

@@ -422,29 +422,26 @@ this.aiChatClient = aiChatClient;
         String currentContent = originalContent;
 
         for (int round = 1; round <= maxContinuations; round++) {
-            final int continuationRound = round; // 创建final变量供lambda使用
-            final String contentForThisRound = currentContent; // 创建final变量供lambda使用
+            final int continuationRound = round;
+            final String contentForThisRound = currentContent;
 
-            log.info("开始第{}次续写，会话ID：{}，当前内容长度：{}",
-                    continuationRound, request.getSessionId(), contentForThisRound.length());
+            log.info("开始第{}次续写，会话ID：{}，当前内容长度：{}，线程：{}",
+                    continuationRound, request.getSessionId(), contentForThisRound.length(),
+                    Thread.currentThread().getName());
 
-            // 使用线程池执行续写操作，避免在reactor线程中阻塞
-            CompletableFuture<String> continuationFuture = CompletableFuture
-                .supplyAsync(() -> {
-                    log.debug("第{}次续写任务开始执行，线程：{}, 会话ID：{}",
-                            continuationRound, Thread.currentThread().getName(), request.getSessionId());
-                    return continueAiResponse(sink, request, model, contentForThisRound);
-                }, continuationExecutor)
-                .exceptionally(throwable -> {
-                    log.error("第{}次续写操作异常，线程：{}, 会话ID：{}",
-                            continuationRound, Thread.currentThread().getName(), request.getSessionId(), throwable);
-                    return null;
-                });
+            // 不再 supplyAsync + join：调用方（StreamCompletionCoordinator）应已在
+            // boundedElastic / continuation 池线程上执行。池内再 join 只制造假异步与死锁风险。
+            // 单轮 continueAiResponse 内部仍可用 blockLast，但绝不能回到 Tomcat 请求线程。
+            String continuationContent;
+            try {
+                continuationContent = continueAiResponse(sink, request, model, contentForThisRound);
+            } catch (Exception throwable) {
+                log.error("第{}次续写操作异常，线程：{}, 会话ID：{}",
+                        continuationRound, Thread.currentThread().getName(), request.getSessionId(), throwable);
+                continuationContent = null;
+            }
 
             try {
-                // 等待续写完成
-                String continuationContent = continuationFuture.join();
-
                 if (continuationContent != null && !continuationContent.trim().isEmpty()) {
                     log.debug("第{}次续写返回内容检查 - 内容长度: {}, 是否以CONTINUATION_INTERRUPTED开头: {}",
                              continuationRound, continuationContent.length(),

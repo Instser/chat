@@ -15,6 +15,7 @@ import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.stereotype.Component;
 import reactor.core.Disposable;
 import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Schedulers;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -160,22 +161,16 @@ public class AiStreamProcessor {
                     .doOnCancel(() -> log.info("上游流被取消 sessionId={}", request.getSessionId()))
                     .subscribe(
                             line -> {
-                                // 行处理已在 doOnNext
+                                // 行处理已在 doOnNext（publishOn 后 content 写在 boundedElastic）
                             },
                             error -> {
                                 log.error("异步流错误 sessionId={}", request.getSessionId(), error);
                                 try {
-                                    if (error instanceof ContentPolicy.ChatRetryException) {
-                                        String errorContent = "Request failed. Please try again later.";
-                                        sink.writeContent(errorContent);
-                                        sink.writeCompletion(false, false, null);
-                                        if (request.getSessionId() != null && request.getUserId() != null) {
-                                            errorPersister.saveError(request.getSessionId(), request.getUserId(),
-                                                    model.getId(), errorContent);
-                                        }
-                                    }
+                                    // doOnError 可能已写过错误帧；此处只记监控与收敛
                                     aiCallMonitor.recordFailure(aiCtxHolder[0],
                                             error.getClass().getSimpleName(), error.getMessage());
+                                    log.info("STREAM_TERMINAL sessionId={} reason=failure type={}",
+                                            request.getSessionId(), error.getClass().getSimpleName());
                                 } catch (Exception e) {
                                     log.error("异步错误收尾失败", e);
                                 } finally {
@@ -186,8 +181,9 @@ public class AiStreamProcessor {
                             () -> {
                                 try {
                                     aiCallMonitor.recordSuccess(aiCtxHolder[0]);
-                                    log.info("异步流完成 sessionId={}, interrupted={}, contentLen={}",
-                                            request.getSessionId(), streamState.isInterrupted(),
+                                    String reason = streamState.isInterrupted() ? "interrupted_or_partial" : "success";
+                                    log.info("STREAM_TERMINAL sessionId={} reason={} interrupted={} contentLen={}",
+                                            request.getSessionId(), reason, streamState.isInterrupted(),
                                             aiResponseContent.length());
                                 } finally {
                                     cleanupAsync(request.getSessionId(), sessionManager, disposableRef);
@@ -312,19 +308,14 @@ public class AiStreamProcessor {
                     }
                     return true;
                 })
+                // 收尾/续写/落库切到弹性线程，避免在 reactor-http 线程上 join/DB 造成假非阻塞
+                .publishOn(Schedulers.boundedElastic())
                 .doOnNext(line -> {
                     try {
                         if (line.startsWith("data: ")) {
                             if (line.equals("data: [DONE]")) {
-                                if (streamState.tryHandleCompletion()) {
-                                    boolean wasInterrupted = request.getSessionId() != null
-                                            && chatInterruptService.isInterrupted(request.getSessionId());
-                                    boolean completionInterrupted = completionCallback.onComplete(sink, willGenerateTitle, streamState.isRealAiResponse(),
-                                            request, aiResponseContent, model, interfaceType, wasInterrupted);
-                                    if (completionInterrupted) {
-                                        streamState.markInterrupted();
-                                    }
-                                }
+                                // 完成统一在 doOnComplete + tryHandleCompletion，避免与收尾双发
+                                log.debug("收到 data: [DONE]，等待 doOnComplete 收尾 sessionId={}", request.getSessionId());
                                 return;
                             }
 

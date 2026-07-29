@@ -1,14 +1,15 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-07-29 03:25:00
+**📅 最后更新**: 2026-07-29 20:42:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v142.0
+**📊 文档版本**: v143.0
 
 ## 当前任务
-- AI 对话解耦**方案终态**已落地：`ChatServiceImpl` 收敛为纯编排（~411 行），校验/落库/用量/完成协调已下沉。
-- 可选后续：物理删除 DTO 废弃运行时字段；更完整 e2e 流式/中断集成测试。
+- AI 聊天**非阻塞流式改造 01–08 已代码落地**（ResponseBodyEmitter + subscribe，非 SseEmitter）。
+- 可选后续：真实 AI e2e 联调；续写单轮 blockLast 链式化；多实例订阅外置；DTO 废弃字段物理删除。
 
 ## 最新完成任务
+✅ **非阻塞流式改造 tickets 01–08** — `StreamSubscriptionRegistry`/`StreamCompletionGate`；三入口 `ResponseBodyEmitter`；async 无 `blockLast`；续写去 `join`；完成收尾 `publishOn(boundedElastic)`；`spring.mvc.async.request-timeout=-1`；stop/超时 cancel；相关测试 35/35 通过。票据：`.scratch/chat-nonblocking-stream/`。 (2026-07-29 20:42)
 ✅ **ChatServiceImpl 方案终态收敛** — 新增 `ChatRequestValidator`、`ChatPersistenceService`、`ChatUsageRecorder`、`StreamCompletionCoordinator`、`AiRequestLogger`；`ChatServiceImpl` 仅编排 chat/retry/edit-resend。相关测试 25/25 通过。`ChatServiceImpl` ~411 行。 (2026-07-29 03:25)
 ✅ **解耦终局 tickets 01-08** — 测试锁、Writer唯一出口、AiStreamProcessor、ChatContinuationService、completeSideEffects、DTO deprecated、无用依赖清理、ChatService→ChatStreamSink。相关测试 19/19 通过。ChatServiceImpl ~1930 行。 (2026-07-29 02:35)
 ✅ **AI 对话解耦一步到位收尾** — retry/edit-resend 全量 Preparer；handleStreamCompletion 落库/联网/标题/完成帧委托；ChatApiController 错误写出改 Writer。相关测试 15/15 通过。 (2026-07-29 01:44)

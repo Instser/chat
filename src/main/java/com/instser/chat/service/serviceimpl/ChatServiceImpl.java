@@ -541,6 +541,11 @@ public class ChatServiceImpl implements ChatService {
                     log.error("重试次数已达上限，停止重试");
                     return writeGenericStreamError(sink);
                 }
+                // 异步路径禁止 Thread.sleep 占请求/回调线程；直接进入下一轮（上游侧已失败）
+                if (sink != null && sink.isAsync()) {
+                    log.info("异步路径 ContentPolicy 重试不 sleep，立即第{}次重试", retryCount);
+                    continue;
+                }
                 try {
                     Thread.sleep(1000L * retryCount);
                 } catch (InterruptedException ie) {

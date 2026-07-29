@@ -15,6 +15,7 @@ import com.instser.chat.service.ChatService;
 import com.instser.chat.service.stream.ChatStreamEventWriter;
 import com.instser.chat.service.stream.ChatStreamSink;
 import com.instser.chat.service.stream.StreamSubscriptionRegistry;
+import com.instser.chat.service.stream.StreamTerminalReason;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -84,30 +85,7 @@ public class ChatApiController {
             ChatRequestDTO chatRequest = ChatRequestDTO.fromMap(request);
             sessionIdForCancel = chatRequest.getSessionId();
             final String sessionId = sessionIdForCancel;
-
-            emitter.onCompletion(() -> {
-                if (sessionId != null) {
-                    streamSubscriptionRegistry.cancel(sessionId);
-                }
-            });
-            emitter.onTimeout(() -> {
-                LogUtils.logUserSessionWarning(log, chatRequest.getUserId(), sessionId, "API超时", "聊天流 emitter 超时");
-                if (sessionId != null) {
-                    streamSubscriptionRegistry.cancel(sessionId);
-                    chatInterruptService.interruptChat(sessionId, chatRequest.getUserId());
-                }
-                try {
-                    emitter.complete();
-                } catch (Exception ignored) {
-                }
-            });
-            emitter.onError(ex -> {
-                LogUtils.logUserSessionWarning(log, chatRequest.getUserId(), sessionId, "API通道错误", "emitter error: {}",
-                        ex != null ? ex.getMessage() : "null");
-                if (sessionId != null) {
-                    streamSubscriptionRegistry.cancel(sessionId);
-                }
-            });
+            registerEmitterCancelHooks(emitter, sessionId, getCurrentUserId(authentication));
 
             LogUtils.logUserSessionDebug(log, chatRequest.getUserId(), chatRequest.getSessionId(), "聊天处理", "开始处理聊天请求(非阻塞)");
 
@@ -468,14 +446,15 @@ public class ChatApiController {
 
     private void registerEmitterCancelHooks(ResponseBodyEmitter emitter, String sessionId, Long userId) {
         emitter.onCompletion(() -> {
+            // 正常 complete 时 registry 多半已 remove；cancel 幂等
             if (sessionId != null) {
-                streamSubscriptionRegistry.cancel(sessionId);
+                streamSubscriptionRegistry.cancel(sessionId, StreamTerminalReason.CANCELLED);
             }
         });
         emitter.onTimeout(() -> {
             LogUtils.logUserSessionWarning(log, userId, sessionId, "API超时", "流 emitter 超时");
             if (sessionId != null) {
-                streamSubscriptionRegistry.cancel(sessionId);
+                streamSubscriptionRegistry.cancel(sessionId, StreamTerminalReason.TIMEOUT);
                 if (userId != null) {
                     chatInterruptService.interruptChat(sessionId, userId);
                 }
@@ -489,7 +468,11 @@ public class ChatApiController {
             LogUtils.logUserSessionWarning(log, userId, sessionId, "API通道错误", "emitter error: {}",
                     ex != null ? ex.getMessage() : "null");
             if (sessionId != null) {
-                streamSubscriptionRegistry.cancel(sessionId);
+                StreamTerminalReason reason = StreamTerminalReason.FAILURE;
+                if (ex instanceof java.io.IOException) {
+                    reason = StreamTerminalReason.WRITE_FAILED;
+                }
+                streamSubscriptionRegistry.cancel(sessionId, reason);
             }
         });
     }
@@ -602,9 +585,9 @@ public class ChatApiController {
 
             LogUtils.logUserSessionOperation(log, userId, sessionId, "API调用", "请求中断聊天会话");
 
-            // 执行中断操作：业务标志 + 取消上游订阅
+            // 执行中断操作：业务标志 + 取消上游订阅（状态机：stop）
             boolean success = chatInterruptService.interruptChat(sessionId, userId);
-            streamSubscriptionRegistry.cancel(sessionId);
+            streamSubscriptionRegistry.cancel(sessionId, StreamTerminalReason.INTERRUPTED);
 
             if (success) {
                 LogUtils.logUserSessionOperation(log, userId, sessionId, "API响应", "成功中断聊天会话");

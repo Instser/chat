@@ -27,6 +27,11 @@ spring:
   autoconfigure:
     exclude:
       - com.baomidou.mybatisplus.autoconfigure.MybatisPlusAutoConfiguration$DdlApplicationRunner
+  # 异步 MVC（ResponseBodyEmitter）超时：-1 表示不由 Spring 主动掐断长对话。
+  # 实际总时长仍受网关/上游读超时约束；Emitter 构造侧当前为 0L（不超时）。
+  mvc:
+    async:
+      request-timeout: -1
 
   # Redis配置
   redis:
