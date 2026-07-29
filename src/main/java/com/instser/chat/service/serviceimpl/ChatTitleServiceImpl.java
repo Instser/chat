@@ -11,11 +11,13 @@ import com.instser.chat.service.ChatSessionService;
 import com.instser.chat.service.ChatTitleService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.ArrayList;
@@ -31,6 +33,12 @@ public class ChatTitleServiceImpl implements ChatTitleService {
     private final AiModelService aiModelService;
     private final ChatSessionService chatSessionService;
     private final RestTemplate restTemplate;
+
+    @Value("${chat.loadtest.mock-upstream-enabled:false}")
+    private boolean mockUpstreamEnabled;
+
+    @Value("${chat.loadtest.mock-upstream-url:http://127.0.0.1:18080/v1/chat/completions}")
+    private String mockUpstreamUrl;
 
     @Override
     public List<Map<String, String>> buildTitleMessages(ChatRequestDTO request, String aiResponse) {
@@ -164,9 +172,17 @@ public class ChatTitleServiceImpl implements ChatTitleService {
             logAiTitleRequestDetails(requestBody, model);
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.setBearerAuth(model.getApiKey());
+            String apiKey = model.getApiKey();
+            if (mockUpstreamEnabled && !StringUtils.hasText(apiKey)) {
+                apiKey = "mock-key";
+            }
+            headers.setBearerAuth(apiKey);
+            String targetUrl = resolveUpstreamUrl(model);
+            if (mockUpstreamEnabled) {
+                log.warn("LOADTEST mock-upstream 已启用，标题生成改打: {} (原={})", targetUrl, model.getBaseUrl());
+            }
             ResponseEntity<String> response = restTemplate.postForEntity(
-                    model.getBaseUrl(),
+                    targetUrl,
                     new HttpEntity<>(requestBody, headers),
                     String.class
             );
@@ -202,5 +218,12 @@ public class ChatTitleServiceImpl implements ChatTitleService {
         } catch (Exception e) {
             log.warn("记录AI标题生成请求详细信息失败: {}", e.getMessage());
         }
+    }
+
+    private String resolveUpstreamUrl(AiModel model) {
+        if (mockUpstreamEnabled && StringUtils.hasText(mockUpstreamUrl)) {
+            return mockUpstreamUrl.trim();
+        }
+        return model.getBaseUrl();
     }
 }

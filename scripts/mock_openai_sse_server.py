@@ -93,6 +93,12 @@ class Handler(BaseHTTPRequestHandler):
 
         self.wfile.write(b"data: [DONE]\n\n")
         self.wfile.flush()
+        # 主动关闭连接，否则 WebClient.timeout 会等到读超时才 complete
+        try:
+            self.close_connection = True
+            self.connection.shutdown(2)
+        except Exception:
+            pass
 
 
 def main():

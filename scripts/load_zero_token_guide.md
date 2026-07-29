@@ -23,36 +23,52 @@ python scripts/load_concurrent_api.py \
 
 ---
 
-## 方案 2：本地 Mock 上游（推荐，0 token 测流式）
+## 方案 2：启动参数劫持上游（推荐，不改 DB）
+
+**不要改数据库模型 baseUrl。** 用运行时开关把主聊天流（及标题生成）指到本地 Mock：
+
+```properties
+chat.loadtest.mock-upstream-enabled=true
+chat.loadtest.mock-upstream-url=http://127.0.0.1:18080/v1/chat/completions
+```
 
 ### 步骤
 
 1. 启动 Mock：
 ```bash
-python scripts/mock_openai_sse_server.py --port 18080 --delay-ms 10
+python scripts/mock_openai_sse_server.py --port 18080 --delay-ms 5
 ```
 
-2. **临时**把「仅测试用」模型的 `base_url` 改成：
-```text
-http://127.0.0.1:18080/v1/chat/completions
-```
-（数据库 `ai_model` 表，或管理后台；测完改回。）
-
-3. 跑流式并发（仍走完整后端，但不打真实 AI）：
+2. 启动后端时打开开关（示例）：
 ```bash
-python scripts/load_concurrent_stream.py \
-  --base http://127.0.0.1:8080/api \
-  --model-id <测试模型ID> \
-  --concurrency 10 --users 10
+mvn -DskipTests spring-boot:run \
+  -Dspring-boot.run.arguments="--chat.loadtest.mock-upstream-enabled=true --chat.loadtest.mock-upstream-url=http://127.0.0.1:18080/v1/chat/completions"
 ```
 
-注意：若产品限制「同用户同时只能 1 路聊天」，单账号 10 并发仍会有一半业务拒绝——这是产品规则，不是 token 问题。真并发请多测试账号，或错峰 `--stagger-ms`。
+3. 跑流式并发（0 token）：
+```bash
+# 同账号错峰（避开「同时只能一路聊天」）
+python scripts/load_concurrent_stream.py --concurrency 5 --users 5 --stagger-ms 6000 --max-wait 30
+
+# 真·同时并发会触发 product_limit:active_session（预期）
+python scripts/load_concurrent_stream.py --concurrency 10 --users 10 --max-wait 20
+```
+
+日志应出现：`LOADTEST mock-upstream 已启用，AI 流改打: http://127.0.0.1:18080/...`
+
+### 为何不「写死测试模型 / 改库」
+
+| 做法 | 问题 |
+|---|---|
+| 改 DB 某模型 baseUrl | 容易忘改回，污染环境 |
+| 代码写死 modelId→mock | 耦合业务、难关 |
+| **启动参数覆盖** | 默认关；不改库；可随时关 |
 
 ### 服务器上
 
-- Mock 可与后端同机：`127.0.0.1:18080`
-- 或单独压测机跑 Mock，模型 `baseUrl` 指向该内网地址
-- **不要**把生产主模型永久改成 Mock
+- Mock 与后端同机即可
+- **生产默认 enabled=false**
+- 压测完关掉开关重启
 
 ---
 
