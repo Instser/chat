@@ -91,8 +91,32 @@ python scripts/load_concurrent_stream.py --concurrency 10 --users 10 --max-wait 
 
 ---
 
+## 方案 5：多账号测「最大同时聊天」
+
+产品限制：**同一用户同时只能 1 路**。测最大并发必须多账号。
+
+```bash
+# 1. 准备账号文件（复制示例）
+cp scripts/load_accounts.example.txt scripts/my_accounts.txt
+# 编辑为真实测试号，账号数 >= 目标并发
+
+# 2. 固定并发（例如 20 路同时）
+python scripts/load_concurrent_stream_multi.py \
+  --accounts scripts/my_accounts.txt \
+  --concurrency 20 --total 20 --max-wait 30
+
+# 3. 自动探测最大并发（成功率阈值默认 0.9）
+python scripts/load_concurrent_stream_multi.py \
+  --accounts scripts/my_accounts.txt \
+  --find-max --max-probe 50 --success-rate 0.9
+```
+
+上限受 **账号数量** 限制：`best_concurrency <= len(accounts)`。
+
+---
+
 ## 建议组合（部署验收）
 
 1. `load_concurrent_api.py` 50×200  
-2. Mock 上游 + `load_concurrent_stream.py` 10×20（多账号更佳）  
+2. Mock 上游 + 多账号 `load_concurrent_stream_multi.py --find-max`  
 3. 抽样 1～3 次真 AI 冒烟（才允许耗 token）
