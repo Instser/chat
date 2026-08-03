@@ -1,16 +1,19 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-08-03 17:56:00
+**📅 最后更新**: 2026-08-03 21:06:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v148.0
+**📊 文档版本**: v149.0
 
 ## 当前任务
+- 运维端与管理员后台已完成开发方案和冗余管理体系清理方案，尚未实施代码、SQL 或表删除；下一步应先执行阶段 0 安全收口，再启动管理员前后端开发。
+- 管理员前端技术栈、代码仓库位置以及是否引入 Flyway/Liquibase 涉及新增依赖，实施前需用户确认。
 - 后端已切换到家用服务器本机 Redis（`127.0.0.1:6379`），服务运行中。
 - 后端推理思考块（reasoning）一等通道已按 v1.3 定稿落地，待前端接 `g:` / 历史 `reasoning`。
 - 上线前需执行 SQL：`sql/2026-08-03_chat_message_add_reasoning.sql`（若生产库尚未执行）。
 - 域名 `chat.instser.cn` 外网仍可能受阿里云备案拦截影响。
 
 ## 最新完成任务
+✅ **运维端与管理员后台完整开发方案 + 冗余管理体系清理方案完成** — 基于现有 8080/8081 端口、JWT/API Key 混合鉴权、运维/日志/缓存/支付接口和多代管理 SQL，确定交互式后台统一复用 `t_user + JWT + ROLE_ADMIN`、机器运维仅保留只读 `/ops/** + X-API-Key`；规划仪表盘、用户账户、套餐、模型、订单支付、审计和运维中心的前后端接口、数据库增量、测试、发布与回滚；另列出旧管理员表、缓存双重账号密码、重复支付管理路径、说明型配置类、规划审计表和多代 dump 的分阶段清理、验证及回滚条件。文档：`docs/plans/26-08-03_20-59_运维端与管理员后台完整开发方案_v1.0.md`、`docs/plans/26-08-03_20-59_冗余管理体系清理方案_v1.0.md`。仅文档和 memory bank 变更，未实施代码、SQL、依赖或数据库删除。 (2026-08-03 21:06)
 ✅ **家用服务器本地 Redis 部署 + 后端切换** — 在 `home.example.com` 安装 `redis-server 6.0.16`，仅监听 `127.0.0.1:6379` 并设置 `requirepass`；`application.yml`/`RedissonConfig` 默认改连本机，修复仅密码认证；JDK17 构建并部署 jar，`chat:chat_00 RUNNING`，日志确认 `Redisson客户端创建成功，连接到: 127.0.0.1:6379`。文档：`docs/2026-08-03_17-56_家用服务器本地Redis部署与后端切换_v1.0.md`。 (2026-08-03 17:56)
 ✅ **系统提示词防泄露正确改造** — 文档 `docs/2026-08-03_16-39_系统提示词防泄露与思考块安全优化方案_v1.0.md`；`role=system` + 精简 `IDENTITY_SYSTEM_PROMPT`；`PromptLeakGuard` 对 reasoning/content 出站治理；删除伪 who-are-you 注入；skill 默认不注入。相关单测 28 通过。 (2026-08-03 16:44)
 ✅ **后端推理思考块改造（v1.3）** — `deepThinking` 改为上游原生 `thinking true/false`（显式传参），删除 `DEEP_THINKING_PROMPT` 诱导路径；新增 `UpstreamDeltaParser`/`AssistantOutput`，`StreamResponseState` 双缓冲 content/reasoning；Sink/Writer 支持 `g:`；落库 `t_chat_message.reasoning`；完成/中断可存仅思考消息；模型上下文只回喂 content；retry/edit-resend 贯通 deepThinking。`mvn compile` BUILD SUCCESS。 (2026-08-03 11:22)
