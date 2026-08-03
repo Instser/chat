@@ -8,7 +8,7 @@
 |------|------|
 | JDK | 17 |
 | MySQL | 8.0 |
-| Redis | 7.x |
+| Redis | 6.x（家用服务器本机 `127.0.0.1:6379`） |
 
 ### 启动命令
 
@@ -20,10 +20,10 @@ java -jar chat.jar --spring.profiles.active=prod
 
 | 变量 | 说明 |
 |------|------|
-| `REDIS_HOST` | Redis 主机地址 |
-| `REDIS_PORT` | Redis 端口（默认 13095） |
-| `REDIS_USERNAME` | Redis 用户名（默认 default） |
-| `REDIS_PASSWORD` | Redis 密码 |
+| `REDIS_HOST` | Redis 主机地址（生产默认 `127.0.0.1`） |
+| `REDIS_PORT` | Redis 端口（生产默认 `6379`） |
+| `REDIS_USERNAME` | Redis 用户名（本地 Redis 可为空；云 ACL 才需要） |
+| `REDIS_PASSWORD` | Redis 密码（本地 `requirepass`） |
 | `GEMINI_API_KEY` | Gemini API 密钥 |
 | `GEMINI_BASE_URL` | Gemini API 地址 |
 | `MYSQL_PASSWORD` | MySQL 密码 |

@@ -19,16 +19,17 @@ import lombok.extern.slf4j.Slf4j;
 @Configuration
 public class RedissonConfig {
 
-    @Value("${spring.redis.host:redis-13095.crce178.ap-east-1-1.ec2.redns.redis-cloud.com}")
+    @Value("${spring.redis.host:127.0.0.1}")
     private String redisHost;
 
-    @Value("${spring.redis.port:13095}")
+    @Value("${spring.redis.port:6379}")
     private int redisPort;
 
-    @Value("${spring.redis.username:default}")
+    // 本地 Redis 仅 requirepass 时可不配置 username；有 ACL 再传用户名
+    @Value("${spring.redis.username:}")
     private String redisUsername;
 
-    @Value("${spring.redis.password:eIEWBI0I5hhi8DgVLIydW5FEF6pHU70d}")
+    @Value("${spring.redis.password:your-redis-password}")
     private String redisPassword;
 
     @Value("${spring.redis.database:0}")
@@ -89,11 +90,17 @@ public class RedissonConfig {
                 // 设置DNS监控间隔
                 .setDnsMonitoringInterval(5000);
 
-        // 只有在用户名和密码不为空时才设置认证信息
-        if (redisUsername != null && !redisUsername.trim().isEmpty() && 
-            redisPassword != null && !redisPassword.trim().isEmpty()) {
-            log.info("配置Redis认证信息，用户名: {}", redisUsername);
-            singleServerConfig.setUsername(redisUsername).setPassword(redisPassword);
+        // 本地 Redis 常见仅 requirepass（无 ACL 用户名）；云 Redis 可能同时有 username+password
+        boolean hasPassword = redisPassword != null && !redisPassword.trim().isEmpty();
+        boolean hasUsername = redisUsername != null && !redisUsername.trim().isEmpty();
+        if (hasPassword) {
+            singleServerConfig.setPassword(redisPassword);
+            if (hasUsername) {
+                log.info("配置Redis认证信息，用户名: {}", redisUsername);
+                singleServerConfig.setUsername(redisUsername);
+            } else {
+                log.info("配置Redis密码认证（无用户名/ACL）");
+            }
         } else {
             log.info("未配置Redis认证信息，使用无密码连接");
         }

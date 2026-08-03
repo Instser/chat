@@ -12,7 +12,7 @@
 - **文档解析**: Apache POI 4.1.2 (Office文档)、Apache PDFBox 2.0.29 (PDF文档)
 - **图片处理**: Base64编码、AI图片解析服务集成
 - **汇率服务**: 完整的实时汇率API系统 (exchangerate-api.com)
-- **缓存系统**: Redis 分布式缓存 (your-db-host.example.com:31122)
+- **缓存系统**: Redis 本地实例（家用服务器 `127.0.0.1:6379`，`redis-server 6.0.16`；可用环境变量覆盖）
 - **分布式锁**: Redisson 3.24.3 (基于Redis实现)
 - **联网搜索**: Gemini联网AI模块 (单KEY模式，基于Gemini 2.5-flash模型，已兼容官方原生REST的 `x-goog-api-key` + `google_search` 请求方式)
 - **内容提取**: Gemini联网一体化处理，智能内容获取和摘要生成
@@ -84,13 +84,15 @@
 - **完成时间**: 2025年6月29日 17:12
 
 ## Redis配置更新状态
-- **服务器地址**: your-db-host.example.com:31122
-- **认证信息**: username=default, password=pt7tv2k4
-- **配置状态**: ✅ 已更新application.yml配置文件
-- **更新时间**: 2025年6月30日 15:55
-- **配置文件**: src/main/resources/application.yml
-- **连接池**: Lettuce连接池，最大连接数20，最小空闲连接数5
+- **服务器地址**: 家用服务器本机 `127.0.0.1:6379`（与后端同机）
+- **认证信息**: 仅密码 `requirepass`（无 ACL 用户名；username 配置为空）
+- **配置状态**: ✅ 已从云 Redis 切换到本地 Redis，并完成生产部署验证
+- **更新时间**: 2026年8月3日 17:56
+- **配置文件**: `src/main/resources/application.yml`、`RedissonConfig.java`
+- **连接池**: Lettuce 连接池（yml 默认 max-active 20 / min-idle 5；生产 supervisor 可覆盖）
 - **缓存配置**: 30分钟TTL，支持分布式缓存和分布式锁
+- **覆盖方式**: `REDIS_HOST` / `REDIS_PORT` / `REDIS_USERNAME` / `REDIS_PASSWORD`
+- **部署文档**: `docs/2026-08-03_17-56_家用服务器本地Redis部署与后端切换_v1.0.md`
 
 ## 错误处理与重试机制
 
