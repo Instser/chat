@@ -33,12 +33,13 @@ spring:
     async:
       request-timeout: -1
 
-  # Redis配置
+  # Redis配置（默认连接家用服务器本机 Redis；可用环境变量覆盖）
   redis:
-    host: ${REDIS_HOST:redis-13095.crce178.ap-east-1-1.ec2.redns.redis-cloud.com}
-    port: ${REDIS_PORT:13095}
-    username: ${REDIS_USERNAME:default}
-    password: ${REDIS_PASSWORD:eIEWBI0I5hhi8DgVLIydW5FEF6pHU70d}
+    host: ${REDIS_HOST:127.0.0.1}
+    port: ${REDIS_PORT:6379}
+    # 本地 Redis 6 仅 requirepass，无 ACL 用户名；留空表示不发送 username
+    username: ${REDIS_USERNAME:}
+    password: ${REDIS_PASSWORD:your-redis-password}
     database: ${REDIS_DATABASE:0}
     timeout: 3000ms
     lettuce:
@@ -544,6 +545,14 @@ chat:
 
     # 重试次数
     retry-count: ${GEMINI_RETRY_COUNT:3}
+
+  # 关键词 + 状态机 skill 注入（仅 active 全文；Redis 会话态）
+  prompt-skills:
+    enabled: ${CHAT_PROMPT_SKILLS_ENABLED:true}
+    miss-threshold: ${CHAT_PROMPT_SKILLS_MISS_THRESHOLD:3}
+    max-active: ${CHAT_PROMPT_SKILLS_MAX_ACTIVE:2}
+    redis-ttl-minutes: ${CHAT_PROMPT_SKILLS_REDIS_TTL_MINUTES:30}
+    redis-key-prefix: ${CHAT_PROMPT_SKILLS_REDIS_KEY_PREFIX:chat:prompt-skill:}
 
 # 缓存管理配置 - 整合到现有的management端口8081
 cache:

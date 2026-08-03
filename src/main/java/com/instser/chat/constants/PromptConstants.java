@@ -4,7 +4,7 @@ package com.instser.chat.constants;
  * 提示词常量类。
  *
  * <p>默认每轮仅注入精简身份 system prompt，降低可见思维链复述系统指令的风险。
- * 前后端 skill 规范拆为独立常量，默认不拼进每轮请求（可按场景按需附加）。</p>
+ * 前后端 skill 规范拆为独立常量；由 {@code PromptSkillService} 按会话 active 集合按需附加。</p>
  */
 public class PromptConstants {
 

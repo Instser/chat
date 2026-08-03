@@ -1,6 +1,5 @@
 package com.instser.chat.service.stream;
 
-import com.instser.chat.constants.PromptConstants;
 import com.instser.chat.dto.ChatRequestDTO;
 import com.instser.chat.dto.ChatResponseDTO;
 import com.instser.chat.entity.AiModel;
@@ -8,6 +7,8 @@ import com.instser.chat.monitor.AiCallMonitor;
 import com.instser.chat.service.ChatInterruptService;
 import com.instser.chat.service.ai.AiChatClient;
 import com.instser.chat.service.content.ContentPolicy;
+import com.instser.chat.service.prompt.PromptSkillService;
+import com.instser.chat.service.prompt.SkillUpdateMode;
 import com.instser.chat.util.ChatSessionManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -40,6 +41,7 @@ public class AiStreamProcessor {
     private final ChatInterruptService chatInterruptService;
     private final AiCallMonitor aiCallMonitor;
     private final StreamSubscriptionRegistry streamSubscriptionRegistry;
+    private final PromptSkillService promptSkillService;
 
     @FunctionalInterface
     public interface CompletionCallback {
@@ -273,9 +275,10 @@ public class AiStreamProcessor {
                                        BiFunction<Map<String, Object>, AiModel, Void> requestLogger,
                                        StreamResponseState streamState,
                                        AiCallMonitor.CallContext[] aiCtxHolder) {
-        List<Map<String, String>> messagesWithPrompt = buildMessagesWithPrompt(request);
+        List<Map<String, String>> messagesWithPrompt = buildMessagesWithPrompt(request, interfaceType);
         boolean thinkingEnabled = Boolean.TRUE.equals(request.getDeepThinking());
-        log.info("组装消息完成，thinking={}，消息总数: {}", thinkingEnabled, messagesWithPrompt.size());
+        log.info("组装消息完成，thinking={}，interfaceType={}，消息总数: {}",
+                thinkingEnabled, interfaceType, messagesWithPrompt.size());
 
         StringBuilder jsonBuffer = new StringBuilder();
         StringBuilder lineBuffer = new StringBuilder();
@@ -437,19 +440,31 @@ public class AiStreamProcessor {
     }
 
     /**
-     * 组装发给上游的 messages：标准 system 角色注入精简身份 prompt，与 deepThinking 解耦。
-     * 不再使用伪 user/assistant 轮次塞入全量指令，降低可见思维链复述系统提示的风险。
+     * 组装发给上游的 messages：标准 system 角色注入 identity + 会话 active skill 全文。
+     * retry 仅复用 active（不推进 miss）；chat/edit-resend 跑状态机更新。
      */
-    private List<Map<String, String>> buildMessagesWithPrompt(ChatRequestDTO request) {
+    private List<Map<String, String>> buildMessagesWithPrompt(ChatRequestDTO request, String interfaceType) {
         List<Map<String, String>> messagesWithPrompt = new ArrayList<>();
         Map<String, String> systemMessage = new HashMap<>();
         systemMessage.put("role", "system");
-        systemMessage.put("content", PromptConstants.IDENTITY_SYSTEM_PROMPT);
+        SkillUpdateMode mode = resolveSkillUpdateMode(interfaceType);
+        String systemPrompt = promptSkillService.resolveSystemPrompt(
+                request.getSessionId(),
+                request.getMessages(),
+                mode);
+        systemMessage.put("content", systemPrompt);
         messagesWithPrompt.add(systemMessage);
         if (request.getMessages() != null) {
             messagesWithPrompt.addAll(request.getMessages());
         }
         return messagesWithPrompt;
+    }
+
+    private static SkillUpdateMode resolveSkillUpdateMode(String interfaceType) {
+        if (interfaceType != null && "retry".equalsIgnoreCase(interfaceType.trim())) {
+            return SkillUpdateMode.REUSE_ONLY;
+        }
+        return SkillUpdateMode.UPDATE;
     }
 
     private void maybeSendNetwork(ChatRequestDTO request, ChatStreamSink sink, StreamResponseState streamState) {
