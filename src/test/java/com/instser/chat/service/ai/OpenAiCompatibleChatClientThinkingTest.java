@@ -17,21 +17,21 @@ class OpenAiCompatibleChatClientThinkingTest {
             new OpenAiCompatibleChatClient(WebClient.builder());
 
     @Test
-    void thinkingTrueSetsExplicitTrueAndNoGeminiNone() {
+    void thinkingTrueSetsExplicitEnabledAndNoGeminiNone() {
         AiModel model = model("openai", "gpt-x");
         Map<String, Object> body = client.buildStreamRequestBody(model, List.of(Map.of("role", "user", "content", "hi")), true);
 
-        assertEquals(Boolean.TRUE, body.get("thinking"));
+        assertEquals(Map.of("type", "enabled"), body.get("thinking"));
         assertFalse(body.containsKey("reasoning_effort"));
         assertEquals(Boolean.TRUE, body.get("stream"));
     }
 
     @Test
-    void thinkingFalseSetsExplicitFalse() {
+    void thinkingFalseSetsExplicitDisabled() {
         AiModel model = model("openai", "gpt-x");
         Map<String, Object> body = client.buildStreamRequestBody(model, List.of(Map.of("role", "user", "content", "hi")), false);
 
-        assertEquals(Boolean.FALSE, body.get("thinking"));
+        assertEquals(Map.of("type", "disabled"), body.get("thinking"));
         assertFalse(body.containsKey("reasoning_effort"));
     }
 
@@ -40,7 +40,7 @@ class OpenAiCompatibleChatClientThinkingTest {
         AiModel model = model("Gemini", "gemini-2.5-flash");
         Map<String, Object> body = client.buildStreamRequestBody(model, List.of(Map.of("role", "user", "content", "hi")), false);
 
-        assertEquals(Boolean.FALSE, body.get("thinking"));
+        assertEquals(Map.of("type", "disabled"), body.get("thinking"));
         assertEquals("none", body.get("reasoning_effort"));
     }
 
@@ -49,7 +49,7 @@ class OpenAiCompatibleChatClientThinkingTest {
         AiModel model = model("Gemini", "gemini-2.5-flash");
         Map<String, Object> body = client.buildStreamRequestBody(model, List.of(Map.of("role", "user", "content", "hi")), true);
 
-        assertEquals(Boolean.TRUE, body.get("thinking"));
+        assertEquals(Map.of("type", "enabled"), body.get("thinking"));
         assertFalse(body.containsKey("reasoning_effort"));
     }
 

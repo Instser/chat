@@ -32,15 +32,18 @@ public class OpenAiCompatibleChatClient implements AiChatClient {
         requestBody.put("model", model.getModelCode());
         requestBody.put("messages", messages);
         requestBody.put("stream", true);
-        // 开启/关闭都显式传，避免依赖上游默认值
-        requestBody.put("thinking", thinkingEnabled);
+        // DeepSeek / OpenAI 兼容网关：thinking 需 ThinkingOptions 结构，不能传 boolean
+        // 开/关都显式传 type，避免依赖上游默认值
+        Map<String, Object> thinkingOptions = new HashMap<>();
+        thinkingOptions.put("type", thinkingEnabled ? "enabled" : "disabled");
+        requestBody.put("thinking", thinkingOptions);
 
         if ("Gemini".equalsIgnoreCase(model.getProvider())
                 || (model.getProvider() != null && model.getProvider().toLowerCase().contains("gemini"))) {
             // Gemini 特例：关闭思考时强制 none；开启时不覆盖原生 thinking 开关
             if (!thinkingEnabled) {
                 requestBody.put("reasoning_effort", "none");
-                log.debug("检测到Gemini模型，thinking=false，添加 reasoning_effort=none");
+                log.debug("检测到Gemini模型，thinking=disabled，添加 reasoning_effort=none");
             }
         }
         return requestBody;
