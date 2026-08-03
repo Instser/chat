@@ -1752,7 +1752,7 @@ if (contentNode != null && contentNode.isTextual()) {
 ## CORS 配置驱动模式 (2026-07-22 18:54)
 
 ### 背景
-部署域名切换到 `chat.instser.xyz` 后，硬编码在 `SecurityConfig`/`WebConfig` 的 CORS 白名单不含新域名，浏览器登录收到 `403 Invalid CORS request`；仅改 yml 无效。
+部署域名切换到 `chat.instser.cn` 后，硬编码在 `SecurityConfig`/`WebConfig` 的 CORS 白名单不含新域名，浏览器登录收到 `403 Invalid CORS request`；仅改 yml 无效。
 
 ### 模式
 1. `SecurityConfig` 与 `WebConfig` 通过 `@Value` 读取：
@@ -1763,7 +1763,7 @@ if (contentNode != null && contentNode.isTextual()) {
    - `app.cors.max-age`
 2. 使用 `split(",")` 解析逗号分隔配置
 3. `application.yml` 提供默认值，并支持 `CORS_ALLOWED_ORIGINS` 等环境变量覆盖
-4. 当前默认生产域名：`https://chat.instser.xyz` / `http://chat.instser.xyz`
+4. 当前默认生产域名：`https://chat.instser.cn` / `http://chat.instser.cn`（后端 jar 已于 2026-08-03 部署到 home.example.com）
 
 ### 注意
 - Spring Security 的 `corsConfigurationSource` 与 WebMvc `addCorsMappings` 需保持一致来源

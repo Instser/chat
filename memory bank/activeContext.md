@@ -1,14 +1,16 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-07-30 00:12:00
+**📅 最后更新**: 2026-08-03 00:45:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v144.0
+**📊 文档版本**: v145.0
 
 ## 当前任务
-- P0/P1 安全修复已落地（模型脱敏、会话归属、POST /chat 鉴权、admin 支付角色）；**未**轮换 Key、**未**改 yml。
-- 可选：密钥轮换；yml 默认 secret 清理；多实例中断/限流 Redis 化。
+- 域名已切换到 `chat.instser.cn`，后端代码/配置已更新并部署到 `home.example.com`。
+- 公网侧仍存在阿里云备案拦截（`.cn` HTTP 403 Non-compliance ICP Filing）；需完成备案/解封后外网才可直接访问。
+- 前端仍为同源部署；本轮未强制重发前端产物（`api-utils` 动态同源已兼容新域名）。
 
 ## 最新完成任务
+✅ **生产域名切换到 chat.instser.cn + 后端重建部署** — 后端 `application.yml` 默认 CORS/支付回调/OAuth 回调改为 `chat.instser.cn`；8 个 Controller 硬编码 CORS 同步更新；JDK17 重新构建 jar 并部署到 `home.example.com`（supervisor `chat:chat_00` RUNNING）。家用机本机验证 health 200、`/api/models` 401、带 `Origin: https://chat.instser.cn` 登录 200。公网机本机 `--resolve` 验证 `https://chat.instser.cn` 首页 200、API 401、登录 200。外网因备案拦截暂不可直连。文档与 memory bank 已同步。 (2026-08-03 00:45)
 ✅ **安全 P0/P1 修复（不含 yml/轮换）** — `/chat/models` 返回脱敏 VO；ChatApi/ChatController 会话读写删归属校验；`POST /chat` 取消 permitAll；`/user/status/admin/{id}` 需 admin；探针通过；`mvn test` 75 绿。 (2026-07-30 00:12)
 ✅ **非阻塞流式改造 tickets 01–08** — `StreamSubscriptionRegistry`/`StreamCompletionGate`；三入口 `ResponseBodyEmitter`；async 无 `blockLast`；续写去 `join`；完成收尾 `publishOn(boundedElastic)`；`spring.mvc.async.request-timeout=-1`；stop/超时 cancel；相关测试 35/35 通过。票据：`.scratch/chat-nonblocking-stream/`。 (2026-07-29 20:42)
 ✅ **ChatServiceImpl 方案终态收敛** — 新增 `ChatRequestValidator`、`ChatPersistenceService`、`ChatUsageRecorder`、`StreamCompletionCoordinator`、`AiRequestLogger`；`ChatServiceImpl` 仅编排 chat/retry/edit-resend。相关测试 25/25 通过。`ChatServiceImpl` ~411 行。 (2026-07-29 03:25)
@@ -16,7 +18,7 @@
 ✅ **AI 对话解耦一步到位收尾** — retry/edit-resend 全量 Preparer；handleStreamCompletion 落库/联网/标题/完成帧委托；ChatApiController 错误写出改 Writer。相关测试 15/15 通过。 (2026-07-29 01:44)
 ✅ **AI 对话解耦全阶段实施（分 commit）** — 按补丁 v1.1 落地：`2e03e77` 阶段1.5；`12b3e7e` 阶段2；`942e4de` 阶段2-B；`0d3adb0` 阶段4；`c66cf36` 阶段3；`872df3e` 阶段5。 (2026-07-29 01:40)
 ✅ **AI 对话业务模块解耦方案补丁 v1.1** — 不推翻 `docs/plans/26-05-29_12-25_AI对话业务模块解耦方案_v1.0.md`，仅补齐缺口：① 三入口 `Chat/Retry/EditResend PrepareHandler`；② `StreamResponseState` 替代 `boolean[]`；③ 限流时序固化（prepare 之后 guard）；④ 阶段 1.5（可选技术噪声外提）与阶段二/二-B 方法迁移映射、DoD、测试命令；⑤ 明确从阶段二接着做、禁止回退阶段一。产出：`docs/plans/26-07-29_00-58_AI对话业务模块解耦方案补丁_v1.1.md`，并在主方案与思想体系文首增加交叉引用。无 Java/SQL/依赖变更。 (2026-07-29 00:58)
-✅ **推理模型流式响应 nullnull 修复 + CORS 配置化** — 根因是推理模型思考阶段发 `content:null`，Jackson `asText()` 返回字符串 `"null"` 被误当内容推给前端。已在 `processCompleteJson` / `processContinuationJson` 两处增加 `isTextual()` 守卫；同时将 `SecurityConfig`/`WebConfig` CORS 改为读取 `application.yml`，默认域名切到 `chat.instser.xyz`。工作区曾混入回退 `3867e0a` 解耦的约 500 行改动，已恢复 HEAD 解耦版后仅重打两处修复。总结文档：`docs/2026-07-22_18-54_推理模型流式响应nullnull修复总结_v1.0.md`。 (2026-07-22 18:54)
+✅ **推理模型流式响应 nullnull 修复 + CORS 配置化** — 根因是推理模型思考阶段发 `content:null`，Jackson `asText()` 返回字符串 `"null"` 被误当内容推给前端。已在 `processCompleteJson` / `processContinuationJson` 两处增加 `isTextual()` 守卫；同时将 `SecurityConfig`/`WebConfig` CORS 改为读取 `application.yml`，默认域名切到 `chat.instser.cn`。工作区曾混入回退 `3867e0a` 解耦的约 500 行改动，已恢复 HEAD 解耦版后仅重打两处修复。总结文档：`docs/2026-07-22_18-54_推理模型流式响应nullnull修复总结_v1.0.md`。 (2026-07-22 18:54)
 ✅ **AI 对话业务模块阶段一解耦完成** — 新增 `ChatTitleService` / `ChatTitleServiceImpl`，迁移标题消息构建、固定 4L 标题模型调用、标题清洗和会话标题落库逻辑；新增 `NetworkSearchOrchestrator` / `NetworkSearchOrchestratorImpl` 和 `NetworkSearchProcessResult`，迁移 Gemini 联网完整上下文构建、响应格式化、来源转换和异常降级逻辑；扩展 `NetworkAiService` 接口新增 `queryWithGeminiGrounding`，`ChatServiceImpl` 改为编排委托，不再强转 `NetworkAiServiceImpl`。新增 `ChatTitleServiceImplTest` 与 `NetworkSearchOrchestratorImplTest`，并通过阶段一相关回归测试与编译验证。 (2026-06-06 21:03)
 ✅ **项目技术选型与业务逻辑面试复盘文档完成** — 输出 `docs/06-06_16-58_项目技术选型与业务逻辑面试复盘_v1.0.md`，基于 `pom.xml`、`README.md`、`memory bank` 与核心源码梳理项目定位、技术选型、分层结构、AI 流式对话、retry/edit-resend、Gemini 联网、文件解析、套餐权限、支付策略、多层缓存、安全认证、traceId、AI 监控指标、面试回答模板与复习顺序。本次仅新增学习文档并同步 memory bank，无业务代码、SQL、依赖或运行库版本改动。 (2026-06-06 16:58)
 ✅ **AI核心性能指标监控开发方案完成** — 输出 `docs/06-05 06_52 AI核心性能指标监控开发方案_v1.0.md`，基于当前已有 Actuator、Micrometer、ApiMetrics、SlowRequestInterceptor、AiCallMetrics、AiCallMonitor 和 `ChatServiceImpl.streamChatWithAI` 埋点现状，分析 TTFT、Token 生成速度 TPS/TPOT、End-to-End latency、Throughput（RPS/RPM）的指标口径、Prometheus 指标设计、Grafana Dashboard、告警规则、测试验收与分阶段开发顺序；明确当前 Token Counter 存在但主链路未调用 `addTokens`，因此 Token 消耗、TPS/TPOT 需要补真实采集。本次仅新增学习方案文档，无代码改动。 (2026-06-05 06:52)
@@ -227,7 +229,7 @@
 
 ### 历史完成 (2025-07-07 15:33)
 1. **易支付回调URL问题诊断** - ✅ 通过日志分析确认支付URL中包含正确的notify_url参数
-2. **回调URL可访问性验证** - ✅ 验证https://api.example.com/api/payment/yipay/notify可正常访问
+2. **回调URL可访问性验证** - ✅ 验证https://chat.instser.cn/api/payment/yipay/notify可正常访问
 3. **问题根因分析** - ✅ 确定问题出现在易支付商户后台配置，而非代码层面
 4. **解决方案制定** - ✅ 制定商户后台配置、客服联系、代码优化三套解决方案
 5. **技术验证完成** - ✅ 通过实际支付订单日志确认notify_url参数正确传递

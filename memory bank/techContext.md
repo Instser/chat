@@ -33,7 +33,7 @@
 - **管理缓存接口**: `/admin/cache/user-package/refresh-all`，需同时提供管理 API Key 与 `application.yml` 中 `cache.management.admin.account/password` 配置的管理员账号密码
 
 
-- **CORS 配置驱动** (2026-07-22 18:54): `SecurityConfig` / `WebConfig` 从 `app.cors.*` 读取允许源/方法/头/凭据/maxAge；默认允许源含 localhost、局域网 IP、`chat.instser.xyz`；可用 `CORS_ALLOWED_ORIGINS` 环境变量覆盖。改域名无需重写 Java 硬编码。
+- **CORS 配置驱动** (2026-08-03 00:45): `SecurityConfig` / `WebConfig` 从 `app.cors.*` 读取允许源/方法/头/凭据/maxAge；默认允许源含 localhost、局域网 IP、`chat.instser.cn`；可用 `CORS_ALLOWED_ORIGINS` 环境变量覆盖。Controller 层硬编码 CORS 已同步为 `chat.instser.cn`。
 - **流式 content 节点校验** (2026-07-22 18:54): 解析 OpenAI 兼容 SSE/`choices[].delta.content` 时必须用 `JsonNode.isTextual()`，禁止对可能为 JSON null 的节点直接 `asText()`（会得到字符串 `"null"`）。
 
 ## 技术约束

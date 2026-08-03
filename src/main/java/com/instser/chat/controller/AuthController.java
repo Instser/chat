@@ -50,7 +50,7 @@ import org.springframework.web.bind.annotation.*;
     "http://127.0.0.1:*", "https://127.0.0.1:*",
     "http://192.168.1.100:*", "https://192.168.1.100:*",
     "http://192.168.1.101:*", "https://192.168.1.101:*",
-    "https://chat.example.com", "http://chat.example.com",
+    "https://chat.instser.cn", "http://chat.instser.cn",
     "http://203.0.113.16:3000"
 }, allowedHeaders = "*", allowCredentials = "true")
 @Tag(name = "认证管理", description = "用户认证相关接口，包括注册、登录、登出等功能")

@@ -197,7 +197,7 @@ alipay:
   sandbox: ${ALIPAY_SANDBOX:true}
 
   # 支付回调通知URL
-  notify-url: ${ALIPAY_NOTIFY_URL:https://api.example.com/api/payment/alipay/notify}
+  notify-url: ${ALIPAY_NOTIFY_URL:https://chat.instser.cn/api/payment/alipay/notify}
   # 网关地址（可选，默认使用新加坡网关）
   gateway-url: ${ALIPAY_GATEWAY_URL:}
 
@@ -211,7 +211,7 @@ yipay:
   url: ${YIPAY_URL:https://your-pay-gateway.example.com}
 
   # 支付回调通知URL
-  notify-url: ${YIPAY_NOTIFY_URL:https://api.example.com/api/payment/yipay/notify}
+  notify-url: ${YIPAY_NOTIFY_URL:https://chat.instser.cn/api/payment/yipay/notify}
   # 默认支付方式（alipay、wxpay、qqpay等）
   default-type: ${YIPAY_DEFAULT_TYPE:alipay}
 
@@ -242,9 +242,9 @@ payment:
     # Webhook验证ID（用于验证PayPal webhook签名，可选）
     webhook-id: ${PAYPAL_WEBHOOK_ID:}
     # 支付成功后跳转URL
-    return-url: ${PAYPAL_RETURN_URL:https://chat.example.com/payment/success}
+    return-url: ${PAYPAL_RETURN_URL:https://chat.instser.cn/payment/success}
     # 支付取消后跳转URL
-    cancel-url: ${PAYPAL_CANCEL_URL:https://chat.example.com/payment/cancel}
+    cancel-url: ${PAYPAL_CANCEL_URL:https://chat.instser.cn/payment/cancel}
 
   # Stripe配置
   stripe:
@@ -331,7 +331,7 @@ oauth2:
       token-uri: ${GOOGLE_TOKEN_URI:https://oauth2.googleapis.com/token}
       user-info-uri: ${GOOGLE_USER_INFO_URI:https://www.googleapis.com/oauth2/v3/userinfo}
       scope: ${GOOGLE_SCOPE:openid,email,profile}
-      redirect-uri: ${GOOGLE_REDIRECT_URI:https://chat.example.com/auth/callback/google}
+      redirect-uri: ${GOOGLE_REDIRECT_URI:https://chat.instser.cn/auth/callback/google}
     github:
       name: "GitHub"
       icon: "github"
@@ -341,7 +341,7 @@ oauth2:
       token-uri: ${GITHUB_TOKEN_URI:https://github.com/login/oauth/access_token}
       user-info-uri: ${GITHUB_USER_INFO_URI:https://api.github.com/user}
       scope: ${GITHUB_SCOPE:user:email}
-      redirect-uri: ${GITHUB_REDIRECT_URI:https://chat.example.com/auth/callback/github}
+      redirect-uri: ${GITHUB_REDIRECT_URI:https://chat.instser.cn/auth/callback/github}
 
 
 
@@ -462,7 +462,7 @@ exchange:
 app:
   # CORS配置 - 允许localhost、局域网和生产域名访问
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:*,https://localhost:*,http://127.0.0.1:*,https://127.0.0.1:*,http://192.168.1.100:*,https://192.168.1.100:*,http://192.168.1.101:*,https://192.168.1.101:*,https://chat.instser.xyz,http://chat.instser.xyz,http://203.0.113.16:3000}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:*,https://localhost:*,http://127.0.0.1:*,https://127.0.0.1:*,http://192.168.1.100:*,https://192.168.1.100:*,http://192.168.1.101:*,https://192.168.1.101:*,https://chat.instser.cn,http://chat.instser.cn,http://203.0.113.16:3000}
     allowed-methods: ${CORS_ALLOWED_METHODS:*}
     allowed-headers: ${CORS_ALLOWED_HEADERS:*}
     allow-credentials: ${CORS_ALLOW_CREDENTIALS:true}
