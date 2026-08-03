@@ -1780,3 +1780,8 @@ if (contentNode != null && contentNode.isTextual()) {
 - Spring Security 的 `corsConfigurationSource` 与 WebMvc `addCorsMappings` 需保持一致来源
 - 改域名优先改配置/环境变量，避免再次硬编码
 
+
+## 2026-08-03 18:18 关键词状态机 skill 注入
+- 已实现 PromptSkill* + AiStreamProcessor 接入；Redis TTL 30m
+- 后端 jar 已部署 home.example.com；E2E: 你是谁无 skill / React→FRONTEND / Spring→BACKEND 切换
+- 前端无需改动（skill 仅后端 system）

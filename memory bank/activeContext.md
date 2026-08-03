@@ -1,15 +1,17 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-08-03 16:44:00
+**📅 最后更新**: 2026-08-03 17:56:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v147.0
+**📊 文档版本**: v148.0
 
 ## 当前任务
-- 后端推理思考块（reasoning）一等通道已按 v1.3 定稿落地，待部署与前端接 `g:` / 历史 `reasoning`。
-- 上线前需执行 SQL：`sql/2026-08-03_chat_message_add_reasoning.sql`。
+- 后端已切换到家用服务器本机 Redis（`127.0.0.1:6379`），服务运行中。
+- 后端推理思考块（reasoning）一等通道已按 v1.3 定稿落地，待前端接 `g:` / 历史 `reasoning`。
+- 上线前需执行 SQL：`sql/2026-08-03_chat_message_add_reasoning.sql`（若生产库尚未执行）。
 - 域名 `chat.instser.cn` 外网仍可能受阿里云备案拦截影响。
 
 ## 最新完成任务
+✅ **家用服务器本地 Redis 部署 + 后端切换** — 在 `home.example.com` 安装 `redis-server 6.0.16`，仅监听 `127.0.0.1:6379` 并设置 `requirepass`；`application.yml`/`RedissonConfig` 默认改连本机，修复仅密码认证；JDK17 构建并部署 jar，`chat:chat_00 RUNNING`，日志确认 `Redisson客户端创建成功，连接到: 127.0.0.1:6379`。文档：`docs/2026-08-03_17-56_家用服务器本地Redis部署与后端切换_v1.0.md`。 (2026-08-03 17:56)
 ✅ **系统提示词防泄露正确改造** — 文档 `docs/2026-08-03_16-39_系统提示词防泄露与思考块安全优化方案_v1.0.md`；`role=system` + 精简 `IDENTITY_SYSTEM_PROMPT`；`PromptLeakGuard` 对 reasoning/content 出站治理；删除伪 who-are-you 注入；skill 默认不注入。相关单测 28 通过。 (2026-08-03 16:44)
 ✅ **后端推理思考块改造（v1.3）** — `deepThinking` 改为上游原生 `thinking true/false`（显式传参），删除 `DEEP_THINKING_PROMPT` 诱导路径；新增 `UpstreamDeltaParser`/`AssistantOutput`，`StreamResponseState` 双缓冲 content/reasoning；Sink/Writer 支持 `g:`；落库 `t_chat_message.reasoning`；完成/中断可存仅思考消息；模型上下文只回喂 content；retry/edit-resend 贯通 deepThinking。`mvn compile` BUILD SUCCESS。 (2026-08-03 11:22)
 ✅ **生产域名切换到 chat.instser.cn + 后端重建部署** — 后端 `application.yml` 默认 CORS/支付回调/OAuth 回调改为 `chat.instser.cn`；8 个 Controller 硬编码 CORS 同步更新；JDK17 重新构建 jar 并部署到 `home.example.com`（supervisor `chat:chat_00` RUNNING）。家用机本机验证 health 200、`/api/models` 401、带 `Origin: https://chat.instser.cn` 登录 200。公网机本机 `--resolve` 验证 `https://chat.instser.cn` 首页 200、API 401、登录 200。外网因备案拦截暂不可直连。文档与 memory bank 已同步。 (2026-08-03 00:45)
@@ -1757,3 +1759,9 @@
   - 内容质量：HTML清理，字符规范，格式统一
   - 配置灵活：通过常量配置各种长度限制参数
 - **预期效果**: 避免500错误，提升联网搜索稳定性，改善用户体验，确保JSON格式正确性
+
+
+## 2026-08-03 18:18 关键词状态机 skill 注入
+- 已实现 PromptSkill* + AiStreamProcessor 接入；Redis TTL 30m
+- 后端 jar 已部署 home.example.com；E2E: 你是谁无 skill / React→FRONTEND / Spring→BACKEND 切换
+- 前端无需改动（skill 仅后端 system）
