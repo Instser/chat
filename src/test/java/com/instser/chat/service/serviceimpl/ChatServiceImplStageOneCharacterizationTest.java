@@ -306,7 +306,7 @@ class ChatServiceImplStageOneCharacterizationTest {
                 new EditResendPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, networkSearchOrchestrator)),
                 new ChatRequestValidator(aiModelService, chatLimitService, chatRateLimitService, chatInterruptService, chatSessionService, chatMessageService, new ChatPersistenceService(chatMessageService, chatSessionService, fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, chatTitleService, webSearchContentService))),
                 new ChatPersistenceService(chatMessageService, chatSessionService, fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, chatTitleService, webSearchContentService)),
-                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new com.instser.chat.service.stream.UpstreamDeltaParser(new ContentPolicy()), chatInterruptService, aiCallMonitor, new com.instser.chat.service.stream.StreamSubscriptionRegistry()),
+                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new com.instser.chat.service.stream.UpstreamDeltaParser(new ContentPolicy(), new com.instser.chat.service.content.PromptLeakGuard()), chatInterruptService, aiCallMonitor, new com.instser.chat.service.stream.StreamSubscriptionRegistry()),
                 new StreamCompletionCoordinator(truncationDetectionService, mock(ChatContinuationService.class), new AiResponseCompletionHandler(chatMessageService, chatLimitService, chatTitleService, webSearchContentService), new ChatUsageRecorder()),
                 new AiRequestLogger()
         );

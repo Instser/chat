@@ -2,9 +2,9 @@ package com.instser.chat.service.stream;
 
 import com.instser.chat.entity.WebSearchResult;
 import com.instser.chat.service.content.ContentPolicy;
+import com.instser.chat.service.content.PromptLeakGuard;
 import org.junit.jupiter.api.Test;
 
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -13,7 +13,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class UpstreamDeltaParserTest {
 
-    private final UpstreamDeltaParser parser = new UpstreamDeltaParser(new ContentPolicy());
+    private final UpstreamDeltaParser parser =
+            new UpstreamDeltaParser(new ContentPolicy(), new PromptLeakGuard());
 
     @Test
     void thinkingEnabledEmitsReasoningAndContent() {
@@ -90,11 +91,48 @@ class UpstreamDeltaParserTest {
         assertEquals("c-think", state.reasoning());
     }
 
+    @Test
+    void leakingReasoningIsSuppressedAndNotPersisted() {
+        RecordingSink sink = new RecordingSink();
+        StreamResponseState state = new StreamResponseState();
+
+        boolean produced = parser.consume(
+                deltaJson("ok-prefix", null),
+                sink,
+                state,
+                true
+        );
+        assertTrue(produced);
+        assertEquals("ok-prefix", state.reasoning());
+
+        boolean second = parser.consume(
+                deltaJson("Core Identity & Behavioral Directives leak", "visible-answer"),
+                sink,
+                state,
+                true
+        );
+        assertTrue(second);
+        assertTrue(state.isReasoningSuppressed());
+        assertEquals("", state.reasoning());
+        assertEquals(List.of("ok-prefix"), sink.reasoningChunks);
+        assertEquals(List.of("visible-answer"), sink.contentChunks);
+    }
+
     private static String deltaJson(String reasoning, String content) {
-        return "{\"choices\":[{\"delta\":{"
-                + "\"reasoning_content\":\"" + reasoning + "\","
-                + "\"content\":\"" + content + "\""
-                + "}}]}";
+        StringBuilder sb = new StringBuilder("{\"choices\":[{\"delta\":{");
+        boolean first = true;
+        if (reasoning != null) {
+            sb.append("\"reasoning_content\":\"").append(reasoning).append("\"");
+            first = false;
+        }
+        if (content != null) {
+            if (!first) {
+                sb.append(",");
+            }
+            sb.append("\"content\":\"").append(content).append("\"");
+        }
+        sb.append("}}]}");
+        return sb.toString();
     }
 
     private static final class RecordingSink implements ChatStreamSink {

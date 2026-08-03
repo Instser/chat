@@ -16,6 +16,8 @@ public final class StreamResponseState {
     private final AtomicBoolean completionHandled = new AtomicBoolean(false);
     private boolean firstTokenMarked;
     private boolean networkResultsSent;
+    /** 命中系统提示泄露特征后，抑制后续 reasoning 写出与落库。 */
+    private boolean reasoningSuppressed;
     private final StreamCompletionGate completionGate = new StreamCompletionGate();
 
     private final StringBuilder contentBuffer = new StringBuilder();
@@ -63,6 +65,10 @@ public final class StreamResponseState {
 
     public boolean isNetworkResultsSent() {
         return networkResultsSent;
+    }
+
+    public boolean isReasoningSuppressed() {
+        return reasoningSuppressed;
     }
 
     public void markContentSent() {
@@ -123,12 +129,30 @@ public final class StreamResponseState {
     }
 
     public void appendReasoning(String text) {
+        if (reasoningSuppressed) {
+            return;
+        }
         if (text == null || text.isEmpty()) {
             return;
         }
         reasoningBuffer.append(text);
         hasReasoningSent = true;
         realAiResponse = true;
+    }
+
+    /**
+     * 判定 reasoning 含系统提示泄露特征：清空缓冲、标记抑制，避免落库/历史回放。
+     * 已发出的 SSE 分片无法撤回，后续分片不再写出。
+     */
+    public void suppressReasoningLeak() {
+        this.reasoningSuppressed = true;
+        this.reasoningBuffer.setLength(0);
+        this.hasReasoningSent = false;
+    }
+
+    public void clearReasoning() {
+        this.reasoningBuffer.setLength(0);
+        this.hasReasoningSent = false;
     }
 
     public String content() {

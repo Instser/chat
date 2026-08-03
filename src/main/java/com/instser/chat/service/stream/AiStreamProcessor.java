@@ -437,18 +437,15 @@ public class AiStreamProcessor {
     }
 
     /**
-     * 组装发给上游的 messages：固定身份 prompt，与 deepThinking 解耦。
+     * 组装发给上游的 messages：标准 system 角色注入精简身份 prompt，与 deepThinking 解耦。
+     * 不再使用伪 user/assistant 轮次塞入全量指令，降低可见思维链复述系统提示的风险。
      */
     private List<Map<String, String>> buildMessagesWithPrompt(ChatRequestDTO request) {
         List<Map<String, String>> messagesWithPrompt = new ArrayList<>();
-        Map<String, String> fakeUserMessage = new HashMap<>();
-        fakeUserMessage.put("role", "user");
-        fakeUserMessage.put("content", "who are you？");
-        messagesWithPrompt.add(fakeUserMessage);
-        Map<String, String> fakeAssistantMessage = new HashMap<>();
-        fakeAssistantMessage.put("role", "assistant");
-        fakeAssistantMessage.put("content", PromptConstants.DEFAULT_SYSTEM_PROMPT);
-        messagesWithPrompt.add(fakeAssistantMessage);
+        Map<String, String> systemMessage = new HashMap<>();
+        systemMessage.put("role", "system");
+        systemMessage.put("content", PromptConstants.IDENTITY_SYSTEM_PROMPT);
+        messagesWithPrompt.add(systemMessage);
         if (request.getMessages() != null) {
             messagesWithPrompt.addAll(request.getMessages());
         }

@@ -3,6 +3,7 @@ package com.instser.chat.service.stream;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.instser.chat.service.content.ContentPolicy;
+import com.instser.chat.service.content.PromptLeakGuard;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -17,6 +18,7 @@ import org.springframework.stereotype.Component;
 public class UpstreamDeltaParser {
 
     private final ContentPolicy contentPolicy;
+    private final PromptLeakGuard promptLeakGuard;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
@@ -48,9 +50,12 @@ public class UpstreamDeltaParser {
             if (thinkingEnabled) {
                 String reasoning = textualOrNull(delta.get("reasoning_content"));
                 if (reasoning != null && !reasoning.isEmpty()) {
-                    sink.writeReasoning(reasoning);
-                    state.appendReasoning(reasoning);
-                    produced = true;
+                    String safeReasoning = promptLeakGuard.admitReasoningDelta(state, reasoning);
+                    if (safeReasoning != null && !safeReasoning.isEmpty()) {
+                        sink.writeReasoning(safeReasoning);
+                        state.appendReasoning(safeReasoning);
+                        produced = true;
+                    }
                 }
             }
 
@@ -62,6 +67,7 @@ public class UpstreamDeltaParser {
                 }
                 if (!detection.wasFiltered()) {
                     String clean = detection.getCleanedContent();
+                    clean = promptLeakGuard.sanitizePublicText(clean);
                     if (clean != null && !clean.isEmpty()) {
                         sink.writeContent(clean);
                         state.appendContent(clean);
@@ -81,7 +87,7 @@ public class UpstreamDeltaParser {
 
     /**
      * 续写路径：仅解析 content 文本（不做 contentPolicy 检测），供缓存/对齐逻辑使用。
-     * reasoning 在 thinkingEnabled 时直接写出并累计到 state。
+     * reasoning 在 thinkingEnabled 时经泄露治理后写出并累计到 state。
      */
     public String extractRawContentAndEmitReasoning(String jsonData,
                                                     ChatStreamSink sink,
@@ -104,12 +110,16 @@ public class UpstreamDeltaParser {
             if (thinkingEnabled) {
                 String reasoning = textualOrNull(delta.get("reasoning_content"));
                 if (reasoning != null && !reasoning.isEmpty()) {
-                    sink.writeReasoning(reasoning);
-                    state.appendReasoning(reasoning);
+                    String safeReasoning = promptLeakGuard.admitReasoningDelta(state, reasoning);
+                    if (safeReasoning != null && !safeReasoning.isEmpty()) {
+                        sink.writeReasoning(safeReasoning);
+                        state.appendReasoning(safeReasoning);
+                    }
                 }
             }
 
-            return textualOrNull(delta.get("content"));
+            String content = textualOrNull(delta.get("content"));
+            return promptLeakGuard.sanitizePublicText(content);
         } catch (Exception e) {
             log.error("续写解析上游 delta 失败: {}", e.getMessage());
             return null;
