@@ -23,6 +23,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -31,10 +32,29 @@ import static org.mockito.Mockito.when;
 class AiResponseCompletionHandlerTest {
 
     @Test
+    void persistReasoningOnlyShouldSucceedWithoutContent() {
+        ChatMessageService chatMessageService = mock(ChatMessageService.class);
+        ChatLimitService chatLimitService = mock(ChatLimitService.class);
+        when(chatMessageService.sendMessageWithTokenInfo(eq("s1"), eq("assistant"), eq(""), eq("think"), eq(1L), eq(2L)))
+                .thenReturn(MessageSaveResult.success(11L, "uuid-r", 0));
+
+        AiResponseCompletionHandler handler = new AiResponseCompletionHandler(
+                chatMessageService,
+                chatLimitService,
+                mock(ChatTitleService.class),
+                mock(WebSearchContentService.class)
+        );
+
+        String id = handler.persistAssistantContent("s1", 1L, 2L, "", "think");
+        assertEquals("uuid-r", id);
+        verify(chatLimitService, never()).recordTokenUsage(anyLong(), any());
+    }
+
+    @Test
     void persistAssistantContentShouldRecordTokenUsageWhenPresent() {
         ChatMessageService chatMessageService = mock(ChatMessageService.class);
         ChatLimitService chatLimitService = mock(ChatLimitService.class);
-        when(chatMessageService.sendMessageWithTokenInfo("s1", "assistant", "hi", 1L, 2L))
+        when(chatMessageService.sendMessageWithTokenInfo(eq("s1"), eq("assistant"), eq("hi"), isNull(), eq(1L), eq(2L)))
                 .thenReturn(MessageSaveResult.success(10L, "uuid-1", 12));
         when(chatLimitService.recordTokenUsage(1L, 12)).thenReturn(true);
 
@@ -77,7 +97,7 @@ class AiResponseCompletionHandlerTest {
         ChatTitleService chatTitleService = mock(ChatTitleService.class);
         WebSearchContentService webSearchContentService = mock(WebSearchContentService.class);
 
-        when(chatMessageService.sendMessageWithTokenInfo(eq("s1"), eq("assistant"), anyString(), eq(9L), eq(3L)))
+        when(chatMessageService.sendMessageWithTokenInfo(eq("s1"), eq("assistant"), anyString(), any(), eq(9L), eq(3L)))
                 .thenReturn(MessageSaveResult.success(1L, "ai-msg", 5));
         when(chatLimitService.recordTokenUsage(9L, 5)).thenReturn(true);
         when(webSearchContentService.saveWebSearchContent(eq("ai-msg"), any(SearchResponse.class), eq(9L), eq("s1")))
@@ -120,7 +140,7 @@ class AiResponseCompletionHandlerTest {
         ChatTitleService chatTitleService = mock(ChatTitleService.class);
         WebSearchContentService webSearchContentService = mock(WebSearchContentService.class);
 
-        when(chatMessageService.sendMessageWithTokenInfo(eq("s1"), eq("assistant"), anyString(), eq(9L), eq(3L)))
+        when(chatMessageService.sendMessageWithTokenInfo(eq("s1"), eq("assistant"), anyString(), any(), eq(9L), eq(3L)))
                 .thenReturn(MessageSaveResult.success(1L, "ai-msg-int", 5));
         when(chatLimitService.recordTokenUsage(9L, 5)).thenReturn(true);
         when(chatLimitService.recordModelChatUsage(9L, "3")).thenReturn(true);
@@ -149,7 +169,7 @@ class AiResponseCompletionHandlerTest {
         assertEquals("ai-msg-int", messageId);
         // 中断内容应落库并带 [已中断] 标记
         verify(chatMessageService).sendMessageWithTokenInfo(eq("s1"), eq("assistant"),
-                eq("partial answer [已中断]"), eq(9L), eq(3L));
+                eq("partial answer [已中断]"), any(), eq(9L), eq(3L));
         // 中断不绑联网
         verify(webSearchContentService, never()).saveWebSearchContent(anyString(), any(), anyLong(), anyString());
         // 禁止再写普通 d:stop / 任何 d: 完成帧（中断帧由流层单独写）

@@ -4,17 +4,16 @@ import com.instser.chat.dto.ChatRequestDTO;
 import com.instser.chat.entity.AiModel;
 import com.instser.chat.service.TruncationDetectionService;
 import com.instser.chat.service.continuation.ChatContinuationService;
+import com.instser.chat.service.stream.AssistantOutput;
 import com.instser.chat.service.stream.ChatStreamSink;
+import com.instser.chat.service.stream.StreamResponseState;
 import com.instser.chat.service.usage.ChatUsageRecorder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 /**
- * 流完成后的续写 + 副作用总协调（从 ChatServiceImpl 下沉）。
- *
- * <p>调用方应在 boundedElastic / 业务池线程上调用，避免在 reactor-http 或 Tomcat 请求线程上
- * 执行续写 block / DB 落库。</p>
+ * 流完成后的续写 + 副作用总协调。
  */
 @Slf4j
 @Component
@@ -30,7 +29,7 @@ public class StreamCompletionCoordinator {
                             boolean willGenerateTitle,
                             boolean isRealAiResponse,
                             ChatRequestDTO request,
-                            StringBuilder aiResponseContentRef,
+                            StreamResponseState streamState,
                             AiModel model,
                             String interfaceType,
                             boolean wasManuallyInterrupted) {
@@ -41,7 +40,7 @@ public class StreamCompletionCoordinator {
                 wasManuallyInterrupted);
 
         try {
-            String currentContent = aiResponseContentRef.toString();
+            String currentContent = streamState.content();
             boolean shouldApply = truncationDetectionService.shouldApplyTruncationDetection(interfaceType);
 
             if (wasManuallyInterrupted) {
@@ -58,7 +57,7 @@ public class StreamCompletionCoordinator {
                 if (!isComplete) {
                     log.info("检测到内容被截断，开始续写流程，会话ID：{}", request.getSessionId());
                     String finalContent = chatContinuationService.performMultipleContinuations(
-                            sink, request, model, currentContent, aiResponseContentRef);
+                            sink, request, model, currentContent, streamState);
                     if (finalContent != null) {
                         if (finalContent.startsWith("CONTINUATION_INTERRUPTED:")) {
                             String actualContent = finalContent.substring("CONTINUATION_INTERRUPTED:".length());
@@ -67,7 +66,7 @@ public class StreamCompletionCoordinator {
                             finalInterruptedStatus = true;
                         } else {
                             log.info("续写流程完成，会话ID：{}，最终内容长度：{}",
-                                    request.getSessionId(), aiResponseContentRef.length());
+                                    request.getSessionId(), streamState.content().length());
                         }
                     } else {
                         log.warn("续写操作失败或无内容生成，继续正常流程，会话ID：{}", request.getSessionId());
@@ -75,15 +74,12 @@ public class StreamCompletionCoordinator {
                 }
             }
 
-            String contentToSave = aiResponseContentRef.toString();
+            AssistantOutput output = streamState.toAssistantOutput();
             boolean shouldPersist = isRealAiResponse || finalInterruptedStatus;
-            if (shouldPersist && contentToSave != null && !contentToSave.trim().isEmpty()) {
-                // interrupted=true 时 completeSideEffects 不再写普通完成帧
+            if (shouldPersist && output.hasPersistableOutput()) {
                 aiResponseCompletionHandler.completeSideEffects(
                         sink, request, model, willGenerateTitle, isRealAiResponse,
-                        contentToSave, finalInterruptedStatus, true);
-                // 用户手动 stop：AiStreamProcessor 已写过 d:interrupted
-                // 续写中断：流层未写中断帧，这里补发一次，保证前端仍能结束
+                        output, finalInterruptedStatus, true);
                 if (finalInterruptedStatus && !wasManuallyInterrupted) {
                     try {
                         sink.writeInterruptCompletion();
@@ -93,7 +89,6 @@ public class StreamCompletionCoordinator {
                     }
                 }
             } else if (finalInterruptedStatus) {
-                // 无内容可落库时：用户 stop 通常已在流层写过中断帧；续写中断则补写
                 if (!wasManuallyInterrupted) {
                     try {
                         sink.writeInterruptCompletion();

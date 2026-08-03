@@ -328,7 +328,7 @@ public class ChatServiceImpl implements ChatService {
      * @param sink           流写出端口
      */
     @Override
-    public void processRetryChat(String sessionId, String messageId, Long modelId, Boolean network,
+    public void processRetryChat(String sessionId, String messageId, Long modelId, Boolean network, Boolean deepThinking,
                                  Authentication authentication, ChatStreamSink sink) {
         log.info("【重试开始】用户重试请求，会话ID：{}，消息ID：{}，模型ID：{}，联网：{}",
                 sessionId, messageId, modelId, network);
@@ -396,7 +396,7 @@ public class ChatServiceImpl implements ChatService {
                 return;
             }
 
-            ChatRequestDTO retryRequest = buildCommandRequest(sessionId, userId, model, network, preparedTurn);
+            ChatRequestDTO retryRequest = buildCommandRequest(sessionId, userId, model, network, deepThinking, preparedTurn);
             boolean willGenerateTitle = preparedTurn.isWillGenerateTitle();
             log.info("重新生成请求 - 是否需要生成标题：{}，用户消息数量：{}", willGenerateTitle,
                     preparedTurn.getMessages().stream().filter(msg -> "user".equals(msg.get("role"))).count());
@@ -441,7 +441,8 @@ public class ChatServiceImpl implements ChatService {
      */
     @Override
     public void processEditResendChat(String sessionId, String messageId, String newContent, String filesId,
-                                      Long modelId, Boolean network, Authentication authentication, ChatStreamSink sink) {
+                                      Long modelId, Boolean network, Boolean deepThinking,
+                                      Authentication authentication, ChatStreamSink sink) {
         log.info("开始处理编辑重发请求，sessionId：{}，messageId：{}，newContent长度：{}，filesId：{}，modelId：{}，network：{}",
                 sessionId, messageId, newContent.length(), filesId, modelId, network);
         try {
@@ -504,7 +505,7 @@ public class ChatServiceImpl implements ChatService {
                 return;
             }
 
-            ChatRequestDTO editResendRequest = buildCommandRequest(sessionId, userId, model, network, preparedTurn);
+            ChatRequestDTO editResendRequest = buildCommandRequest(sessionId, userId, model, network, deepThinking, preparedTurn);
             boolean willGenerateTitle = preparedTurn.isWillGenerateTitle();
             log.info("编辑重发请求 - 是否需要生成标题：{}，用户消息数量：{}", willGenerateTitle,
                     preparedTurn.getMessages().stream().filter(msg -> "user".equals(msg.get("role"))).count());
@@ -614,13 +615,14 @@ public class ChatServiceImpl implements ChatService {
      * <p><b>内部引用</b>：{@link PreparedTurn} 的 messages / 联网结果 / 原始消息快照</p>
      */
     private ChatRequestDTO buildCommandRequest(String sessionId, Long userId, AiModel model,
-                                               Boolean network, PreparedTurn preparedTurn) {
+                                               Boolean network, Boolean deepThinking,
+                                               PreparedTurn preparedTurn) {
         ChatRequestDTO request = new ChatRequestDTO();
         request.setMessages(preparedTurn.getMessages());
         request.setUserId(userId);
         request.setModelId(model.getId());
         request.setSessionId(sessionId);
-        request.setDeepThinking(false);
+        request.setDeepThinking(Boolean.TRUE.equals(deepThinking));
         request.setNetwork(network != null ? network : false);
         request.setNetworkSearchResults(preparedTurn.getNetworkSearchResults());
         request.setOriginalMessages(preparedTurn.getOriginalMessages());

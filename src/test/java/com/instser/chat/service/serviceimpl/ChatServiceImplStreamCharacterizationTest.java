@@ -42,8 +42,10 @@ import java.util.concurrent.Executor;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -59,7 +61,7 @@ class ChatServiceImplStreamCharacterizationTest {
     void saveAiResponseDelegatesToCompletionPersistAndRecordsTokens() {
         ChatMessageService chatMessageService = mock(ChatMessageService.class);
         ChatLimitService chatLimitService = mock(ChatLimitService.class);
-        when(chatMessageService.sendMessageWithTokenInfo("s", "assistant", "ok", 1L, 2L))
+        when(chatMessageService.sendMessageWithTokenInfo(eq("s"), eq("assistant"), eq("ok"), any(), eq(1L), eq(2L)))
                 .thenReturn(MessageSaveResult.success(9L, "m-uuid", 8));
         when(chatLimitService.recordTokenUsage(1L, 8)).thenReturn(true);
 
@@ -67,7 +69,7 @@ class ChatServiceImplStreamCharacterizationTest {
         // 终态：接口仅保留 saveAiResponse；内部仍走 completion persist + token 记录
         service.saveAiResponse("s", 1L, 2L, "ok");
 
-        verify(chatMessageService).sendMessageWithTokenInfo("s", "assistant", "ok", 1L, 2L);
+        verify(chatMessageService).sendMessageWithTokenInfo(eq("s"), eq("assistant"), eq("ok"), any(), eq(1L), eq(2L));
         verify(chatLimitService).recordTokenUsage(1L, 8);
         verify(chatLimitService, never()).recordModelChatUsage(anyLong(), anyString());
     }
@@ -76,14 +78,14 @@ class ChatServiceImplStreamCharacterizationTest {
     void savePartialInterruptedResponseShouldPersistOnlyExplicitCallOnce() {
         ChatMessageService chatMessageService = mock(ChatMessageService.class);
         ChatLimitService chatLimitService = mock(ChatLimitService.class);
-        when(chatMessageService.sendMessageWithTokenInfo(eq("s"), eq("assistant"), anyString(), eq(1L), eq(2L)))
+        when(chatMessageService.sendMessageWithTokenInfo(eq("s"), eq("assistant"), anyString(), any(), eq(1L), eq(2L)))
                 .thenReturn(MessageSaveResult.success(3L, "p-uuid", 4));
 
         ChatServiceImpl service = createService(chatMessageService, chatLimitService);
         service.savePartialAiResponse("s", 1L, 2L, "partial", true);
 
         verify(chatMessageService, times(1))
-                .sendMessageWithTokenInfo(eq("s"), eq("assistant"), eq("partial [已中断]"), eq(1L), eq(2L));
+                .sendMessageWithTokenInfo(eq("s"), eq("assistant"), eq("partial [已中断]"), any(), eq(1L), eq(2L));
         verify(chatLimitService, times(1)).recordTokenUsage(1L, 4);
     }
 
@@ -116,7 +118,7 @@ class ChatServiceImplStreamCharacterizationTest {
                 new EditResendPrepareHandler(chatMessageService, fileUploadService, contextBuilder),
                 new ChatRequestValidator(mock(AiModelService.class), chatLimitService, mock(ChatRateLimitService.class), mock(ChatInterruptService.class), mock(ChatSessionService.class), chatMessageService, new ChatPersistenceService(chatMessageService, mock(ChatSessionService.class), fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), mock(WebSearchContentService.class)))),
                 new ChatPersistenceService(chatMessageService, mock(ChatSessionService.class), fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), mock(WebSearchContentService.class))),
-                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new ContentPolicy(), mock(ChatInterruptService.class), mock(AiCallMonitor.class), new com.instser.chat.service.stream.StreamSubscriptionRegistry()),
+                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new com.instser.chat.service.stream.UpstreamDeltaParser(new ContentPolicy()), mock(ChatInterruptService.class), mock(AiCallMonitor.class), new com.instser.chat.service.stream.StreamSubscriptionRegistry()),
                 new StreamCompletionCoordinator(mock(TruncationDetectionService.class), mock(ChatContinuationService.class), new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), mock(WebSearchContentService.class)), new ChatUsageRecorder()),
                 new AiRequestLogger()
         );

@@ -42,11 +42,12 @@ public class ChatContextBuilder {
                 return null;
             }
 
+            // 模型上下文只含 role+content，永不回喂 reasoning
             List<Map<String, String>> messages = new ArrayList<>();
             for (ChatMessage message : historyMessages) {
                 Map<String, String> msgMap = new HashMap<>();
                 msgMap.put("role", message.getRole());
-                msgMap.put("content", message.getContent());
+                msgMap.put("content", message.getContent() != null ? message.getContent() : "");
                 messages.add(msgMap);
             }
 

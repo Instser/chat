@@ -402,25 +402,33 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
 
     @Override
     public MessageSaveResult sendMessageWithTokenInfo(String sessionId, String role, String content, Long userId, Long modelId) {
+        return sendMessageWithTokenInfo(sessionId, role, content, null, userId, modelId);
+    }
+
+    @Override
+    public MessageSaveResult sendMessageWithTokenInfo(String sessionId, String role, String content,
+                                                      String reasoning, Long userId, Long modelId) {
         log.info("=== ChatMessageService.sendMessageWithTokenInfo 开始 ===");
-        log.info("参数 - sessionId: {}, role: {}, userId: {}, modelId: {}, content长度: {}",
-                sessionId, role, userId, modelId, content != null ? content.length() : 0);
+        log.info("参数 - sessionId: {}, role: {}, userId: {}, modelId: {}, content长度: {}, reasoning长度: {}",
+                sessionId, role, userId, modelId,
+                content != null ? content.length() : 0,
+                reasoning != null ? reasoning.length() : 0);
 
         try {
-            // 计算Token数量
+            // Token 只按正文 content 计算
             Integer tokenCount = calculateTokenCount(content);
             log.info("Token计算完成: {}", tokenCount);
 
-            // 创建消息对象
             ChatMessage message = new ChatMessage();
             String messageId = java.util.UUID.randomUUID().toString().replace("-", "");
             message.setMessageId(messageId);
             message.setSessionId(sessionId);
             message.setRole(role);
-            message.setContent(content);
+            message.setContent(content != null ? content : "");
+            message.setReasoning(reasoning != null && !reasoning.isBlank() ? reasoning : null);
             message.setMessageType("text");
             message.setHasAttachments(0);
-            message.setHasWebSearch(0); // 初始设置为0，如果有联网搜索会在后续更新
+            message.setHasWebSearch(0);
             message.setUserId(userId);
             message.setModelId(modelId != null ? modelId : 1L);
             message.setTokenCount(tokenCount);
@@ -430,7 +438,6 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
 
             log.info("消息对象创建完成，messageId: {}, 准备调用保存方法", messageId);
 
-            // 使用重试机制保存消息
             boolean saved = saveMessageWithRetry(message, 3);
 
             log.info("消息保存操作完成，结果: {}, 消息数据库ID: {}", saved, message.getId());

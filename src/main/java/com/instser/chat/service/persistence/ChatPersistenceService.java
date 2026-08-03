@@ -178,12 +178,23 @@ public class ChatPersistenceService {
     }
 
     public void savePartialAiResponse(String sessionId, Long userId, Long modelId, String partialContent, boolean isInterrupted) {
+        savePartialAiResponse(sessionId, userId, modelId, partialContent, null, isInterrupted);
+    }
+
+    public void savePartialAiResponse(String sessionId, Long userId, Long modelId,
+                                      String partialContent, String reasoning, boolean isInterrupted) {
         try {
-            if (sessionId != null && userId != null && modelId != null
-                    && partialContent != null && !partialContent.trim().isEmpty()) {
-                String contentToSave = isInterrupted ? partialContent + " [已中断]" : partialContent;
+            boolean hasContent = partialContent != null && !partialContent.trim().isEmpty();
+            boolean hasReasoning = reasoning != null && !reasoning.trim().isEmpty();
+            if (sessionId != null && userId != null && modelId != null && (hasContent || hasReasoning)) {
+                String contentToSave;
+                if (hasContent) {
+                    contentToSave = isInterrupted ? partialContent + " [已中断]" : partialContent;
+                } else {
+                    contentToSave = "";
+                }
                 MessageSaveResult result = chatMessageService.sendMessageWithTokenInfo(
-                        sessionId, "assistant", contentToSave, userId, modelId);
+                        sessionId, "assistant", contentToSave, reasoning, userId, modelId);
                 if (result.isSuccess() && result.getTokenCount() > 0) {
                     boolean tokenRecorded = chatLimitService.recordTokenUsage(userId, result.getTokenCount());
                     if (tokenRecorded) {
@@ -193,12 +204,16 @@ public class ChatPersistenceService {
                     }
                 }
                 String logMessage = isInterrupted ? "部分AI响应（中断）已保存到数据库" : "部分AI响应已保存到数据库";
-                log.info("{}，会话ID：{}，用户ID：{}，模型ID：{}，内容长度：{}，Token数：{}",
-                        logMessage, sessionId, userId, modelId, partialContent.length(),
+                log.info("{}，会话ID：{}，用户ID：{}，模型ID：{}，内容长度：{}，reasoning长度：{}，Token数：{}",
+                        logMessage, sessionId, userId, modelId,
+                        partialContent != null ? partialContent.length() : 0,
+                        reasoning != null ? reasoning.length() : 0,
                         result.isSuccess() ? result.getTokenCount() : 0);
             } else {
-                log.warn("无法保存部分AI响应到数据库，缺少必要参数：sessionId={}, userId={}, modelId={}, contentLength={}",
-                        sessionId, userId, modelId, partialContent != null ? partialContent.length() : 0);
+                log.warn("无法保存部分AI响应到数据库，缺少必要参数：sessionId={}, userId={}, modelId={}, contentLength={}, reasoningLength={}",
+                        sessionId, userId, modelId,
+                        partialContent != null ? partialContent.length() : 0,
+                        reasoning != null ? reasoning.length() : 0);
             }
         } catch (Exception e) {
             log.error("保存部分AI响应到数据库失败", e);

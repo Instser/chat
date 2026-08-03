@@ -9,7 +9,7 @@ import com.instser.chat.service.ChatLimitService;
 import com.instser.chat.service.ChatMessageService;
 import com.instser.chat.service.ChatTitleService;
 import com.instser.chat.service.WebSearchContentService;
-import com.instser.chat.service.stream.ChatStreamEventWriter;
+import com.instser.chat.service.stream.AssistantOutput;
 import com.instser.chat.service.stream.ChatStreamSink;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,15 +25,12 @@ import java.util.concurrent.TimeoutException;
  * AI 响应完成副作用编排。
  *
  * <p>固定顺序：
- * 1) 持久化 assistant / partial
+ * 1) 持久化 assistant / partial（content + reasoning）
  * 2) 绑定联网结果
- * 3) 成功才记 usage（由 message 服务/limit 服务内部语义保证）
- * 4) 需要时生成 title
+ * 3) 成功才记 usage
+ * 4) 需要时生成 title（只用 content）
  * 5) 写出 completion 帧
  * </p>
- *
- * <p>阶段4 先收口“落库 + 联网绑定 + 标题 + completion 写出”，
- * 续写仍由 ChatServiceImpl 在调用本 Handler 前完成。</p>
  */
 @Slf4j
 @Component
@@ -46,11 +43,22 @@ public class AiResponseCompletionHandler {
     private final WebSearchContentService webSearchContentService;
 
     public String persistAssistantContent(String sessionId, Long userId, Long modelId, String content) {
-        if (sessionId == null || userId == null || modelId == null || content == null || content.trim().isEmpty()) {
+        return persistAssistantContent(sessionId, userId, modelId, content, null);
+    }
+
+    public String persistAssistantContent(String sessionId, Long userId, Long modelId,
+                                          String content, String reasoning) {
+        if (sessionId == null || userId == null || modelId == null) {
             return null;
         }
+        boolean hasContent = content != null && !content.trim().isEmpty();
+        boolean hasReasoning = reasoning != null && !reasoning.trim().isEmpty();
+        if (!hasContent && !hasReasoning) {
+            return null;
+        }
+        String contentToSave = hasContent ? content : "";
         MessageSaveResult result = chatMessageService.sendMessageWithTokenInfo(
-                sessionId, "assistant", content, userId, modelId);
+                sessionId, "assistant", contentToSave, reasoning, userId, modelId);
         if (!result.isSuccess()) {
             return null;
         }
@@ -152,11 +160,6 @@ public class AiResponseCompletionHandler {
         }
     }
 
-    /**
-     * 完成副作用总编排（不含续写，续写由上游先完成并写入 content）。
-     *
-     * @return assistant message id（可能为 null）
-     */
     public String completeSideEffects(ChatStreamSink sink,
                                       ChatRequestDTO request,
                                       AiModel model,
@@ -165,12 +168,9 @@ public class AiResponseCompletionHandler {
                                       String contentToSave,
                                       boolean interrupted) {
         return completeSideEffects(sink, request, model, willGenerateTitle, isRealAiResponse,
-                contentToSave, interrupted, true);
+                AssistantOutput.of(contentToSave, null), interrupted, true);
     }
 
-    /**
-     * @param recordModelUsage 是否记录模型使用次数（错误响应必须 false）
-     */
     public String completeSideEffects(ChatStreamSink sink,
                                       ChatRequestDTO request,
                                       AiModel model,
@@ -179,10 +179,28 @@ public class AiResponseCompletionHandler {
                                       String contentToSave,
                                       boolean interrupted,
                                       boolean recordModelUsage) {
+        return completeSideEffects(sink, request, model, willGenerateTitle, isRealAiResponse,
+                AssistantOutput.of(contentToSave, null), interrupted, recordModelUsage);
+    }
+
+    /**
+     * 完成副作用总编排（不含续写，续写由上游先完成并写入 state）。
+     */
+    public String completeSideEffects(ChatStreamSink sink,
+                                      ChatRequestDTO request,
+                                      AiModel model,
+                                      boolean willGenerateTitle,
+                                      boolean isRealAiResponse,
+                                      AssistantOutput output,
+                                      boolean interrupted,
+                                      boolean recordModelUsage) {
         String assistantMessageId = null;
-        if (contentToSave != null && !contentToSave.trim().isEmpty() && request != null && model != null) {
-            if (contentToSave.contains("Request failed")) {
-                // 错误响应：只落错误消息，不扣次、不绑联网、不生成标题
+        AssistantOutput safeOutput = output == null ? AssistantOutput.empty() : output;
+        String contentToSave = safeOutput.content();
+        String reasoningToSave = safeOutput.reasoning();
+
+        if (safeOutput.hasPersistableOutput() && request != null && model != null) {
+            if (contentToSave != null && contentToSave.contains("Request failed")) {
                 chatMessageService.sendErrorResponseMessage(
                         request.getSessionId(), request.getUserId(), model.getId(), contentToSave);
                 if (!interrupted) {
@@ -191,10 +209,18 @@ public class AiResponseCompletionHandler {
                 return null;
             }
 
-            String finalContent = interrupted && !contentToSave.endsWith("[已中断]")
-                    ? contentToSave + " [已中断]" : contentToSave;
+            // 中断标记只加在 content；仅思考无正文时 content 允许为空串
+            String finalContent;
+            if (safeOutput.hasContent()) {
+                finalContent = interrupted && !contentToSave.endsWith("[已中断]")
+                        ? contentToSave + " [已中断]" : contentToSave;
+            } else {
+                finalContent = "";
+            }
+
             assistantMessageId = persistAssistantContent(
-                    request.getSessionId(), request.getUserId(), model.getId(), finalContent);
+                    request.getSessionId(), request.getUserId(), model.getId(),
+                    finalContent, reasoningToSave);
             if (assistantMessageId != null && isRealAiResponse && !interrupted) {
                 bindNetworkResults(request, assistantMessageId);
             }
@@ -209,14 +235,13 @@ public class AiResponseCompletionHandler {
             }
         }
 
-        // 中断场景：流处理层（或续写协调层）负责中断完成帧 d:interrupted；
-        // 这里只做落库/扣次等副作用，禁止再写普通 d:stop，避免双完成帧。
         if (interrupted) {
             log.debug("中断完成副作用结束，跳过普通完成帧，sessionId={}",
                     request != null ? request.getSessionId() : null);
             return assistantMessageId;
         }
 
+        // 标题只用 content
         String generatedTitle = generateTitleIfNeeded(request, willGenerateTitle, isRealAiResponse, contentToSave);
         writeCompletion(sink, willGenerateTitle, isRealAiResponse, generatedTitle);
         return assistantMessageId;

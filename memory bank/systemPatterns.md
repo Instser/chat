@@ -34,6 +34,17 @@
 
 ## 关键技术决策
 
+### 推理思考块（reasoning）一等通道 (2026-08-03)
+1. **产品开关**: 前端/请求 `deepThinking`；不再用运维配置开关。
+2. **上游控制**: `OpenAiCompatibleChatClient` 显式写入 `thinking: true/false`；关闭时不再依赖默认值。
+3. **协议平行**: `ChatStreamEventWriter`/`ChatStreamSink` 支持 `g:` reasoning 与 `0:` content。
+4. **状态单源**: `StreamResponseState` 持有 content/reasoning buffer；完成链路用 `AssistantOutput`。
+5. **统一解析**: `UpstreamDeltaParser` 供主链路与续写共用。
+6. **持久化**: `t_chat_message.reasoning` 独立列；仅思考无正文可落库；中断标记只加 content。
+7. **上下文隔离**: `ChatContextBuilder`/retry/edit 组装模型 messages 时只取 role+content，永不回喂 reasoning。
+8. **废弃**: `DEEP_THINKING_PROMPT` 诱导路径已删除。
+
+
 ### 支付系统设计
 1. **多货币支持**: 同时支持USD和CNY
 2. **价格存储策略**: 数据库存储USD价格，前端可请求CNY汇率转换 (2025-07-11更新)

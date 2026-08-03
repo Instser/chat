@@ -1,15 +1,16 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-08-03 00:45:00
+**📅 最后更新**: 2026-08-03 11:22:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v145.0
+**📊 文档版本**: v146.0
 
 ## 当前任务
-- 域名已切换到 `chat.instser.cn`，后端代码/配置已更新并部署到 `home.example.com`。
-- 公网侧仍存在阿里云备案拦截（`.cn` HTTP 403 Non-compliance ICP Filing）；需完成备案/解封后外网才可直接访问。
-- 前端仍为同源部署；本轮未强制重发前端产物（`api-utils` 动态同源已兼容新域名）。
+- 后端推理思考块（reasoning）一等通道已按 v1.3 定稿落地，待部署与前端接 `g:` / 历史 `reasoning`。
+- 上线前需执行 SQL：`sql/2026-08-03_chat_message_add_reasoning.sql`。
+- 域名 `chat.instser.cn` 外网仍可能受阿里云备案拦截影响。
 
 ## 最新完成任务
+✅ **后端推理思考块改造（v1.3）** — `deepThinking` 改为上游原生 `thinking true/false`（显式传参），删除 `DEEP_THINKING_PROMPT` 诱导路径；新增 `UpstreamDeltaParser`/`AssistantOutput`，`StreamResponseState` 双缓冲 content/reasoning；Sink/Writer 支持 `g:`；落库 `t_chat_message.reasoning`；完成/中断可存仅思考消息；模型上下文只回喂 content；retry/edit-resend 贯通 deepThinking。`mvn compile` BUILD SUCCESS。 (2026-08-03 11:22)
 ✅ **生产域名切换到 chat.instser.cn + 后端重建部署** — 后端 `application.yml` 默认 CORS/支付回调/OAuth 回调改为 `chat.instser.cn`；8 个 Controller 硬编码 CORS 同步更新；JDK17 重新构建 jar 并部署到 `home.example.com`（supervisor `chat:chat_00` RUNNING）。家用机本机验证 health 200、`/api/models` 401、带 `Origin: https://chat.instser.cn` 登录 200。公网机本机 `--resolve` 验证 `https://chat.instser.cn` 首页 200、API 401、登录 200。外网因备案拦截暂不可直连。文档与 memory bank 已同步。 (2026-08-03 00:45)
 ✅ **安全 P0/P1 修复（不含 yml/轮换）** — `/chat/models` 返回脱敏 VO；ChatApi/ChatController 会话读写删归属校验；`POST /chat` 取消 permitAll；`/user/status/admin/{id}` 需 admin；探针通过；`mvn test` 75 绿。 (2026-07-30 00:12)
 ✅ **非阻塞流式改造 tickets 01–08** — `StreamSubscriptionRegistry`/`StreamCompletionGate`；三入口 `ResponseBodyEmitter`；async 无 `blockLast`；续写去 `join`；完成收尾 `publishOn(boundedElastic)`；`spring.mvc.async.request-timeout=-1`；stop/超时 cancel；相关测试 35/35 通过。票据：`.scratch/chat-nonblocking-stream/`。 (2026-07-29 20:42)

@@ -34,6 +34,7 @@
 
 
 - **CORS 配置驱动** (2026-08-03 00:45): `SecurityConfig` / `WebConfig` 从 `app.cors.*` 读取允许源/方法/头/凭据/maxAge；默认允许源含 localhost、局域网 IP、`chat.instser.cn`；可用 `CORS_ALLOWED_ORIGINS` 环境变量覆盖。Controller 层硬编码 CORS 已同步为 `chat.instser.cn`。
+- **推理思考块通道** (2026-08-03 11:22): 请求参数 `deepThinking` 映射上游 `thinking` 布尔字段（true/false 均显式传）；流协议 `g:` 思考 + `0:` 正文；DB 列 `t_chat_message.reasoning`；模型上下文只含 content。
 - **流式 content 节点校验** (2026-07-22 18:54): 解析 OpenAI 兼容 SSE/`choices[].delta.content` 时必须用 `JsonNode.isTextual()`，禁止对可能为 JSON null 的节点直接 `asText()`（会得到字符串 `"null"`）。
 
 ## 技术约束

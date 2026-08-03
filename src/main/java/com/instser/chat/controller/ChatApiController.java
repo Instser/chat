@@ -288,20 +288,31 @@ public class ChatApiController {
      * 提取并验证network参数
      */
     private Boolean extractNetwork(Map<String, Object> request) {
-        Object networkObj = request.get("network");
-        if (networkObj == null) {
-            return false; // 默认禁用网络搜索
-        }
+        return extractBooleanFlag(request, "network", false);
+    }
 
-        if (networkObj instanceof Boolean) {
-            return (Boolean) networkObj;
-        } else if (networkObj instanceof String) {
-            return "true".equalsIgnoreCase((String) networkObj) || "1".equals(networkObj);
-        } else if (networkObj instanceof Number) {
-            return ((Number) networkObj).intValue() == 1;
-        }
+    /**
+     * 提取 deepThinking 参数；缺省 false。
+     */
+    private Boolean extractDeepThinking(Map<String, Object> request) {
+        return extractBooleanFlag(request, "deepThinking", false);
+    }
 
-        return false; // 默认禁用网络搜索
+    private Boolean extractBooleanFlag(Map<String, Object> request, String key, boolean defaultValue) {
+        Object value = request.get(key);
+        if (value == null) {
+            return defaultValue;
+        }
+        if (value instanceof Boolean) {
+            return (Boolean) value;
+        }
+        if (value instanceof String) {
+            return "true".equalsIgnoreCase((String) value) || "1".equals(value);
+        }
+        if (value instanceof Number) {
+            return ((Number) value).intValue() == 1;
+        }
+        return defaultValue;
     }
 
     /**
@@ -384,6 +395,7 @@ public class ChatApiController {
             String messageId = (String) request.get("messageId");
             Long modelId = extractModelId(request, response);
             Boolean network = extractNetwork(request);
+            Boolean deepThinking = extractDeepThinking(request);
             sessionIdForCancel = chatId;
 
             if (!validateBasicParams(chatId, messageId, response)) {
@@ -399,7 +411,7 @@ public class ChatApiController {
             final Long userId = getCurrentUserId(authentication);
             registerEmitterCancelHooks(emitter, sessionId, userId);
 
-            chatService.processRetryChat(chatId, messageId, modelId, network, authentication, sink);
+            chatService.processRetryChat(chatId, messageId, modelId, network, deepThinking, authentication, sink);
             // retry 为 void：准备失败时 Service 已写错误帧；成功启动后由 processor complete
 
         } catch (Exception e) {
@@ -438,6 +450,7 @@ public class ChatApiController {
             String filesId = (String) request.get("filesId");
             Long modelId = extractModelId(request, response);
             Boolean network = extractNetwork(request);
+            Boolean deepThinking = extractDeepThinking(request);
             sessionIdForCancel = chatId;
 
             if (!validateBasicParams(chatId, messageId, response)) {
@@ -472,7 +485,7 @@ public class ChatApiController {
             final Long userId = getCurrentUserId(authentication);
             registerEmitterCancelHooks(emitter, sessionId, userId);
 
-            chatService.processEditResendChat(chatId, messageId, newContent, filesId, modelId, network, authentication, sink);
+            chatService.processEditResendChat(chatId, messageId, newContent, filesId, modelId, network, deepThinking, authentication, sink);
 
         } catch (Exception e) {
             LogUtils.logUserError(log, getCurrentUserId(authentication), "API异常", "编辑重发接口异常：{}", e, e.getMessage());

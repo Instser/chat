@@ -118,11 +118,12 @@ public class EditResendPrepareHandler {
             return PreparedTurn.failure("会话中没有可用的消息");
         }
 
+        // 模型上下文只含 role+content，永不回喂 reasoning
         List<Map<String, String>> messages = new ArrayList<>();
         for (ChatMessage message : historyMessages) {
             Map<String, String> msg = new HashMap<>();
             msg.put("role", message.getRole());
-            msg.put("content", message.getContent());
+            msg.put("content", message.getContent() != null ? message.getContent() : "");
             messages.add(msg);
         }
 

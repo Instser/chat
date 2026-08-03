@@ -12,7 +12,7 @@ import java.util.List;
  * 业务层流写出端口。业务代码依赖此接口，不直接依赖 HttpServletResponse / Emitter。
  *
  * <p>异步实现使用 {@link ResponseBodyEmitter} 而非 {@link org.springframework.web.servlet.mvc.method.annotation.SseEmitter}，
- * 因为现网协议是 Vercel AI data stream 原始行（{@code 0:}/{@code d:}/{@code u:}），
+ * 因为现网协议是 Vercel AI data stream 原始行（{@code 0:}/{@code g:}/{@code d:}/{@code u:}），
  * SseEmitter 会再包一层 {@code data:} 帧，破坏前端解析。</p>
  */
 public interface ChatStreamSink {
@@ -24,6 +24,8 @@ public interface ChatStreamSink {
     void writeCustomError(String errorMessage, int errorType) throws IOException;
 
     void writeContent(String content);
+
+    void writeReasoning(String reasoning);
 
     void writeNetworkResults(List<WebSearchResult> results);
 
@@ -72,6 +74,11 @@ public interface ChatStreamSink {
             @Override
             public void writeContent(String content) {
                 writer.writeContent(content, response);
+            }
+
+            @Override
+            public void writeReasoning(String reasoning) {
+                writer.writeReasoning(reasoning, response);
             }
 
             @Override
@@ -127,6 +134,18 @@ public interface ChatStreamSink {
                     sendRaw(writer.formatContentBlock(content));
                 } catch (IOException e) {
                     throw new IllegalStateException("异步写出 content 失败", e);
+                }
+            }
+
+            @Override
+            public void writeReasoning(String reasoning) {
+                if (reasoning == null || reasoning.isEmpty()) {
+                    return;
+                }
+                try {
+                    sendRaw(writer.formatReasoningBlock(reasoning));
+                } catch (IOException e) {
+                    throw new IllegalStateException("异步写出 reasoning 失败", e);
                 }
             }
 

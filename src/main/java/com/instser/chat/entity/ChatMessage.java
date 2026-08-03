@@ -51,6 +51,12 @@ public class ChatMessage implements Serializable {
     private String content;
 
     /**
+     * 推理思考内容（仅展示/审计，不回喂模型）
+     */
+    @TableField("reasoning")
+    private String reasoning;
+
+    /**
      * 消息类型（text/image/file等）
      */
     @TableField("message_type")

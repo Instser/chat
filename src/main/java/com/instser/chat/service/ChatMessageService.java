@@ -84,6 +84,13 @@ public interface ChatMessageService extends IService<ChatMessage> {
     MessageSaveResult sendMessageWithTokenInfo(String sessionId, String role, String content, Long userId, Long modelId);
 
     /**
+     * 发送消息并返回 Token 信息（支持 reasoning）。
+     * token 仍按 content 计；reasoning 仅展示/审计。
+     */
+    MessageSaveResult sendMessageWithTokenInfo(String sessionId, String role, String content,
+                                               String reasoning, Long userId, Long modelId);
+
+    /**
      * 获取会话消息列表
      *
      * @param sessionId 会话ID

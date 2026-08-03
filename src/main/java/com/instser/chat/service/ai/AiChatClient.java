@@ -15,8 +15,12 @@ public interface AiChatClient {
 
     /**
      * 构建 OpenAI-compatible 流式请求体（含 Gemini 特例参数）。
+     *
+     * @param thinkingEnabled 是否开启原生思考；true/false 均会显式写入请求体 thinking 字段
      */
-    Map<String, Object> buildStreamRequestBody(AiModel model, List<Map<String, String>> messages);
+    Map<String, Object> buildStreamRequestBody(AiModel model,
+                                              List<Map<String, String>> messages,
+                                              boolean thinkingEnabled);
 
     /**
      * 创建已配置鉴权头的 WebClient。

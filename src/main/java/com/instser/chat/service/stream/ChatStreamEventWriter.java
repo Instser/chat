@@ -16,7 +16,7 @@ import java.util.Map;
  * 聊天 SSE 协议写出器（阶段 1.5 / 阶段五过渡实现）。
  *
  * <p>当前仍接收 HttpServletResponse，集中所有前端协议字符串拼装：
- * content(0:)、network(u:)、completion(d:)、error。</p>
+ * content(0:)、reasoning(g:)、network(u:)、completion(d:)、error。</p>
  */
 @Slf4j
 @Component
@@ -68,6 +68,16 @@ public class ChatStreamEventWriter {
         }
     }
 
+    /** 协议编码：整块 reasoning（AI SDK v1 g:）。 */
+    public String formatReasoningBlock(String reasoning) {
+        try {
+            return String.format("g:%s\n", objectMapper.writeValueAsString(reasoning == null ? "" : reasoning));
+        } catch (Exception e) {
+            log.error("编码 reasoning 失败: {}", e.getMessage());
+            return "g:\"\"\n";
+        }
+    }
+
     /** 协议编码：联网结果多行。 */
     public List<String> formatNetworkResults(List<WebSearchResult> searchResults) {
         java.util.ArrayList<String> lines = new java.util.ArrayList<>();
@@ -98,6 +108,21 @@ public class ChatStreamEventWriter {
             sendContentBySmartChunking(content, response);
         } else {
             sendContentAsBlock(content, response);
+        }
+    }
+
+    /**
+     * 写出 reasoning 增量（g:）。同步路径整块写出，不做 sleep 分块。
+     */
+    public void writeReasoning(String reasoning, HttpServletResponse response) {
+        if (reasoning == null || reasoning.isEmpty()) {
+            return;
+        }
+        try {
+            response.getWriter().write(formatReasoningBlock(reasoning));
+            response.getWriter().flush();
+        } catch (Exception e) {
+            log.error("写出 reasoning 失败: {}", e.getMessage());
         }
     }
 
@@ -285,6 +310,7 @@ public class ChatStreamEventWriter {
         }
         switch (event.getType()) {
             case CONTENT_DELTA -> writeContent(event.getText(), response);
+            case REASONING_DELTA -> writeReasoning(event.getText(), response);
             case NETWORK_EVIDENCE -> sendNetworkSearchResults(response, event.getNetworkResults());
             case COMPLETED -> writeCompletion(response, event.isWillGenerateTitle(), event.isRealAiResponse(), event.getGeneratedTitle());
             case FAILED -> {

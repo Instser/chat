@@ -27,11 +27,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.BiFunction;
 
 /**
- * AI 主聊天流处理器：负责 prompt 组装、上游流消费、内容写出与状态维护。
+ * AI 主聊天流处理器：prompt 组装、上游流消费、content/reasoning 写出与状态维护。
  * 完成副作用（落库/标题/usage）由外部 completionCallback 处理。
- *
- * <p>异步路径（{@link ChatStreamSink#isAsync()} = true）使用 subscribe + registry，不 blockLast。
- * 同步路径保留 blockLast 兼容旧 Controller/测试。</p>
  */
 @Slf4j
 @Component
@@ -39,7 +36,7 @@ import java.util.function.BiFunction;
 public class AiStreamProcessor {
 
     private final AiChatClient aiChatClient;
-    private final ContentPolicy contentPolicy;
+    private final UpstreamDeltaParser upstreamDeltaParser;
     private final ChatInterruptService chatInterruptService;
     private final AiCallMonitor aiCallMonitor;
     private final StreamSubscriptionRegistry streamSubscriptionRegistry;
@@ -53,7 +50,7 @@ public class AiStreamProcessor {
                            boolean willGenerateTitle,
                            boolean isRealAiResponse,
                            ChatRequestDTO request,
-                           StringBuilder aiResponseContent,
+                           StreamResponseState streamState,
                            AiModel model,
                            String interfaceType,
                            boolean wasManuallyInterrupted);
@@ -80,9 +77,6 @@ public class AiStreamProcessor {
                 completionCallback, errorPersister, requestLogger);
     }
 
-    /**
-     * 同步阻塞路径（兼容旧 Controller/单测）。
-     */
     private ChatResponseDTO streamBlocking(ChatRequestDTO request,
                                            AiModel model,
                                            ChatStreamSink sink,
@@ -96,12 +90,11 @@ public class AiStreamProcessor {
             sessionManager.register();
 
             final StreamResponseState streamState = new StreamResponseState();
-            final StringBuilder aiResponseContent = new StringBuilder();
             final AiCallMonitor.CallContext[] aiCtxHolder = {null};
 
             try {
                 Flux<String> lineFlux = buildLineFlux(request, model, sink, willGenerateTitle, interfaceType,
-                        completionCallback, errorPersister, requestLogger, streamState, aiResponseContent, aiCtxHolder);
+                        completionCallback, errorPersister, requestLogger, streamState, aiCtxHolder);
 
                 lineFlux
                         .onErrorReturn("")
@@ -109,10 +102,10 @@ public class AiStreamProcessor {
 
                 if (streamState.isInterrupted()) {
                     aiCallMonitor.recordSuccess(aiCtxHolder[0]);
-                    return ChatResponseDTO.interrupted(streamState.hasContentSent(), aiResponseContent.toString());
+                    return ChatResponseDTO.interrupted(streamState.hasAnyOutput(), streamState.content());
                 }
                 aiCallMonitor.recordSuccess(aiCtxHolder[0]);
-                return ChatResponseDTO.success(streamState.hasContentSent(), streamState.isRealAiResponse(), aiResponseContent.toString());
+                return ChatResponseDTO.success(streamState.hasAnyOutput(), streamState.isRealAiResponse(), streamState.content());
             } catch (ContentPolicy.ChatRetryException e) {
                 throw e;
             } catch (Exception e) {
@@ -134,9 +127,6 @@ public class AiStreamProcessor {
         }
     }
 
-    /**
-     * 异步订阅路径：请求线程立即返回；完成/错误在回调中处理并 complete emitter。
-     */
     private ChatResponseDTO streamAsync(ChatRequestDTO request,
                                         AiModel model,
                                         ChatStreamSink sink,
@@ -150,16 +140,13 @@ public class AiStreamProcessor {
         sessionManager.register();
 
         final StreamResponseState streamState = new StreamResponseState();
-        final StringBuilder aiResponseContent = new StringBuilder();
         final AiCallMonitor.CallContext[] aiCtxHolder = {null};
         final AtomicReference<Disposable> disposableRef = new AtomicReference<>();
 
         try {
             Flux<String> lineFlux = buildLineFlux(request, model, sink, willGenerateTitle, interfaceType,
-                    completionCallback, errorPersister, requestLogger, streamState, aiResponseContent, aiCtxHolder);
+                    completionCallback, errorPersister, requestLogger, streamState, aiCtxHolder);
 
-            // dispose/cancel 不会触发 subscribe 的 complete 回调，必须在 doOnCancel 里关闭 emitter，
-            // 否则 stop 后客户端会一直挂到超时。
             final AtomicBoolean terminalClosed = new AtomicBoolean(false);
             Runnable closeTerminal = () -> {
                 if (!terminalClosed.compareAndSet(false, true)) {
@@ -190,29 +177,24 @@ public class AiStreamProcessor {
                                 streamState.markInterruptSaved();
                             }
                         }
-                        // 中断时尽量落部分内容（tryHandleCompletion 幂等）
                         try {
                             if (streamState.tryHandleCompletion()) {
-                                boolean wasInterrupted = request.getSessionId() != null
-                                        && chatInterruptService.isInterrupted(request.getSessionId());
                                 completionCallback.onComplete(sink, willGenerateTitle, streamState.isRealAiResponse(),
-                                        request, aiResponseContent, model, interfaceType, true);
+                                        request, streamState, model, interfaceType, true);
                             }
                         } catch (Exception e) {
                             log.error("取消路径完成收尾失败 sessionId={}", request.getSessionId(), e);
                         }
-                        log.info("STREAM_TERMINAL sessionId={} reason=cancelled contentLen={}",
-                                request.getSessionId(), aiResponseContent.length());
+                        log.info("STREAM_TERMINAL sessionId={} reason=cancelled contentLen={} reasoningLen={}",
+                                request.getSessionId(), streamState.content().length(), streamState.reasoning().length());
                         closeTerminal.run();
                     })
                     .subscribe(
                             line -> {
-                                // 行处理已在 doOnNext（publishOn 后 content 写在 boundedElastic）
                             },
                             error -> {
                                 log.error("异步流错误 sessionId={}", request.getSessionId(), error);
                                 try {
-                                    // doOnError 可能已写过错误帧；此处只记监控与收敛
                                     aiCallMonitor.recordFailure(aiCtxHolder[0],
                                             error.getClass().getSimpleName(), error.getMessage());
                                     log.info("STREAM_TERMINAL sessionId={} reason=failure type={}",
@@ -227,9 +209,9 @@ public class AiStreamProcessor {
                                 try {
                                     aiCallMonitor.recordSuccess(aiCtxHolder[0]);
                                     String reason = streamState.isInterrupted() ? "interrupted_or_partial" : "success";
-                                    log.info("STREAM_TERMINAL sessionId={} reason={} interrupted={} contentLen={}",
+                                    log.info("STREAM_TERMINAL sessionId={} reason={} interrupted={} contentLen={} reasoningLen={}",
                                             request.getSessionId(), reason, streamState.isInterrupted(),
-                                            aiResponseContent.length());
+                                            streamState.content().length(), streamState.reasoning().length());
                                 } finally {
                                     closeTerminal.run();
                                 }
@@ -240,7 +222,6 @@ public class AiStreamProcessor {
             if (request.getSessionId() != null) {
                 streamSubscriptionRegistry.register(request.getSessionId(), disposable);
             }
-            // 异步：立即返回 accepted，不表示 AI 已完成
             return ChatResponseDTO.success(false, false, null);
         } catch (ContentPolicy.ChatRetryException e) {
             cleanupAsync(request.getSessionId(), sessionManager, disposableRef);
@@ -291,22 +272,20 @@ public class AiStreamProcessor {
                                        ErrorPersister errorPersister,
                                        BiFunction<Map<String, Object>, AiModel, Void> requestLogger,
                                        StreamResponseState streamState,
-                                       StringBuilder aiResponseContent,
                                        AiCallMonitor.CallContext[] aiCtxHolder) {
         List<Map<String, String>> messagesWithPrompt = buildMessagesWithPrompt(request);
-        log.info("使用{}提示词（伪造对话形式），消息总数: {}",
-                Boolean.TRUE.equals(request.getDeepThinking()) ? "深度思考" : "默认",
-                messagesWithPrompt.size());
+        boolean thinkingEnabled = Boolean.TRUE.equals(request.getDeepThinking());
+        log.info("组装消息完成，thinking={}，消息总数: {}", thinkingEnabled, messagesWithPrompt.size());
 
         StringBuilder jsonBuffer = new StringBuilder();
         StringBuilder lineBuffer = new StringBuilder();
 
-        Map<String, Object> requestBody = aiChatClient.buildStreamRequestBody(model, messagesWithPrompt);
+        Map<String, Object> requestBody = aiChatClient.buildStreamRequestBody(model, messagesWithPrompt, thinkingEnabled);
         if (requestLogger != null) {
             requestLogger.apply(requestBody, model);
         }
         aiCtxHolder[0] = aiCallMonitor.beginCall(model.getModelCode());
-        log.info("调用AI API: {}, 模型: {}", model.getBaseUrl(), model.getModelCode());
+        log.info("调用AI API: {}, 模型: {}, thinking={}", model.getBaseUrl(), model.getModelCode(), thinkingEnabled);
 
         return aiChatClient.stream(model, requestBody, 30)
                 .map(dataBuffer -> {
@@ -352,13 +331,11 @@ public class AiStreamProcessor {
                     }
                     return true;
                 })
-                // 收尾/续写/落库切到弹性线程，避免在 reactor-http 线程上 join/DB 造成假非阻塞
                 .publishOn(Schedulers.boundedElastic())
                 .doOnNext(line -> {
                     try {
                         if (line.startsWith("data: ")) {
                             if (line.equals("data: [DONE]")) {
-                                // 完成统一在 doOnComplete + tryHandleCompletion，避免与收尾双发
                                 log.debug("收到 data: [DONE]，等待 doOnComplete 收尾 sessionId={}", request.getSessionId());
                                 return;
                             }
@@ -368,16 +345,7 @@ public class AiStreamProcessor {
                             String bufferedJson = jsonBuffer.toString();
                             if (isValidJson(bufferedJson)) {
                                 try {
-                                    String contentSent = processCompleteJson(bufferedJson, sink);
-                                    if (contentSent != null) {
-                                        maybeSendNetwork(request, sink, streamState);
-                                        streamState.markRealAiResponse();
-                                        aiResponseContent.append(contentSent);
-                                        if (!streamState.isFirstTokenMarked()) {
-                                            streamState.markFirstToken();
-                                            aiCallMonitor.markFirstToken(aiCtxHolder[0]);
-                                        }
-                                    }
+                                    consumeJson(bufferedJson, request, sink, streamState, thinkingEnabled, aiCtxHolder[0]);
                                     jsonBuffer.setLength(0);
                                 } catch (ContentPolicy.ChatRetryException e) {
                                     throw e;
@@ -392,16 +360,7 @@ public class AiStreamProcessor {
                             String bufferedJson = jsonBuffer.toString();
                             if (isValidJson(bufferedJson)) {
                                 try {
-                                    String contentSent = processCompleteJson(bufferedJson, sink);
-                                    if (contentSent != null) {
-                                        maybeSendNetwork(request, sink, streamState);
-                                        streamState.markRealAiResponse();
-                                        aiResponseContent.append(contentSent);
-                                        if (!streamState.isFirstTokenMarked()) {
-                                            streamState.markFirstToken();
-                                            aiCallMonitor.markFirstToken(aiCtxHolder[0]);
-                                        }
-                                    }
+                                    consumeJson(bufferedJson, request, sink, streamState, thinkingEnabled, aiCtxHolder[0]);
                                     jsonBuffer.setLength(0);
                                 } catch (ContentPolicy.ChatRetryException e) {
                                     throw e;
@@ -440,16 +399,7 @@ public class AiStreamProcessor {
                             String bufferedJson = jsonBuffer.toString();
                             if (isValidJson(bufferedJson)) {
                                 try {
-                                    String contentSent = processCompleteJson(bufferedJson, sink);
-                                    if (contentSent != null) {
-                                        maybeSendNetwork(request, sink, streamState);
-                                        streamState.markRealAiResponse();
-                                        aiResponseContent.append(contentSent);
-                                        if (!streamState.isFirstTokenMarked()) {
-                                            streamState.markFirstToken();
-                                            aiCallMonitor.markFirstToken(aiCtxHolder[0]);
-                                        }
-                                    }
+                                    consumeJson(bufferedJson, request, sink, streamState, thinkingEnabled, aiCtxHolder[0]);
                                 } catch (Exception ignored) {
                                 }
                             }
@@ -460,8 +410,9 @@ public class AiStreamProcessor {
                         jsonBuffer.setLength(0);
                     }
                     if (streamState.tryHandleCompletion()) {
-                        boolean completionInterrupted = completionCallback.onComplete(sink, willGenerateTitle, streamState.isRealAiResponse(),
-                                request, aiResponseContent, model, interfaceType, wasManuallyInterrupted);
+                        boolean completionInterrupted = completionCallback.onComplete(
+                                sink, willGenerateTitle, streamState.isRealAiResponse(),
+                                request, streamState, model, interfaceType, wasManuallyInterrupted);
                         if (completionInterrupted) {
                             streamState.markInterrupted();
                         }
@@ -469,17 +420,34 @@ public class AiStreamProcessor {
                 });
     }
 
+    private void consumeJson(String json,
+                             ChatRequestDTO request,
+                             ChatStreamSink sink,
+                             StreamResponseState streamState,
+                             boolean thinkingEnabled,
+                             AiCallMonitor.CallContext aiCtx) {
+        boolean produced = upstreamDeltaParser.consume(json, sink, streamState, thinkingEnabled);
+        if (produced) {
+            maybeSendNetwork(request, sink, streamState);
+            if (!streamState.isFirstTokenMarked()) {
+                streamState.markFirstToken();
+                aiCallMonitor.markFirstToken(aiCtx);
+            }
+        }
+    }
+
+    /**
+     * 组装发给上游的 messages：固定身份 prompt，与 deepThinking 解耦。
+     */
     private List<Map<String, String>> buildMessagesWithPrompt(ChatRequestDTO request) {
         List<Map<String, String>> messagesWithPrompt = new ArrayList<>();
-        boolean isDeepThink = request.getDeepThinking() != null && request.getDeepThinking();
-        String promptContent = isDeepThink ? PromptConstants.DEEP_THINKING_PROMPT : PromptConstants.DEFAULT_SYSTEM_PROMPT;
         Map<String, String> fakeUserMessage = new HashMap<>();
         fakeUserMessage.put("role", "user");
         fakeUserMessage.put("content", "who are you？");
         messagesWithPrompt.add(fakeUserMessage);
         Map<String, String> fakeAssistantMessage = new HashMap<>();
         fakeAssistantMessage.put("role", "assistant");
-        fakeAssistantMessage.put("content", promptContent);
+        fakeAssistantMessage.put("content", PromptConstants.DEFAULT_SYSTEM_PROMPT);
         messagesWithPrompt.add(fakeAssistantMessage);
         if (request.getMessages() != null) {
             messagesWithPrompt.addAll(request.getMessages());
@@ -505,43 +473,6 @@ public class AiStreamProcessor {
             return true;
         } catch (Exception e) {
             return false;
-        }
-    }
-
-    private String processCompleteJson(String jsonData, ChatStreamSink sink) {
-        try {
-            com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-            com.fasterxml.jackson.databind.JsonNode jsonNode = mapper.readTree(jsonData);
-            com.fasterxml.jackson.databind.JsonNode choices = jsonNode.get("choices");
-            if (choices != null && choices.isArray() && choices.size() > 0) {
-                com.fasterxml.jackson.databind.JsonNode delta = choices.get(0).get("delta");
-                if (delta != null && delta.has("content")) {
-                    com.fasterxml.jackson.databind.JsonNode contentNode = delta.get("content");
-                    if (contentNode != null && contentNode.isTextual()) {
-                        String content = contentNode.asText();
-                        if (content != null && !content.isEmpty()) {
-                            ContentPolicy.ContentDetectionResult detectionResult = contentPolicy.detectContentAndGetResult(content);
-                            if (detectionResult.needsRetry()) {
-                                throw new ContentPolicy.ChatRetryException("检测到需要重试的错误消息");
-                            }
-                            if (detectionResult.wasFiltered()) {
-                                return null;
-                            }
-                            String cleanContent = detectionResult.getCleanedContent();
-                            if (cleanContent != null && !cleanContent.isEmpty()) {
-                                sink.writeContent(cleanContent);
-                                return cleanContent;
-                            }
-                        }
-                    }
-                }
-            }
-            return null;
-        } catch (ContentPolicy.ChatRetryException e) {
-            throw e;
-        } catch (Exception e) {
-            log.error("处理完整JSON数据失败: {}", e.getMessage());
-            return null;
         }
     }
 }

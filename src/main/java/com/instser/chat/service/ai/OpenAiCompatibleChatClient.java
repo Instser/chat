@@ -25,16 +25,23 @@ public class OpenAiCompatibleChatClient implements AiChatClient {
     private final WebClient.Builder webClientBuilder;
 
     @Override
-    public Map<String, Object> buildStreamRequestBody(AiModel model, List<Map<String, String>> messages) {
+    public Map<String, Object> buildStreamRequestBody(AiModel model,
+                                                      List<Map<String, String>> messages,
+                                                      boolean thinkingEnabled) {
         Map<String, Object> requestBody = new HashMap<>();
         requestBody.put("model", model.getModelCode());
         requestBody.put("messages", messages);
         requestBody.put("stream", true);
+        // 开启/关闭都显式传，避免依赖上游默认值
+        requestBody.put("thinking", thinkingEnabled);
 
         if ("Gemini".equalsIgnoreCase(model.getProvider())
                 || (model.getProvider() != null && model.getProvider().toLowerCase().contains("gemini"))) {
-            requestBody.put("reasoning_effort", "none");
-            log.debug("检测到Gemini模型，添加reasoning_effort=none参数");
+            // Gemini 特例：关闭思考时强制 none；开启时不覆盖原生 thinking 开关
+            if (!thinkingEnabled) {
+                requestBody.put("reasoning_effort", "none");
+                log.debug("检测到Gemini模型，thinking=false，添加 reasoning_effort=none");
+            }
         }
         return requestBody;
     }

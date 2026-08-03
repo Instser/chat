@@ -1,8 +1,23 @@
 # 项目进度状态
 
-**📅 最后更新**: 2026-07-30 00:12:00
+**📅 最后更新**: 2026-08-03 11:22:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v138.0
+**📊 文档版本**: v139.0
+
+## 🚀 最新完成功能 (2026-08-03)
+
+### 后端推理思考块改造（v1.3） ✅
+- **实现时间**: 2026年8月3日 11:22
+- **要点**:
+  - `deepThinking` → 上游请求体显式 `thinking: true/false`
+  - 删除 `DEEP_THINKING_PROMPT` 与 prompt 诱导切换
+  - 协议：`g:` reasoning / `0:` content / `u:` network / `d:` finish
+  - `StreamResponseState` 统一 content/reasoning 缓冲
+  - `t_chat_message.reasoning` + Entity/VO 落库回放
+  - 模型上下文永不回喂 reasoning
+  - 仅思考无正文可落库；中断保存 reasoning
+- **验证**: `mvn -Dmaven.test.skip=true -Dmaven.compiler.proc=full compile` BUILD SUCCESS
+- **待办**: 执行 SQL；部署后端；前端接 `g:` + 历史 reasoning
 
 ## 🚀 最新完成功能 (2026-07-30)
 

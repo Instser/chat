@@ -105,7 +105,7 @@ public interface ChatService {
      * @param authentication 认证信息
      * @param response 流写出端口
      */
-    void processRetryChat(String sessionId, String messageId, Long modelId, Boolean network, Authentication authentication, ChatStreamSink sink);
+    void processRetryChat(String sessionId, String messageId, Long modelId, Boolean network, Boolean deepThinking, Authentication authentication, ChatStreamSink sink);
 
     /**
      * 处理编辑用户消息并重新生成AI回复请求
@@ -119,7 +119,7 @@ public interface ChatService {
      * @param authentication 认证信息
      * @param response 流写出端口
      */
-    void processEditResendChat(String sessionId, String messageId, String newContent, String filesId, Long modelId, Boolean network, Authentication authentication, ChatStreamSink sink);
+    void processEditResendChat(String sessionId, String messageId, String newContent, String filesId, Long modelId, Boolean network, Boolean deepThinking, Authentication authentication, ChatStreamSink sink);
 
     /**
      * 检查是否为首次AI响应

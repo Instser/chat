@@ -16,6 +16,7 @@ public final class ChatStreamEvent {
 
     public enum Type {
         CONTENT_DELTA,
+        REASONING_DELTA,
         NETWORK_EVIDENCE,
         COMPLETED,
         FAILED,
@@ -51,6 +52,10 @@ public final class ChatStreamEvent {
 
     public static ChatStreamEvent content(String text) {
         return new ChatStreamEvent(Type.CONTENT_DELTA, text, null, false, false, null, null, null);
+    }
+
+    public static ChatStreamEvent reasoning(String text) {
+        return new ChatStreamEvent(Type.REASONING_DELTA, text, null, false, false, null, null, null);
     }
 
     public static ChatStreamEvent network(List<WebSearchResult> results) {

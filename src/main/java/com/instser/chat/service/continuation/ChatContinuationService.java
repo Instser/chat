@@ -10,6 +10,8 @@ import com.instser.chat.service.ai.AiChatClient;
 import com.instser.chat.service.content.ContentPolicy;
 import com.instser.chat.service.stream.ChatStreamEventWriter;
 import com.instser.chat.service.stream.ChatStreamSink;
+import com.instser.chat.service.stream.StreamResponseState;
+import com.instser.chat.service.stream.UpstreamDeltaParser;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.buffer.DataBuffer;
@@ -39,6 +41,7 @@ public class ChatContinuationService {
     private final ChatInterruptService chatInterruptService;
     private final ContentPolicy contentPolicy;
     private final AiChatClient aiChatClient;
+    private final UpstreamDeltaParser upstreamDeltaParser;
     private final WebClient.Builder webClientBuilder;
     private final Executor continuationExecutor;
 
@@ -47,12 +50,14 @@ public class ChatContinuationService {
             ChatInterruptService chatInterruptService,
             ContentPolicy contentPolicy,
             AiChatClient aiChatClient,
+            UpstreamDeltaParser upstreamDeltaParser,
             WebClient.Builder webClientBuilder,
             @Qualifier("continuationExecutor") Executor continuationExecutor) {
         this.truncationDetectionService = truncationDetectionService;
         this.chatInterruptService = chatInterruptService;
         this.contentPolicy = contentPolicy;
-this.aiChatClient = aiChatClient;
+        this.aiChatClient = aiChatClient;
+        this.upstreamDeltaParser = upstreamDeltaParser;
         this.webClientBuilder = webClientBuilder;
         this.continuationExecutor = continuationExecutor;
     }
@@ -69,107 +74,73 @@ this.aiChatClient = aiChatClient;
     private String processContinuationJson(String jsonData, ChatStreamSink sink, String originalContent,
                                          StringBuilder continuationContent, StringBuilder alignedContentForSaving,
                                          boolean[] alignmentDone, StringBuilder cacheBuffer, long[] cacheStartTime,
-                                         int[] cacheBlockCount, boolean[] cleaningDone) throws ContentPolicy.ChatRetryException {
+                                         int[] cacheBlockCount, boolean[] cleaningDone,
+                                         StreamResponseState streamState, boolean thinkingEnabled) throws ContentPolicy.ChatRetryException {
         // 简化续写JSON处理日志
 
         try {
             ObjectMapper mapper = new ObjectMapper();
             JsonNode jsonNode = mapper.readTree(jsonData);
 
-            JsonNode choices = jsonNode.get("choices");
-            if (choices != null && choices.isArray() && choices.size() > 0) {
-                JsonNode delta = choices.get(0).get("delta");
-
-                if (delta != null && delta.has("content")) {
-                    // 跳过 JSON null content（推理模型思考阶段发 content:null + reasoning_content:文本），
-                    // Jackson asText() 对 JSON null 返回字符串 "null"（非空），会被误当内容发给前端 → nullnull... 串
-                    JsonNode contentNode = delta.get("content");
-                    if (contentNode != null && contentNode.isTextual()) {
-                        String content = contentNode.asText();
-                        if (content != null && !content.isEmpty()) {
-                            // 移除详细的续写内容日志
-
-                            // 如果还没有开始缓存，初始化缓存
-                            if (cacheStartTime[0] == 0) {
-                                cacheStartTime[0] = System.currentTimeMillis();
-                                log.info("续写缓存开始，时间: {}", cacheStartTime[0]);
-                            }
-
-                            // 如果清理还没完成，继续缓存
-                            if (!cleaningDone[0]) {
-                                cacheBuffer.append(content);
-                                cacheBlockCount[0]++;
-                                // 简化续写缓存日志
-                                log.debug("续写缓存中，块数: {}, 缓存长度: {}", cacheBlockCount[0], cacheBuffer.length());
-
-                                // 检查是否应该停止缓存并进行清理
-                                if (shouldStopCaching(cacheBuffer, cacheStartTime[0], cacheBlockCount[0])) {
-                                    // 一次性清理所有标签
-                                    String cachedContent = cacheBuffer.toString();
-                                    try {
-                                        String cleanedCache = cleanAllTagsOnce(cachedContent);
-                                        log.debug("续写缓存清理完成，原长度: {}, 清理后长度: {}, 缓存时间: {}ms",
-                                                cachedContent.length(), cleanedCache.length(),
-                                                System.currentTimeMillis() - cacheStartTime[0]);
-
-                                        cleaningDone[0] = true;
-                                    cacheBuffer.setLength(0); // 清空缓存
-
-                                        // 处理清理后的内容
-                                        if (!cleanedCache.isEmpty()) {
-                                            return processCachedContent(cleanedCache, originalContent, continuationContent, alignedContentForSaving, alignmentDone, sink, mapper);
-                                        } else {
-                                            // 如果清理后内容为空（被过滤），不进行任何处理
-                                            log.debug("续写缓存内容被过滤，跳过处理");
-                                            return null;
-                                        }
-                                    } catch (ContentPolicy.ChatRetryException e) {
-                                        log.warn("续写缓存清理时检测到需要重试的错误消息，抛出重试异常");
-                                        throw e; // 重新抛出异常，让上层处理重试
-                                    }
-                                }
-                                return null; // 继续缓存
-                            } else {
-                                // 清理已完成，后续内容需要进行过滤检测
-
-                                if (!content.isEmpty()) {
-                                    // 检查后续内容是否包含需要重试的错误消息
-                                    if (contentPolicy.shouldRestartChat(content)) {
-                                        log.warn("续写后续内容检测到需要重试的错误消息，抛出重试异常");
-                                        throw new ContentPolicy.ChatRetryException("续写后续内容检测到需要重试的错误消息");
-                                    }
-
-                                    // 检查后续内容是否包含需要过滤的内容
-                                    if (contentPolicy.shouldFilterContent(content)) {
-                                        log.info("续写后续内容检测到需要过滤的AI响应内容，已阻止向前端发送且不保存到数据库");
-                                        // 不累积到内容中，也不发送给前端
-                                        return null; // 返回null，不累积任何内容
-                                    }
-
-                                    // 对齐完成后，直接添加内容（不再清理）
-                                    alignedContentForSaving.append(content);
-                                    continuationContent.append(content);
-
-                                    // 发送后续内容给前端
-                                    sink.writeContent(content);
-                                    return content;
-                                }
-                            }
-                        } else {
-                            log.debug("续写原始content为空或null");
-                        }
-                    } else {
-                        log.debug("续写delta节点content为JSON null（推理阶段），跳过");
-                    }
-                } else {
-                    log.debug("续写delta节点不存在content字段");
-                }
-            } else {
-                log.debug("续写choices节点为空或不是数组");
+            // 先发 reasoning（thinking 开启时），content 继续走续写缓存/对齐逻辑
+            String content = upstreamDeltaParser.extractRawContentAndEmitReasoning(
+                    jsonData, sink, streamState, thinkingEnabled);
+            if (content == null || content.isEmpty()) {
+                log.debug("续写JSON无正文 content，可能仅有 reasoning");
+                return null;
             }
 
-            log.debug("续写JSON处理完成，返回null");
-            return null;
+            // 如果还没有开始缓存，初始化缓存
+            if (cacheStartTime[0] == 0) {
+                cacheStartTime[0] = System.currentTimeMillis();
+                log.info("续写缓存开始，时间: {}", cacheStartTime[0]);
+            }
+
+            // 如果清理还没完成，继续缓存
+            if (!cleaningDone[0]) {
+                cacheBuffer.append(content);
+                cacheBlockCount[0]++;
+                log.debug("续写缓存中，块数: {}, 缓存长度: {}", cacheBlockCount[0], cacheBuffer.length());
+
+                if (shouldStopCaching(cacheBuffer, cacheStartTime[0], cacheBlockCount[0])) {
+                    String cachedContent = cacheBuffer.toString();
+                    try {
+                        String cleanedCache = cleanAllTagsOnce(cachedContent);
+                        log.debug("续写缓存清理完成，原长度: {}, 清理后长度: {}, 缓存时间: {}ms",
+                                cachedContent.length(), cleanedCache.length(),
+                                System.currentTimeMillis() - cacheStartTime[0]);
+
+                        cleaningDone[0] = true;
+                        cacheBuffer.setLength(0);
+
+                        if (!cleanedCache.isEmpty()) {
+                            return processCachedContent(cleanedCache, originalContent, continuationContent,
+                                    alignedContentForSaving, alignmentDone, sink, mapper);
+                        }
+                        log.debug("续写缓存内容被过滤，跳过处理");
+                        return null;
+                    } catch (ContentPolicy.ChatRetryException e) {
+                        log.warn("续写缓存清理时检测到需要重试的错误消息，抛出重试异常");
+                        throw e;
+                    }
+                }
+                return null;
+            }
+
+            // 清理已完成，后续内容过滤后直接写出
+            if (contentPolicy.shouldRestartChat(content)) {
+                log.warn("续写后续内容检测到需要重试的错误消息，抛出重试异常");
+                throw new ContentPolicy.ChatRetryException("续写后续内容检测到需要重试的错误消息");
+            }
+            if (contentPolicy.shouldFilterContent(content)) {
+                log.info("续写后续内容检测到需要过滤的AI响应内容，已阻止向前端发送且不保存到数据库");
+                return null;
+            }
+
+            alignedContentForSaving.append(content);
+            continuationContent.append(content);
+            sink.writeContent(content);
+            return content;
         } catch (Exception e) {
             log.error("处理续写JSON数据失败: {}, JSON内容: {}", e.getMessage(), jsonData.length() > 100 ? jsonData.substring(0, 100) + "..." : jsonData, e);
             return null;
@@ -351,73 +322,17 @@ this.aiChatClient = aiChatClient;
     /**
      * 处理完整的JSON数据
      */
-    private String processCompleteJson(String jsonData, ChatStreamSink sink) {
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode jsonNode = mapper.readTree(jsonData);
-
-            log.debug("处理AI API响应: {}", jsonData.length() > 200 ? jsonData.substring(0, 200) + "..." : jsonData);
-
-            JsonNode choices = jsonNode.get("choices");
-
-            if (choices != null && choices.isArray() && choices.size() > 0) {
-                JsonNode delta = choices.get(0).get("delta");
-                if (delta != null && delta.has("content")) {
-                    // 跳过 JSON null content（推理模型思考阶段发 content:null + reasoning_content:文本），
-                    // Jackson asText() 对 JSON null 返回字符串 "null"（非空），会被误当内容发给前端 → nullnull... 串
-                    JsonNode contentNode = delta.get("content");
-                    if (contentNode != null && contentNode.isTextual()) {
-                        String content = contentNode.asText();
-                        if (content != null && !content.isEmpty()) {
-                            ContentPolicy.ContentDetectionResult detectionResult = contentPolicy.detectContentAndGetResult(content);
-                            String cleanContent = detectionResult.getCleanedContent();
-
-                            // 如果需要重试，抛出特殊异常
-                            if (detectionResult.needsRetry()) {
-                                log.warn("检测到需要重试的错误消息，抛出重试异常: [{}]",
-                                    content.length() > 50 ? content.substring(0, 50) + "..." : content);
-                                throw new ContentPolicy.ChatRetryException("检测到需要重试的错误消息");
-                            }
-
-                            // 如果内容被过滤，不返回任何内容（既不发送给前端，也不累积到数据库）
-                            if (detectionResult.wasFiltered()) {
-                                log.debug("AI响应内容被过滤，不发送给前端且不保存到数据库: [{}]",
-                                    content.length() > 50 ? content.substring(0, 50) + "..." : content);
-                                return null; // 返回null，不累积到aiResponseContent
-                            }
-
-                            if (!cleanContent.isEmpty()) {
-                                log.debug("AI响应内容: [{}]", cleanContent.length() > 50 ? cleanContent.substring(0, 50) + "..." : cleanContent);
-
-                                sink.writeContent(cleanContent);
-                                return cleanContent;
-                            }
-                        }
-                    } else {
-                        log.debug("完整响应delta节点content为JSON null（推理阶段），跳过");
-                    }
-                }
-            }
-            return null;
-        } catch (Exception e) {
-            log.error("处理完整JSON数据失败: {}, JSON内容: {}", e.getMessage(), jsonData.length() > 100 ? jsonData.substring(0, 100) + "..." : jsonData);
-            return null;
-        }
-    }
-
-
-
                                                         /**
      * 执行多次续写（最多2次）
      * @param response HTTP响应对象
      * @param request 聊天请求
      * @param model AI模型
      * @param originalContent 原始内容
-     * @param aiResponseContentRef 用于累积内容的StringBuilder引用
+     * @param streamState 主链路流状态（content/reasoning 累计缓冲）
      * @return 最终状态标识，如果被中断返回CONTINUATION_INTERRUPTED:内容，否则返回"SUCCESS"
      */
     public String performMultipleContinuations(ChatStreamSink sink, ChatRequestDTO request,
-                                              AiModel model, String originalContent, StringBuilder aiResponseContentRef) {
+                                              AiModel model, String originalContent, StreamResponseState streamState) {
         final int maxContinuations = 2; // 最多续写2次
         String currentContent = originalContent;
 
@@ -434,7 +349,7 @@ this.aiChatClient = aiChatClient;
             // 单轮 continueAiResponse 内部仍可用 blockLast，但绝不能回到 Tomcat 请求线程。
             String continuationContent;
             try {
-                continuationContent = continueAiResponse(sink, request, model, contentForThisRound);
+                continuationContent = continueAiResponse(sink, request, model, contentForThisRound, streamState);
             } catch (Exception throwable) {
                 log.error("第{}次续写操作异常，线程：{}, 会话ID：{}",
                         continuationRound, Thread.currentThread().getName(), request.getSessionId(), throwable);
@@ -454,10 +369,10 @@ this.aiChatClient = aiChatClient;
                                 continuationRound, request.getSessionId(), actualContent.length());
 
                         // 将部分续写内容拼接到原内容后面
-                        aiResponseContentRef.append(actualContent);
+                        streamState.appendContent(actualContent);
 
                         log.debug("第{}次续写中断内容拼接完成 - 原内容长度: {}, 部分续写长度: {}, 最终长度: {}",
-                                continuationRound, contentForThisRound.length(), actualContent.length(), aiResponseContentRef.length());
+                                continuationRound, contentForThisRound.length(), actualContent.length(), streamState.content().length());
 
                         // 续写被中断，直接返回中断标记
                         return "CONTINUATION_INTERRUPTED:" + actualContent;
@@ -466,13 +381,13 @@ this.aiChatClient = aiChatClient;
                                 continuationRound, request.getSessionId(), continuationContent.length());
 
                         // 将续写内容拼接到原内容后面
-                        aiResponseContentRef.append(continuationContent);
+                        streamState.appendContent(continuationContent);
 
                         // 更新当前内容为拼接后的完整内容，用于下一轮检测
-                        currentContent = aiResponseContentRef.toString();
+                        currentContent = streamState.content();
 
                         log.debug("第{}次续写内容拼接完成 - 续写长度: {}, 最终长度: {}",
-                                continuationRound, continuationContent.length(), aiResponseContentRef.length());
+                                continuationRound, continuationContent.length(), streamState.content().length());
 
                         // 如果这是最后一次续写，直接返回成功，不再检测截断
                         if (continuationRound >= maxContinuations) {
@@ -519,7 +434,7 @@ this.aiChatClient = aiChatClient;
      * 执行AI响应续写（带重试机制）
      * @return 续写内容，如果失败返回null
      */
-    private String continueAiResponse(ChatStreamSink sink, ChatRequestDTO request, AiModel model, String originalContent) {
+    private String continueAiResponse(ChatStreamSink sink, ChatRequestDTO request, AiModel model, String originalContent, StreamResponseState streamState) {
         int maxRetries = 3; // 最大重试次数
         int retryCount = 0;
 
@@ -556,7 +471,7 @@ this.aiChatClient = aiChatClient;
 
                 // 执行续写请求（带对齐的流式处理）
                 boolean success = executeContinuationRequestWithAlignment(continuationRequest, model, sink,
-                        originalContent, continuationContent, alignedContentForSaving, hasContentSent, isRealAiResponseArray, alignmentDone, wasInterrupted);
+                        originalContent, continuationContent, alignedContentForSaving, hasContentSent, isRealAiResponseArray, alignmentDone, wasInterrupted, streamState);
 
                 // 如果续写过程中被中断，返回已生成的部分内容给主流程处理
                 if (wasInterrupted[0] && hasContentSent[0]) {
@@ -660,7 +575,8 @@ this.aiChatClient = aiChatClient;
     private boolean executeContinuationRequestWithAlignment(ChatRequestDTO request, AiModel model, ChatStreamSink sink,
                                                           String originalContent, StringBuilder continuationContent,
                                                           StringBuilder alignedContentForSaving, boolean[] hasContentSent,
-                                                          boolean[] isRealAiResponse, boolean[] alignmentDone, boolean[] wasInterrupted) throws ContentPolicy.ChatRetryException {
+                                                          boolean[] isRealAiResponse, boolean[] alignmentDone, boolean[] wasInterrupted,
+                                                          StreamResponseState streamState) throws ContentPolicy.ChatRetryException {
         log.debug("开始执行续写请求，用户ID: {}, 模型: {}, 原内容长度: {}", request.getUserId(), model.getModelCode(), originalContent.length());
 
         // 初始化缓存相关变量
@@ -670,8 +586,10 @@ this.aiChatClient = aiChatClient;
         boolean[] cleaningDone = {false};
 
         try {
-            // 构建请求体（阶段3：委托 AiChatClient）
-            Map<String, Object> requestBody = aiChatClient.buildStreamRequestBody(model, request.getMessages());
+            // 构建请求体：续写继承 deepThinking，显式 thinking true/false
+            boolean thinkingEnabled = Boolean.TRUE.equals(request.getDeepThinking());
+            Map<String, Object> requestBody = aiChatClient.buildStreamRequestBody(
+                    model, request.getMessages(), thinkingEnabled);
 
             log.debug("构建续写消息列表完成，原始消息数：{}，添加截断内容长度：{}，最终消息数：{}",
                     request.getMessages().size() - 2, originalContent.length(), request.getMessages().size());
@@ -766,7 +684,7 @@ this.aiChatClient = aiChatClient;
                                     try {
                                         String contentSent = processContinuationJson(bufferedJson, sink,
                                                 originalContent, continuationContent, alignedContentForSaving, alignmentDone,
-                                                cacheBuffer, cacheStartTime, cacheBlockCount, cleaningDone);
+                                                cacheBuffer, cacheStartTime, cacheBlockCount, cleaningDone, streamState, Boolean.TRUE.equals(request.getDeepThinking()));
                                         if (contentSent != null) {
                                             hasContentSent[0] = true;
                                             isRealAiResponse[0] = true;
@@ -808,7 +726,7 @@ this.aiChatClient = aiChatClient;
                                     try {
                                         String contentSent = processContinuationJson(bufferedJson, sink,
                                                 originalContent, continuationContent, alignedContentForSaving, alignmentDone,
-                                                cacheBuffer, cacheStartTime, cacheBlockCount, cleaningDone);
+                                                cacheBuffer, cacheStartTime, cacheBlockCount, cleaningDone, streamState, Boolean.TRUE.equals(request.getDeepThinking()));
                                         if (contentSent != null) {
                                             hasContentSent[0] = true;
                                             isRealAiResponse[0] = true;
@@ -856,7 +774,7 @@ this.aiChatClient = aiChatClient;
                                                 try {
                                                     String contentSent = processContinuationJson(bufferedJson, sink,
                                                             originalContent, continuationContent, alignedContentForSaving, alignmentDone,
-                                                            cacheBuffer, cacheStartTime, cacheBlockCount, cleaningDone);
+                                                            cacheBuffer, cacheStartTime, cacheBlockCount, cleaningDone, streamState, Boolean.TRUE.equals(request.getDeepThinking()));
                                                     if (contentSent != null) {
                                                         hasContentSent[0] = true;
                                                         isRealAiResponse[0] = true;
