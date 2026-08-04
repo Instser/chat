@@ -1204,3 +1204,4 @@
 - 根因：ResponseBodyEmitter 跨线程 complete 缺 chunked 终止块
 - 修复：AsyncContext + OutputStream；前端 onError/重试 id 兜底
 - 验收：直连/公网 HTTP1.1/HTTP2 curl exit 0，FINAL_CHUNK=True
+- [x] 运维监控支付假数据与 TTFT 错位修复（2026-08-04 19:20）

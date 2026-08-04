@@ -386,15 +386,21 @@ public class AdminOpsService {
         statusPie.add(Map.of("name", "failed", "value", totals.get("callsFailed")));
         ai.put("statusPie", statusPie);
 
-        List<Map<String, Object>> modelBars = modelRows.stream().map(m -> {
-            Map<String, Object> bar = new LinkedHashMap<>();
-            bar.put("name", m.get("model"));
-            bar.put("calls", ((Number) m.getOrDefault("successCount", 0L)).longValue()
-                    + ((Number) m.getOrDefault("failedCount", 0L)).longValue());
-            bar.put("ttftMeanMs", m.get("ttftMeanMs"));
-            bar.put("durationMeanMs", m.get("durationMeanMs"));
-            return bar;
-        }).collect(Collectors.toList());
+        List<Map<String, Object>> modelBars = modelRows.stream()
+                // 过滤无有效模型名的脏序列，避免前端 x 轴「unknown」与真实模型错位
+                .filter(m -> {
+                    Object model = m.get("model");
+                    return model != null && !"unknown".equals(String.valueOf(model)) && !String.valueOf(model).isBlank();
+                })
+                .map(m -> {
+                    Map<String, Object> bar = new LinkedHashMap<>();
+                    bar.put("name", String.valueOf(m.get("model")));
+                    bar.put("calls", ((Number) m.getOrDefault("successCount", 0L)).longValue()
+                            + ((Number) m.getOrDefault("failedCount", 0L)).longValue());
+                    bar.put("ttftMeanMs", m.get("ttftMeanMs"));
+                    bar.put("durationMeanMs", m.get("durationMeanMs"));
+                    return bar;
+                }).collect(Collectors.toList());
         ai.put("modelBars", modelBars);
         return ai;
     }

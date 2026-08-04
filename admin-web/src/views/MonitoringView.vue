@@ -49,7 +49,7 @@
         <el-card shadow="never" class="block">
           <template #header>AI 按模型耗时 / TTFT</template>
           <div ref="aiBarRef" class="chart"></div>
-          <div class="hint">来源：ai_call_duration_seconds / ai_ttft_seconds</div>
+          <div class="hint">左轴=调用次数 · 右轴=TTFT/总耗时(ms) · dataset 对齐模型名</div>
         </el-card>
       </el-col>
 
@@ -79,7 +79,7 @@
         <el-card shadow="never" class="block">
           <template #header>支付 / 订单（近 7 日收入）</template>
           <div ref="paymentLineRef" class="chart"></div>
-          <div class="hint">来源：PaymentAnalytics 日收入 + 订单状态</div>
+          <div class="hint">来源：t_user_order 真实统计（非模拟）</div>
         </el-card>
       </el-col>
 
@@ -194,36 +194,74 @@ function renderCharts() {
     }
   }
 
-  // AI model bars
+  // AI model bars：次数与耗时量纲不同，必须双 Y 轴，否则柱/线视觉错位
   const aiBar = ensureChart(aiBarRef.value)
-  const modelBars = data.value.ai?.modelBars || []
+  const modelBars = (data.value.ai?.modelBars || []).filter(
+    (m: any) => m && m.name && m.name !== 'unknown',
+  )
   if (aiBar) {
     if (!modelBars.length) {
       aiBar.setOption(emptyOption('暂无按模型耗时数据'), true)
     } else {
-      const names = modelBars.map((m: any) => m.name)
+      // 用 dataset + encode 保证类目与系列按同一行对齐，避免 name 与数值错位
+      const source = modelBars.map((m: any) => ({
+        model: String(m.name),
+        calls: Number(m.calls) || 0,
+        ttft: m.ttftMeanMs == null ? null : Number(m.ttftMeanMs),
+        duration: m.durationMeanMs == null ? null : Number(m.durationMeanMs),
+      }))
       aiBar.setOption(
         {
-          tooltip: { trigger: 'axis' },
+          tooltip: {
+            trigger: 'axis',
+            axisPointer: { type: 'shadow' },
+            formatter: (params: any) => {
+              const rows = Array.isArray(params) ? params : [params]
+              const model = rows[0]?.axisValueLabel || rows[0]?.name || ''
+              const lines = rows.map((p: any) => {
+                const v = p.data?.[p.encode?.y?.[0]] ?? p.value
+                const unit = p.seriesName?.includes('次') ? '' : ' ms'
+                return `${p.marker}${p.seriesName}: ${v == null ? '-' : v}${unit}`
+              })
+              return `${model}<br/>${lines.join('<br/>')}`
+            },
+          },
           legend: { data: ['调用次数', 'TTFT均值(ms)', '总耗时均值(ms)'] },
-          grid: { left: 40, right: 16, top: 36, bottom: 48 },
-          xAxis: { type: 'category', data: names, axisLabel: { rotate: 25 } },
-          yAxis: { type: 'value' },
+          grid: { left: 48, right: 56, top: 36, bottom: 64 },
+          dataset: { source },
+          xAxis: {
+            type: 'category',
+            axisLabel: { rotate: 25, interval: 0, hideOverlap: false },
+          },
+          yAxis: [
+            { type: 'value', name: '次数', minInterval: 1 },
+            { type: 'value', name: 'ms', splitLine: { show: false } },
+          ],
           series: [
             {
               name: '调用次数',
               type: 'bar',
-              data: modelBars.map((m: any) => Number(m.calls) || 0),
+              yAxisIndex: 0,
+              encode: { x: 'model', y: 'calls' },
+              barMaxWidth: 36,
             },
             {
               name: 'TTFT均值(ms)',
               type: 'line',
-              data: modelBars.map((m: any) => Number(m.ttftMeanMs) || 0),
+              yAxisIndex: 1,
+              encode: { x: 'model', y: 'ttft' },
+              connectNulls: false,
+              symbol: 'circle',
+              symbolSize: 8,
             },
             {
               name: '总耗时均值(ms)',
               type: 'line',
-              data: modelBars.map((m: any) => Number(m.durationMeanMs) || 0),
+              yAxisIndex: 1,
+              encode: { x: 'model', y: 'duration' },
+              connectNulls: false,
+              symbol: 'circle',
+              symbolSize: 8,
             },
           ],
         },
@@ -311,26 +349,24 @@ function renderCharts() {
     }
   }
 
-  // Payment daily revenue
+  // Payment daily revenue（真实订单日收入；支付方式单独用饼图，避免与日期轴错位）
   const paymentLine = ensureChart(paymentLineRef.value)
   const daily = data.value.payment?.dailyRevenue || []
   const methods = data.value.payment?.paymentMethods || []
   if (paymentLine) {
     if (!daily.length && !methods.length) {
       paymentLine.setOption(emptyOption('暂无支付统计'), true)
-    } else {
+    } else if (daily.length) {
       paymentLine.setOption(
         {
           tooltip: { trigger: 'axis' },
-          legend: { data: ['日收入', '支付方式订单数'] },
+          legend: { data: ['日收入'] },
           grid: { left: 48, right: 16, top: 36, bottom: 36 },
           xAxis: {
             type: 'category',
-            data: daily.length
-              ? daily.map((d: any) => d.date)
-              : methods.map((m: any) => m.name),
+            data: daily.map((d: any) => d.date),
           },
-          yAxis: { type: 'value' },
+          yAxis: { type: 'value', name: '金额' },
           series: [
             {
               name: '日收入',
@@ -339,34 +375,30 @@ function renderCharts() {
               data: daily.map((d: any) => Number(d.revenue) || 0),
               areaStyle: { opacity: 0.12 },
             },
+          ],
+        },
+        true,
+      )
+    } else {
+      paymentLine.setOption(
+        {
+          tooltip: { trigger: 'item' },
+          legend: { bottom: 0 },
+          series: [
             {
-              name: '支付方式订单数',
-              type: 'bar',
-              data: methods.map((m: any) => Number(m.value) || 0),
-              // 若 daily 存在，methods 可能轴不同；仅在无 daily 时用 methods 轴
-              ...(daily.length ? { xAxisIndex: 0, data: [] as number[] } : {}),
+              name: '支付方式',
+              type: 'pie',
+              radius: ['35%', '65%'],
+              data: methods.map((m: any) => ({
+                name: m.name,
+                value: Number(m.value) || 0,
+              })),
+              label: { formatter: '{b}: {c}' },
             },
           ],
         },
         true,
       )
-      // 若两者都有，叠加支付方式为饼图数据在 tooltip note 中即可；这里优先日收入折线
-      if (daily.length) {
-        paymentLine.setOption(
-          {
-            series: [
-              {
-                name: '日收入',
-                type: 'line',
-                smooth: true,
-                data: daily.map((d: any) => Number(d.revenue) || 0),
-                areaStyle: { opacity: 0.12 },
-              },
-            ],
-          },
-          false,
-        )
-      }
     }
   }
 

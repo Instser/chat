@@ -1788,3 +1788,8 @@
 - 根因：ResponseBodyEmitter 跨线程 complete 缺 chunked 终止块
 - 修复：AsyncContext + OutputStream；前端 onError/重试 id 兜底
 - 验收：直连/公网 HTTP1.1/HTTP2 curl exit 0，FINAL_CHUNK=True
+
+## 2026-08-04 19:20 运维监控修复
+- 假数据 120：PaymentAnalyticsServiceImpl 硬编码已改为 t_user_order 实查
+- TTFT 图：双 Y 轴 + dataset 对齐；过滤 unknown 模型
+- 现网：近7日 successfulOrders=0（真实）；全量 paid=3/total=58
