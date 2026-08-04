@@ -23,12 +23,15 @@ import org.springframework.http.MediaType;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
+import jakarta.servlet.AsyncContext;
+import jakarta.servlet.AsyncEvent;
+import jakarta.servlet.AsyncListener;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 
 import com.instser.chat.dto.request.DeleteSessionRequest;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -63,29 +66,29 @@ public class ChatApiController {
     /**
      * 流式聊天接口 - 兼容前端 (POST)
      *
-     * <p>返回 {@link ResponseBodyEmitter} 使请求线程可在订阅启动后立即返回。
-     * 注意：不能用 SseEmitter，否则会再包一层 data: 帧，破坏 Vercel AI data stream 协议。</p>
+     * <p>使用 Servlet AsyncContext 直接写 OutputStream，保证 chunked 终止块写出。
+     * 不能用 SseEmitter（会包 data: 帧）；ResponseBodyEmitter 跨线程 complete 曾导致
+     * 缺终止块 → 浏览器 Network error。</p>
      */
     @PostMapping(value = "", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public ResponseBodyEmitter chat(@RequestBody Map<String, Object> request, Authentication authentication,
-                                    HttpServletRequest httpRequest, HttpServletResponse response) {
+    public void chat(@RequestBody Map<String, Object> request, Authentication authentication,
+                     HttpServletRequest httpRequest, HttpServletResponse response) {
         LogUtils.logUserOperation(log, getCurrentUserId(authentication), "API调用", "聊天接口，请求参数：{}", LogUtils.formatRequestParams(request));
 
-        // 动态设置跨域头 + 流式协议头（必须在返回 emitter 前）
+        // 动态设置跨域头 + 流式协议头（必须在 startAsync 前）
         setCorsHeaders(httpRequest, response);
         chatStreamEventWriter.setStreamResponseHeaders(response);
         response.setHeader("X-Accel-Buffering", "no");
 
-        // 0L = 不由 emitter 主动超时；仍受 MVC/网关超时约束（见非阻塞方案 6.5）
-        ResponseBodyEmitter emitter = new ResponseBodyEmitter(0L);
-        ChatStreamSink sink = ChatStreamSink.of(emitter, chatStreamEventWriter);
+        AsyncContext asyncContext = startChatAsync(httpRequest);
+        ChatStreamSink sink = ChatStreamSink.ofAsync(asyncContext, chatStreamEventWriter);
 
         String sessionIdForCancel = null;
         try {
             ChatRequestDTO chatRequest = ChatRequestDTO.fromMap(request);
             sessionIdForCancel = chatRequest.getSessionId();
             final String sessionId = sessionIdForCancel;
-            registerEmitterCancelHooks(emitter, sessionId, getCurrentUserId(authentication));
+            registerAsyncCancelHooks(asyncContext, sessionId, getCurrentUserId(authentication));
 
             LogUtils.logUserSessionDebug(log, chatRequest.getUserId(), chatRequest.getSessionId(), "聊天处理", "开始处理聊天请求(非阻塞)");
 
@@ -116,7 +119,6 @@ public class ChatApiController {
             } catch (Exception ignored) {
             }
         }
-        return emitter;
     }
 
     /**
@@ -378,16 +380,16 @@ public class ChatApiController {
      * 重新生成AI回复
      */
     @PostMapping(value = "/retry", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public ResponseBodyEmitter retryChat(@RequestBody Map<String, Object> request, Authentication authentication,
-                                         HttpServletRequest httpRequest, HttpServletResponse response) {
+    public void retryChat(@RequestBody Map<String, Object> request, Authentication authentication,
+                          HttpServletRequest httpRequest, HttpServletResponse response) {
         LogUtils.logUserOperation(log, getCurrentUserId(authentication), "API调用", "收到重新生成请求：{}", request);
 
         setCorsHeaders(httpRequest, response);
         chatStreamEventWriter.setStreamResponseHeaders(response);
         response.setHeader("X-Accel-Buffering", "no");
 
-        ResponseBodyEmitter emitter = new ResponseBodyEmitter(0L);
-        ChatStreamSink sink = ChatStreamSink.of(emitter, chatStreamEventWriter);
+        AsyncContext asyncContext = startChatAsync(httpRequest);
+        ChatStreamSink sink = ChatStreamSink.ofAsync(asyncContext, chatStreamEventWriter);
         String sessionIdForCancel = null;
 
         try {
@@ -404,12 +406,12 @@ public class ChatApiController {
                 } catch (Exception ignored) {
                 }
                 sink.complete();
-                return emitter;
+                return;
             }
 
             final String sessionId = chatId;
             final Long userId = getCurrentUserId(authentication);
-            registerEmitterCancelHooks(emitter, sessionId, userId);
+            registerAsyncCancelHooks(asyncContext, sessionId, userId);
 
             chatService.processRetryChat(chatId, messageId, modelId, network, deepThinking, authentication, sink);
             // retry 为 void：准备失败时 Service 已写错误帧；成功启动后由 processor complete
@@ -424,23 +426,22 @@ public class ChatApiController {
             } catch (Exception ignored) {
             }
         }
-        return emitter;
     }
 
     /**
      * 编辑用户消息并重新生成AI回复
      */
     @PostMapping(value = "/edit-resend", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public ResponseBodyEmitter editResendChat(@RequestBody Map<String, Object> request, Authentication authentication,
-                                              HttpServletRequest httpRequest, HttpServletResponse response) {
+    public void editResendChat(@RequestBody Map<String, Object> request, Authentication authentication,
+                               HttpServletRequest httpRequest, HttpServletResponse response) {
         LogUtils.logUserOperation(log, getCurrentUserId(authentication), "API调用", "收到编辑重发请求：{}", request);
 
         setCorsHeaders(httpRequest, response);
         chatStreamEventWriter.setStreamResponseHeaders(response);
         response.setHeader("X-Accel-Buffering", "no");
 
-        ResponseBodyEmitter emitter = new ResponseBodyEmitter(0L);
-        ChatStreamSink sink = ChatStreamSink.of(emitter, chatStreamEventWriter);
+        AsyncContext asyncContext = startChatAsync(httpRequest);
+        ChatStreamSink sink = ChatStreamSink.ofAsync(asyncContext, chatStreamEventWriter);
         String sessionIdForCancel = null;
 
         try {
@@ -459,7 +460,7 @@ public class ChatApiController {
                 } catch (Exception ignored) {
                 }
                 sink.complete();
-                return emitter;
+                return;
             }
 
             if (newContent == null || newContent.trim().isEmpty()) {
@@ -478,12 +479,12 @@ public class ChatApiController {
                     LogUtils.logUserWarning(log, null, "参数验证", "保存编辑重发参数验证错误响应失败", e);
                 }
                 sink.complete();
-                return emitter;
+                return;
             }
 
             final String sessionId = chatId;
             final Long userId = getCurrentUserId(authentication);
-            registerEmitterCancelHooks(emitter, sessionId, userId);
+            registerAsyncCancelHooks(asyncContext, sessionId, userId);
 
             chatService.processEditResendChat(chatId, messageId, newContent, filesId, modelId, network, deepThinking, authentication, sink);
 
@@ -497,38 +498,57 @@ public class ChatApiController {
             } catch (Exception ignored) {
             }
         }
-        return emitter;
     }
 
-    private void registerEmitterCancelHooks(ResponseBodyEmitter emitter, String sessionId, Long userId) {
-        emitter.onCompletion(() -> {
-            // 正常 complete 时 registry 多半已 remove；cancel 幂等
-            if (sessionId != null) {
-                streamSubscriptionRegistry.cancel(sessionId, StreamTerminalReason.CANCELLED);
-            }
-        });
-        emitter.onTimeout(() -> {
-            LogUtils.logUserSessionWarning(log, userId, sessionId, "API超时", "流 emitter 超时");
-            if (sessionId != null) {
-                streamSubscriptionRegistry.cancel(sessionId, StreamTerminalReason.TIMEOUT);
-                if (userId != null) {
-                    chatInterruptService.interruptChat(sessionId, userId);
+    /** 启动 Servlet 异步；超时 0=不超时（仍受网关/容器约束）。 */
+    private AsyncContext startChatAsync(HttpServletRequest httpRequest) {
+        AsyncContext asyncContext = httpRequest.startAsync();
+        asyncContext.setTimeout(0L);
+        return asyncContext;
+    }
+
+    private void registerAsyncCancelHooks(AsyncContext asyncContext, String sessionId, Long userId) {
+        asyncContext.addListener(new AsyncListener() {
+            @Override
+            public void onComplete(AsyncEvent event) {
+                // 正常 complete 时 registry 多半已 remove；cancel 幂等
+                if (sessionId != null) {
+                    streamSubscriptionRegistry.cancel(sessionId, StreamTerminalReason.CANCELLED);
                 }
             }
-            try {
-                emitter.complete();
-            } catch (Exception ignored) {
-            }
-        });
-        emitter.onError(ex -> {
-            LogUtils.logUserSessionWarning(log, userId, sessionId, "API通道错误", "emitter error: {}",
-                    ex != null ? ex.getMessage() : "null");
-            if (sessionId != null) {
-                StreamTerminalReason reason = StreamTerminalReason.FAILURE;
-                if (ex instanceof java.io.IOException) {
-                    reason = StreamTerminalReason.WRITE_FAILED;
+
+            @Override
+            public void onTimeout(AsyncEvent event) {
+                LogUtils.logUserSessionWarning(log, userId, sessionId, "API超时", "流 async 超时");
+                if (sessionId != null) {
+                    streamSubscriptionRegistry.cancel(sessionId, StreamTerminalReason.TIMEOUT);
+                    if (userId != null) {
+                        chatInterruptService.interruptChat(sessionId, userId);
+                    }
                 }
-                streamSubscriptionRegistry.cancel(sessionId, reason);
+                try {
+                    event.getAsyncContext().complete();
+                } catch (Exception ignored) {
+                }
+            }
+
+            @Override
+            public void onError(AsyncEvent event) {
+                Throwable ex = event.getThrowable();
+                LogUtils.logUserSessionWarning(log, userId, sessionId, "API通道错误", "async error: {}",
+                        ex != null ? ex.getMessage() : "null");
+                if (sessionId != null) {
+                    StreamTerminalReason reason = StreamTerminalReason.FAILURE;
+                    if (ex instanceof IOException) {
+                        reason = StreamTerminalReason.WRITE_FAILED;
+                    }
+                    streamSubscriptionRegistry.cancel(sessionId, reason);
+                }
+            }
+
+            @Override
+            public void onStartAsync(AsyncEvent event) {
+                // no-op
             }
         });
     }

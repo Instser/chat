@@ -1,16 +1,64 @@
+## 2026-08-04 13:53
+✅ 管理后台运维监控面板（echarts 5 类图 + /admin/ops/monitoring）已上线。
+
 # progress 更新
 
+- 2026-08-04 01:16: 部署文档优化；后端与 admin-web 上线；审计 SQL 已执行；用户前端本机重建失败保留现网。
+- 2026-08-03 22:05: 管理员前端 admin-web 完成（Vue3+TS+Vite，/admin base，build 成功）。
+- 2026-08-03 21:31: 管理员后台后端核心 API 与清理 B/C 安全项完成；operation_audit 增量 SQL；相关测试 23/23；前端 SPA/旧表 DROP 未做。
+- 2026-08-03 21:16: 冗余管理体系清理阶段 A 安全收口完成（支付权限、API Key、analyze-error 脱敏、README-OPS）；相关测试 17/17 通过；阶段 B-E 未开始。
 - 2026-08-03 21:06: 运维端与管理员后台完整开发方案、冗余管理体系清理方案完成；仅文档设计，尚未实施代码、SQL 或删除动作。
 - 2026-08-03 17:56: 家用服务器本地 Redis 部署完成，后端默认连接 127.0.0.1:6379 并已部署验证。
 - 2026-08-03 16:44: 系统提示词防泄露正确改造（system 注入 + 精简 prompt + PromptLeakGuard）完成代码与单测。
 
 # 项目进度状态
 
-**📅 最后更新**: 2026-08-03 21:06:00
+**📅 最后更新**: 2026-08-04 01:16:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v141.0
+**📊 文档版本**: v145.0
+
+## 🚀 最新完成功能 (2026-08-04)
+
+### 前后端与管理员后台部署 ✅
+- **完成时间**: 2026年8月4日 01:16
+- **后端**: jar 已部署，`chat:chat_00 RUNNING`，`/api/admin/**` 401
+- **SQL**: `t_operation_audit` 管理字段已加；`reasoning` 列已存在
+- **admin-web**: `/opt/tousechat-admin` + Nginx `/admin/` 200
+- **用户前端**: 现网 active `/` 200；本机重建失败未覆盖
+- **文档**: architecture / frontend-deploy 更新；部署记录 `docs/26-08-04_01-16_前后端与管理员后台部署记录_v1.0.md`
 
 ## 🚀 最新完成功能 (2026-08-03)
+
+### 管理员前端 admin-web ✅
+- **完成时间**: 2026年8月3日 22:05
+- **路径**: `admin-web/`
+- **技术栈**: Vue 3 + TS + Vite + Element Plus + Pinia + Axios
+- **部署路径**: `https://chat.instser.cn/admin/`
+- **能力**: 登录守卫、概览、用户、套餐、模型、订单、审计、运维中心
+- **验证**: `npm run build` 成功
+- **文档**: `docs/26-08-03_22-05_管理员前端admin-web落地_v1.0.md`
+
+### 运维管理后台后端 + 冗余清理 B/C ✅
+- **完成时间**: 2026年8月3日 21:31
+- **方案**: 开发方案阶段 1–5 后端 + 清理方案阶段 B/C 安全项
+- **代码**: `src/main/java/com/instser/chat/admin/**` 全套 Controller/Service/VO/DTO
+- **SQL**: `sql/2026-08-03_t_operation_audit_admin_fields.sql` (+ rollback)
+- **清理**: 删除 CacheManagement 说明配置；旧 cache/logs Deprecated；TestController profile 限制；DataInitializer 收敛
+- **测试**: 23/23 通过；`mvn -DskipTests compile` 成功
+- **未做**: 管理员前端 SPA、Flyway、旧表 DROP、全量 Security 集成测试
+- **文档**: `docs/26-08-03_21-31_运维管理后台与冗余清理实施_v1.0.md`
+
+### 冗余管理体系清理阶段 A 安全收口 ✅
+- **完成时间**: 2026年8月3日 21:16
+- **方案**: `docs/plans/26-08-03_20-59_冗余管理体系清理方案_v1.0.md` 阶段 A
+- **代码**:
+  - `PaymentAuditController` 三接口 `@PreAuthorize("hasRole('ADMIN')")`
+  - `PaymentController` `/sync/**`、`/admin/sync/**` 管理员限制；订单查询归属校验
+  - `ManagementApiKeyService` 仅 `X-API-Key` Header；停止完整密钥日志；`getMasterApiKey` 废弃
+  - `OpsController.analyze-error` 长度限制 + `sanitizeForAi`
+- **文档**: `README-OPS.md` 端口/鉴权矩阵修正；`docs/26-08-03_21-16_冗余管理体系清理阶段A安全收口_v1.0.md`
+- **测试**: `mvn -Dtest=ManagementApiKeyServiceTest,OpsControllerSanitizeTest,OpsControllerTest,AdminCacheControllerTest test` → 17/17 通过
+- **未做**: 阶段 B 新 `/admin/**` 入口、阶段 C 删除旧类、阶段 D 删表、阶段 E 历史 SQL 归档
 
 ### 运维端与管理员后台开发及清理方案 ✅
 - **完成时间**: 2026年8月3日 21:06
@@ -1145,3 +1193,14 @@
 - 已实现 PromptSkill* + AiStreamProcessor 接入；Redis TTL 30m
 - 后端 jar 已部署 home.example.com；E2E: 你是谁无 skill / React→FRONTEND / Spring→BACKEND 切换
 - 前端无需改动（skill 仅后端 system）
+
+## 2026-08-04 10:27 管理员 overview 超时修复
+- 根因：health.checkAiApi 真实调用 Gemini 联网超时 ~130s
+- 修复：AdminOpsService.checkAiApi 改为 config-only
+- 已部署家用机 chat:chat_00，overview ~0.2s 200
+
+
+## 2026-08-04 18:07 聊天流 Network Error 根治
+- 根因：ResponseBodyEmitter 跨线程 complete 缺 chunked 终止块
+- 修复：AsyncContext + OutputStream；前端 onError/重试 id 兜底
+- 验收：直连/公网 HTTP1.1/HTTP2 curl exit 0，FINAL_CHUNK=True

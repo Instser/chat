@@ -1,19 +1,23 @@
 package com.instser.chat.service.stream;
 
 import com.instser.chat.entity.WebSearchResult;
+import jakarta.servlet.AsyncContext;
+import jakarta.servlet.ServletOutputStream;
 import jakarta.servlet.http.HttpServletResponse;
-import org.springframework.http.MediaType;
-import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyEmitter;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 
 /**
- * 业务层流写出端口。业务代码依赖此接口，不直接依赖 HttpServletResponse / Emitter。
+ * 业务层流写出端口。业务代码依赖此接口，不直接依赖 HttpServletResponse。
  *
- * <p>异步实现使用 {@link ResponseBodyEmitter} 而非 {@link org.springframework.web.servlet.mvc.method.annotation.SseEmitter}，
- * 因为现网协议是 Vercel AI data stream 原始行（{@code 0:}/{@code g:}/{@code d:}/{@code u:}），
- * SseEmitter 会再包一层 {@code data:} 帧，破坏前端解析。</p>
+ * <p>异步实现使用 Servlet {@link AsyncContext} 直接写 {@link ServletOutputStream}，
+ * 保证 chunked 响应写出终止块（{@code 0\r\n\r\n}）。
+ * 曾用 ResponseBodyEmitter 跨线程 complete 会出现「内容完整但缺终止块 → 浏览器 Network error」。</p>
+ *
+ * <p>协议为 Vercel AI data stream 原始行（{@code 0:}/{@code g:}/{@code d:}/{@code u:}），
+ * 禁止用 SseEmitter（会再包一层 {@code data:} 帧）。</p>
  */
 public interface ChatStreamSink {
 
@@ -33,27 +37,22 @@ public interface ChatStreamSink {
 
     void writeInterruptCompletion() throws IOException;
 
-    /**
-     * 正常结束通道（异步 emitter 必调；同步 Servlet 实现可为空操作）。
-     */
+    /** 正常结束通道（异步必调；同步 Servlet 实现可为空操作）。 */
     default void complete() {
         // no-op for servlet adapter
     }
 
-    /**
-     * 异常结束通道。
-     */
+    /** 异常结束通道。 */
     default void completeWithError(Throwable error) {
         // no-op for servlet adapter
     }
 
-    /**
-     * 是否为异步 emitter 写出（Controller 快速返回场景）。
-     */
+    /** 是否为异步写出（Controller 快速返回场景）。 */
     default boolean isAsync() {
         return false;
     }
 
+    /** 同步路径：直接写 HttpServletResponse（单测 / 同步调用）。 */
     static ChatStreamSink of(HttpServletResponse response, ChatStreamEventWriter writer) {
         return new ChatStreamSink() {
             @Override
@@ -99,19 +98,19 @@ public interface ChatStreamSink {
     }
 
     /**
-     * 异步通道适配：原始协议字符串经 ResponseBodyEmitter 写出，不经 SseEmitter 二次包装。
+     * 异步通道：AsyncContext + OutputStream，保证 chunked 终止块被写出。
      *
-     * @param emitter 超时由 Controller 创建时指定；0L 表示不超时（仍受 MVC/网关约束）
+     * <p>headers 须在 startAsync 前由 Controller 写入；本方法只负责 body 与 complete。</p>
      */
-    static ChatStreamSink of(ResponseBodyEmitter emitter, ChatStreamEventWriter writer) {
+    static ChatStreamSink ofAsync(AsyncContext asyncContext, ChatStreamEventWriter writer) {
         final Object writeLock = new Object();
+        final HttpServletResponse response = (HttpServletResponse) asyncContext.getResponse();
         return new ChatStreamSink() {
             private volatile boolean finished;
 
             @Override
             public void setHeaders() {
-                // ResponseBodyEmitter 场景下 Content-Type 由 Controller produces / 返回值处理；
-                // 额外业务头（如 x-vercel-ai-data-stream）在 Controller 创建 emitter 前写入 HttpServletResponse。
+                // headers 已在 startAsync 前设置
             }
 
             @Override
@@ -130,7 +129,6 @@ public interface ChatStreamSink {
                     return;
                 }
                 try {
-                    // 异步路径不做 Thread.sleep 智能分块，避免阻塞 reactor/业务线程
                     sendRaw(writer.formatContentBlock(content));
                 } catch (IOException e) {
                     throw new IllegalStateException("异步写出 content 失败", e);
@@ -181,7 +179,12 @@ public interface ChatStreamSink {
                     }
                     finished = true;
                     try {
-                        emitter.complete();
+                        response.getOutputStream().flush();
+                    } catch (Exception ignored) {
+                        // flush best-effort
+                    }
+                    try {
+                        asyncContext.complete();
                     } catch (Exception ignored) {
                         // already completed
                     }
@@ -190,17 +193,8 @@ public interface ChatStreamSink {
 
             @Override
             public void completeWithError(Throwable error) {
-                synchronized (writeLock) {
-                    if (finished) {
-                        return;
-                    }
-                    finished = true;
-                    try {
-                        emitter.completeWithError(error != null ? error : new IllegalStateException("stream error"));
-                    } catch (Exception ignored) {
-                        // already completed
-                    }
-                }
+                // 流协议侧尽量已写 error/d 帧；此处只保证通道干净关闭
+                complete();
             }
 
             @Override
@@ -214,9 +208,11 @@ public interface ChatStreamSink {
                 }
                 synchronized (writeLock) {
                     if (finished) {
-                        throw new IOException("emitter already completed");
+                        throw new IOException("async stream already completed");
                     }
-                    emitter.send(payload, MediaType.TEXT_PLAIN);
+                    ServletOutputStream out = response.getOutputStream();
+                    out.write(payload.getBytes(StandardCharsets.UTF_8));
+                    out.flush();
                 }
             }
         };

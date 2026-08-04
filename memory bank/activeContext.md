@@ -1,18 +1,27 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-08-03 21:06:00
+**📅 最后更新**: 2026-08-04 01:16:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v149.0
+**📊 文档版本**: v153.0
 
 ## 当前任务
-- 运维端与管理员后台已完成开发方案和冗余管理体系清理方案，尚未实施代码、SQL 或表删除；下一步应先执行阶段 0 安全收口，再启动管理员前后端开发。
-- 管理员前端技术栈、代码仓库位置以及是否引入 Flyway/Liquibase 涉及新增依赖，实施前需用户确认。
-- 后端已切换到家用服务器本机 Redis（`127.0.0.1:6379`），服务运行中。
-- 后端推理思考块（reasoning）一等通道已按 v1.3 定稿落地，待前端接 `g:` / 历史 `reasoning`。
-- 上线前需执行 SQL：`sql/2026-08-03_chat_message_add_reasoning.sql`（若生产库尚未执行）。
+- 管理员后台已部署上线：`/admin/` 静态站 + 后端 `/api/admin/**` + 审计 SQL。
+- 用户前端现网保持运行（本次本机 Next 重建失败，未覆盖）。
+- 待确认：是否引入 Flyway/Liquibase。
+- 待观察后清理：旧 `/admin/cache`/`/admin/logs` API Key 写入口与缓存二次密码；阶段 D 旧表 DROP；阶段 E SQL 归档。
+- 用户前端本机构建 `ignoreDuringBuilds` 报错需单独排查后再发版。
+
+
+## 2026-08-04 13:53 运维监控面板
+- 已上线 /admin/monitoring + GET /api/admin/ops/monitoring（AI/HTTP/系统/支付/模型探测）。
+- 依赖 echarts；进程内快照，非完整 Grafana。
 - 域名 `chat.instser.cn` 外网仍可能受阿里云备案拦截影响。
 
 ## 最新完成任务
+✅ **前后端与管理员后台部署** — 部署文档补充 `/admin/` 与后端发版流程；后端 jar 部署 `chat:chat_00 RUNNING`；`t_operation_audit` 管理字段 SQL 已执行；admin-web 挂载 `/opt/tousechat-admin`，公网机验收 `/admin/` 200、admin API 401。用户前端现网 200 保留（本机 Next 重建失败未覆盖）。文档：`docs/26-08-04_01-16_前后端与管理员后台部署记录_v1.0.md`。 (2026-08-04 01:16)
+✅ **管理员前端 admin-web 落地** — 当前仓库 `admin-web/`（Vue3+TS+Vite+Element Plus+Pinia），`base=/admin/`，Cookie JWT 登录，页面覆盖概览/用户/套餐/模型/订单/审计/运维；`npm run build` 成功。文档：`docs/26-08-03_22-05_管理员前端admin-web落地_v1.0.md`、`admin-web/README.md`。 (2026-08-03 22:05)
+✅ **运维管理后台后端 + 冗余清理 B/C 安全项** — 新增 `com.instser.chat.admin`；JWT+ROLE_ADMIN；审计与 SQL 增量；兼容期旧入口 Deprecated。文档：`docs/26-08-03_21-31_运维管理后台与冗余清理实施_v1.0.md`。 (2026-08-03 21:31)
+✅ **冗余管理体系清理阶段 A 安全收口** — 支付审计/同步管理员限制；API Key Header-only；analyze-error 脱敏；README-OPS 修正。文档：`docs/26-08-03_21-16_冗余管理体系清理阶段A安全收口_v1.0.md`。 (2026-08-03 21:16)
 ✅ **运维端与管理员后台完整开发方案 + 冗余管理体系清理方案完成** — 基于现有 8080/8081 端口、JWT/API Key 混合鉴权、运维/日志/缓存/支付接口和多代管理 SQL，确定交互式后台统一复用 `t_user + JWT + ROLE_ADMIN`、机器运维仅保留只读 `/ops/** + X-API-Key`；规划仪表盘、用户账户、套餐、模型、订单支付、审计和运维中心的前后端接口、数据库增量、测试、发布与回滚；另列出旧管理员表、缓存双重账号密码、重复支付管理路径、说明型配置类、规划审计表和多代 dump 的分阶段清理、验证及回滚条件。文档：`docs/plans/26-08-03_20-59_运维端与管理员后台完整开发方案_v1.0.md`、`docs/plans/26-08-03_20-59_冗余管理体系清理方案_v1.0.md`。仅文档和 memory bank 变更，未实施代码、SQL、依赖或数据库删除。 (2026-08-03 21:06)
 ✅ **家用服务器本地 Redis 部署 + 后端切换** — 在 `home.example.com` 安装 `redis-server 6.0.16`，仅监听 `127.0.0.1:6379` 并设置 `requirepass`；`application.yml`/`RedissonConfig` 默认改连本机，修复仅密码认证；JDK17 构建并部署 jar，`chat:chat_00 RUNNING`，日志确认 `Redisson客户端创建成功，连接到: 127.0.0.1:6379`。文档：`docs/2026-08-03_17-56_家用服务器本地Redis部署与后端切换_v1.0.md`。 (2026-08-03 17:56)
 ✅ **系统提示词防泄露正确改造** — 文档 `docs/2026-08-03_16-39_系统提示词防泄露与思考块安全优化方案_v1.0.md`；`role=system` + 精简 `IDENTITY_SYSTEM_PROMPT`；`PromptLeakGuard` 对 reasoning/content 出站治理；删除伪 who-are-you 注入；skill 默认不注入。相关单测 28 通过。 (2026-08-03 16:44)
@@ -1768,3 +1777,14 @@
 - 已实现 PromptSkill* + AiStreamProcessor 接入；Redis TTL 30m
 - 后端 jar 已部署 home.example.com；E2E: 你是谁无 skill / React→FRONTEND / Spring→BACKEND 切换
 - 前端无需改动（skill 仅后端 system）
+
+## 2026-08-04 10:27 管理员 overview 超时修复
+- 根因：health.checkAiApi 真实调用 Gemini 联网超时 ~130s
+- 修复：AdminOpsService.checkAiApi 改为 config-only
+- 已部署家用机 chat:chat_00，overview ~0.2s 200
+
+
+## 2026-08-04 18:07 聊天流 Network Error 根治
+- 根因：ResponseBodyEmitter 跨线程 complete 缺 chunked 终止块
+- 修复：AsyncContext + OutputStream；前端 onError/重试 id 兜底
+- 验收：直连/公网 HTTP1.1/HTTP2 curl exit 0，FINAL_CHUNK=True
