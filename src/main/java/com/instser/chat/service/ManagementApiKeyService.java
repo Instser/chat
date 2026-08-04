@@ -39,26 +39,24 @@ public class ManagementApiKeyService {
     @PostConstruct
     public void init() {
         if (apiKeyEnabled) {
-            // 如果没有配置主密钥，生成一个
+            // 如果没有配置主密钥，生成一个临时密钥（仅进程内有效，绝不打印明文）
+            boolean generatedTemporaryKey = false;
             if (masterApiKey == null || masterApiKey.trim().isEmpty()) {
                 masterApiKey = generateApiKey();
-                log.warn("管理接口API主密钥未配置，已生成临时密钥: {}", masterApiKey);
-                log.warn("建议在配置文件中设置 cache.management.api-key.master 属性");
+                generatedTemporaryKey = true;
+                log.warn("管理接口API主密钥未配置，已生成临时密钥（不输出明文）。请通过环境变量 CACHE_API_KEY 或配置 cache.management.api-key.master 注入正式密钥");
             }
-            
+
             // 注册主密钥
             apiKeys.put(masterApiKey, ApiKeyInfo.builder()
-                .name("Master Key")
-                .description("主管理密钥")
+                .name(generatedTemporaryKey ? "Temporary Master Key" : "Master Key")
+                .description(generatedTemporaryKey ? "启动时生成的临时主管理密钥" : "主管理密钥")
                 .createdAt(LocalDateTime.now())
                 .enabled(true)
                 .permissions("ALL")
                 .build());
-            
-            log.info("管理接口API密钥认证已启用，已注册 {} 个密钥", apiKeys.size());
-            log.info("管理接口访问方式:");
-            log.info("  - Header方式: X-API-Key: {}", masterApiKey);
-            log.info("  - 参数方式: ?apiKey={}", masterApiKey);
+
+            log.info("管理接口API密钥认证已启用，已注册 {} 个密钥；访问方式仅支持 Header: X-API-Key", apiKeys.size());
         } else {
             log.info("管理接口API密钥认证已禁用");
         }
@@ -99,20 +97,13 @@ public class ManagementApiKeyService {
 
     /**
      * 从HTTP请求中提取API密钥
+     * 仅允许 X-API-Key Header，禁止查询参数传递密钥，避免进入浏览器历史/访问日志。
      */
     public String extractApiKey(HttpServletRequest request) {
-        // 首先尝试从Header中获取
         String apiKey = request.getHeader("X-API-Key");
         if (apiKey != null && !apiKey.trim().isEmpty()) {
             return apiKey.trim();
         }
-
-        // 然后尝试从参数中获取
-        apiKey = request.getParameter("apiKey");
-        if (apiKey != null && !apiKey.trim().isEmpty()) {
-            return apiKey.trim();
-        }
-
         return null;
     }
 
@@ -232,10 +223,25 @@ public class ManagementApiKeyService {
     }
 
     /**
-     * 获取主密钥（仅用于显示给管理员）
+     * 获取主密钥指纹（不返回完整密钥，避免日志/接口泄露）
      */
+    public String getMasterApiKeyFingerprint() {
+        if (masterApiKey == null || masterApiKey.isEmpty()) {
+            return "unconfigured";
+        }
+        if (masterApiKey.length() <= 8) {
+            return "***";
+        }
+        return masterApiKey.substring(0, 4) + "***" + masterApiKey.substring(masterApiKey.length() - 4);
+    }
+
+    /**
+     * @deprecated 禁止返回完整主密钥；请使用 {@link #getMasterApiKeyFingerprint()}
+     */
+    @Deprecated
     public String getMasterApiKey() {
-        return masterApiKey;
+        log.warn("getMasterApiKey() 已废弃，调用方应停止获取完整主密钥");
+        return null;
     }
 
     /**

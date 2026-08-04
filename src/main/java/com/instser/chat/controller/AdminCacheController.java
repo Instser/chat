@@ -24,13 +24,16 @@ import java.time.LocalDateTime;
 import java.util.Map;
 
 /**
- * 缓存管理控制器
+ * 缓存管理控制器（兼容期机器入口）。
+ * <p>运行在应用端口 8080（context-path /api），不是 8081。
+ * 交互式管理请使用 JWT 管理员接口 {@code POST /admin/ops/cache/user-package/evict-all}。
  */
 @Slf4j
 @RestController
 @RequestMapping("/admin/cache")
 @RequiredArgsConstructor
-@Tag(name = "缓存管理", description = "管理员缓存刷新接口")
+@Tag(name = "缓存管理(兼容)", description = "兼容期 API Key + 二次账号密码缓存刷新接口")
+@Deprecated
 public class AdminCacheController {
 
     private final ManagementApiKeyService managementApiKeyService;

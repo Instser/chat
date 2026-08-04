@@ -3,6 +3,7 @@ package com.instser.chat.controller;
 import com.instser.chat.common.result.Result;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Profile;
 import org.springframework.web.bind.annotation.CrossOrigin;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -16,7 +17,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 /**
- * 测试控制器
+ * 测试控制器。仅在 dev/test profile 注册，生产不暴露。
  *
  * @author instser
  * @since 2024-01-01
@@ -25,6 +26,7 @@ import java.util.Map;
 @RestController
 @RequestMapping("/test")
 @RequiredArgsConstructor
+@Profile({"dev", "test", "local"})
 @CrossOrigin(originPatterns = {
     "http://localhost:*", "https://localhost:*",
     "http://127.0.0.1:*", "https://127.0.0.1:*",

@@ -188,22 +188,13 @@ public class ModelUsageController {
     }
 
     /**
-     * 测试接口：初始化套餐模型权限配置
+     * 历史空实现入口，已废弃。套餐/模型配置请使用管理员接口 /admin/packages、/admin/models。
      */
-    @Operation(summary = "初始化套餐配置", description = "测试接口：初始化套餐模型权限配置")
+    @Deprecated
+    @Operation(summary = "初始化套餐配置（已废弃）", description = "空实现，请改用管理员套餐/模型接口")
     @PostMapping("/init-package-config")
     public ResponseEntity<?> initPackageConfig() {
-        try {
-            LogUtils.logAdminOperation(log, "初始化配置", "开始初始化套餐模型权限配置");
-
-            // 这里可以添加初始化逻辑，比如更新现有套餐的model_permissions字段
-            // 暂时返回成功，实际的初始化逻辑在数据库升级脚本中完成
-
-            return ResponseEntity.ok(Result.success(null, "配置初始化完成"));
-
-        } catch (Exception e) {
-            LogUtils.logAdminOperation(log, "初始化配置", "初始化套餐配置异常", e);
-            return ResponseEntity.ok(Result.failed("初始化失败，请稍后重试"));
-        }
+        LogUtils.logAdminOperation(log, "初始化配置", "调用已废弃空实现 /api/model-usage/init-package-config");
+        return ResponseEntity.status(410).body(Result.failed("该接口已废弃，请使用 /admin/packages 与 /admin/models"));
     }
 }

@@ -28,6 +28,7 @@ import javax.sql.DataSource;
 import java.lang.management.ManagementFactory;
 import java.time.Instant;
 import java.util.*;
+import java.util.regex.Pattern;
 
 @Slf4j
 @RestController
@@ -35,6 +36,24 @@ import java.util.*;
 @RequiredArgsConstructor
 @Tag(name = "运维管理", description = "运维排障与状态查询接口")
 public class OpsController {
+
+    private static final int MAX_ERROR_LOG_LENGTH = 8000;
+    private static final int MAX_CONTEXT_INFO_LENGTH = 2000;
+
+    /** 脱敏：常见密钥/Token/密码模式 */
+    private static final Pattern SENSITIVE_PATTERN = Pattern.compile(
+            "(?i)(api[_-]?key|access[_-]?token|refresh[_-]?token|authorization|bearer|password|secret|passwd|private[_-]?key)" +
+                    "\\s*([:=]|is)\\s*['\"]?([^'\\\"\\s,;]+)['\"]?"
+    );
+    private static final Pattern BEARER_TOKEN_PATTERN = Pattern.compile(
+            "(?i)(Bearer\\s+)[A-Za-z0-9\\-._~+/]+=*"
+    );
+    private static final Pattern JWT_PATTERN = Pattern.compile(
+            "eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+"
+    );
+    private static final Pattern EMAIL_PATTERN = Pattern.compile(
+            "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+    );
 
     private final ManagementApiKeyService managementApiKeyService;
     private final BuildProperties buildProperties;
@@ -164,8 +183,26 @@ public class OpsController {
             return forbidden();
         }
 
+        String rawErrorLog = request.getErrorLog();
+        String rawContext = request.getContextInfo();
+
+        if (rawErrorLog != null && rawErrorLog.length() > MAX_ERROR_LOG_LENGTH) {
+            Result<Map<String, Object>> result = new Result<>(400, "异常日志长度不能超过" + MAX_ERROR_LOG_LENGTH + "字符");
+            return ResponseEntity.badRequest().body(result);
+        }
+        if (rawContext != null && rawContext.length() > MAX_CONTEXT_INFO_LENGTH) {
+            Result<Map<String, Object>> result = new Result<>(400, "上下文信息长度不能超过" + MAX_CONTEXT_INFO_LENGTH + "字符");
+            return ResponseEntity.badRequest().body(result);
+        }
+
+        String sanitizedErrorLog = sanitizeForAi(rawErrorLog);
+        String sanitizedContext = sanitizeForAi(rawContext);
+
         String traceId = MDC.get("traceId");
-        log.info("AI 错误分析请求 traceId={} errorLogLen={}", traceId, request.getErrorLog().length());
+        log.info("AI 错误分析请求 traceId={} errorLogLen={} sanitizedLen={}",
+                traceId,
+                rawErrorLog != null ? rawErrorLog.length() : 0,
+                sanitizedErrorLog != null ? sanitizedErrorLog.length() : 0);
 
         List<AiModel> availableModels = aiModelService.getAvailableModels();
         if (availableModels.isEmpty()) {
@@ -173,10 +210,12 @@ public class OpsController {
         }
         AiModel model = availableModels.get(0);
 
-        String prompt = buildErrorAnalysisPrompt(request.getErrorLog(), request.getContextInfo());
+        String prompt = buildErrorAnalysisPrompt(sanitizedErrorLog, sanitizedContext);
 
         try {
             Map<String, Object> analysis = callAiForAnalysis(prompt, model);
+            analysis.put("sanitized", true);
+            analysis.put("inputLength", rawErrorLog != null ? rawErrorLog.length() : 0);
             return ResponseEntity.ok(Result.success(analysis));
         } catch (Exception e) {
             log.error("AI 错误分析调用失败", e);
@@ -184,9 +223,24 @@ public class OpsController {
         }
     }
 
+    /**
+     * 脱敏后送入 AI，避免密钥、Token、邮箱等敏感信息外泄到模型提供商。
+     */
+    public static String sanitizeForAi(String input) {
+        if (input == null || input.isEmpty()) {
+            return input;
+        }
+        String sanitized = SENSITIVE_PATTERN.matcher(input).replaceAll("$1$2***REDACTED***");
+        sanitized = BEARER_TOKEN_PATTERN.matcher(sanitized).replaceAll("$1***REDACTED***");
+        sanitized = JWT_PATTERN.matcher(sanitized).replaceAll("***JWT_REDACTED***");
+        sanitized = EMAIL_PATTERN.matcher(sanitized).replaceAll("***EMAIL_REDACTED***");
+        return sanitized;
+    }
+
     private String buildErrorAnalysisPrompt(String errorLog, String contextInfo) {
         return String.format("""
                 你是一个 Java 应用运维专家。请分析以下异常日志并给出排查建议。
+                注意：输入已做脱敏，***REDACTED*** 代表被遮蔽的敏感值。
                 应用上下文：%s
                 异常日志：%s
                 请按以下 JSON 格式返回（只返回 JSON，不要其他内容）：

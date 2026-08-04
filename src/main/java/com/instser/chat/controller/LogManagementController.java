@@ -22,15 +22,9 @@ import java.util.Map;
 import com.instser.chat.common.util.LogUtils;
 
 /**
- * 日志管理控制器
- * 提供日志级别管理的Web接口（仅限localhost访问）
-
- *
- * 访问配置:
- * - 运行端口: 8081 (集成到现有management端口)
- * - 访问限制: API密钥验证（支持远程访问）
- * - 访问地址: http://127.0.0.1:8081/admin/logs/*
- * - 监控端点: http://127.0.0.1:8081/actuator/*
+ * 日志管理控制器（兼容期机器入口）。
+ * <p>运行在应用端口 8080（context-path /api），不是 8081。
+ * 交互式管理请使用 JWT 管理员接口 {@code /admin/ops/loggers/**}。
  *
  * @author instser
  * @since 2025-07-16
@@ -39,7 +33,8 @@ import com.instser.chat.common.util.LogUtils;
 @RestController
 @RequestMapping("/admin/logs")
 @RequiredArgsConstructor
-@Tag(name = "日志管理", description = "日志级别管理接口（API密钥验证）")
+@Tag(name = "日志管理(兼容)", description = "兼容期 API Key 日志级别管理接口")
+@Deprecated
 public class LogManagementController {
 
     private final LogLevelManager logLevelManager;

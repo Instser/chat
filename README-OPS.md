@@ -27,14 +27,18 @@ java -jar chat.jar --spring.profiles.active=prod
 | `GEMINI_API_KEY` | Gemini API 密钥 |
 | `GEMINI_BASE_URL` | Gemini API 地址 |
 | `MYSQL_PASSWORD` | MySQL 密码 |
-| `CACHE_API_KEY` | 管理 API Key（用于 /ops 和 /admin 接口鉴权） |
+| `CACHE_API_KEY` | 机器运维 API Key（仅用于 `/ops/**` 的 `X-API-Key` Header 鉴权；**不要**写入前端或 URL 查询参数） |
+| `CACHE_MANAGEMENT_ADMIN_ACCOUNT` | 兼容期内缓存写接口二次校验账号（将迁移为 JWT 管理员，勿在前端硬编码） |
+| `CACHE_MANAGEMENT_ADMIN_PASSWORD` | 兼容期内缓存写接口二次校验密码（部署后立即轮换；勿写入文档/仓库明文） |
 
 ### 端口说明
 
 | 端口 | 用途 | 对外暴露 |
 |------|------|----------|
-| 8080 | 应用主端口（/api） | 是 |
-| 8081 | Management 端口（Actuator） | 否（127.0.0.1） |
+| 8080 | 应用主端口（context-path `/api`，含业务接口、`/ops/**`、兼容期管理接口） | 是 |
+| 8081 | Management 端口（仅 Spring Boot Actuator/Prometheus，绑定本机） | 否（`127.0.0.1`） |
+
+说明：`/admin/cache/**`、`/admin/logs/**`、`/ops/**` 均运行在 **8080** 应用端口，**不是** 8081。8081 仅暴露 Actuator，不提供业务 MVC 管理接口，也不使用管理 API Key。
 
 ---
 
@@ -112,7 +116,14 @@ grep "2026-05-25 23:3[0-9]" logs/jinyu-chat-all.log
 
 ## 4. 运维接口
 
-所有运维接口通过 `X-API-Key` 请求头鉴权。
+鉴权边界（阶段 A 后）：
+
+| 路径 | 端口 | 鉴权 |
+|------|------|------|
+| `/api/ops/**` | 8080 | 仅 `X-API-Key` Header（禁止 `?apiKey=`） |
+| `/api/admin/cache/**`、`/api/admin/logs/**` | 8080 | 兼容期：`X-API-Key` + 二次账号密码（将迁移 JWT `ROLE_ADMIN`） |
+| `/api/payment/audit/**`、`/api/payment/sync/**` | 8080 | JWT + `ROLE_ADMIN` |
+| `/api/actuator/**` | 8081 | 本机访问；**不**使用管理 API Key |
 
 ### 4.1 版本信息
 
@@ -147,7 +158,12 @@ curl -X POST http://127.0.0.1:8080/api/ops/ai/analyze-error \
 
 返回 AI 分析的异常摘要、可能原因、排查步骤、建议的日志查询语句。
 
-### 4.4 Spring Boot Actuator（端口 8081）
+约束：
+- `errorLog` 最长 8000 字符，`contextInfo` 最长 2000 字符。
+- 服务端会在送入 AI 前脱敏密钥、Bearer Token、JWT、邮箱等敏感片段。
+- 仅允许 Header 鉴权；`?apiKey=` 已禁用。
+
+### 4.4 Spring Boot Actuator（端口 8081，本机）
 
 ```
 http://127.0.0.1:8081/api/actuator/health
@@ -156,19 +172,23 @@ http://127.0.0.1:8081/api/actuator/prometheus
 http://127.0.0.1:8081/api/actuator/loggers
 ```
 
-### 4.5 管理接口（端口 8080）
+注意：Actuator **不**校验 `X-API-Key`，依赖本机绑定与网络隔离。不要把 8081 对外暴露。
 
-| 接口 | 方法 | 说明 |
-|------|------|------|
-| `/api/admin/cache/user-package/refresh-all` | POST | 全量清理用户套餐与聊天次数缓存 |
-| `/api/admin/logs/levels` | GET | 获取所有 Logger 级别 |
-| `/api/admin/logs/levels/{name}` | POST | 设置指定 Logger 级别 |
-| `/api/admin/logs/presets/development` | POST | 开发环境日志预设 |
-| `/api/admin/logs/presets/production` | POST | 生产环境日志预设 |
-| `/api/admin/logs/presets/debugging` | POST | 排查模式日志预设 |
-| `/api/admin/logs/sql/enable` | POST | 开启 SQL 日志 |
-| `/api/admin/logs/sql/disable` | POST | 关闭 SQL 日志 |
-| `/api/admin/logs/files/status` | GET | 日志文件状态 |
+### 4.5 兼容期管理接口（端口 8080）
+
+| 接口 | 方法 | 鉴权 | 说明 |
+|------|------|------|------|
+| `/api/admin/cache/user-package/refresh-all` | POST | `X-API-Key` + 二次账号密码 | 全量清理用户套餐与聊天次数缓存（兼容期，将迁 JWT 管理员） |
+| `/api/admin/logs/levels` | GET | `X-API-Key` | 获取所有 Logger 级别 |
+| `/api/admin/logs/levels/{name}` | POST | `X-API-Key` | 设置指定 Logger 级别 |
+| `/api/admin/logs/presets/development` | POST | `X-API-Key` | 开发环境日志预设 |
+| `/api/admin/logs/presets/production` | POST | `X-API-Key` | 生产环境日志预设 |
+| `/api/admin/logs/presets/debugging` | POST | `X-API-Key` | 排查模式日志预设 |
+| `/api/admin/logs/sql/enable` | POST | `X-API-Key` | 开启 SQL 日志 |
+| `/api/admin/logs/sql/disable` | POST | `X-API-Key` | 关闭 SQL 日志 |
+| `/api/admin/logs/files/status` | GET | `X-API-Key` | 日志文件状态 |
+
+支付审计与订单同步写接口（`/api/payment/audit/**`、`/api/payment/sync/**`、`/api/payment/admin/sync/**`）现已要求 JWT 管理员（`ROLE_ADMIN`），普通用户调用将 403。
 
 ---
 

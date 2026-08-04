@@ -28,8 +28,9 @@
 - **熔断器模式**: RedisCircuitBreaker实现Redis故障自动降级和恢复
 - **注册发现模式**: CacheRegistryService自动发现和注册系统中的缓存实例
 - **安全认证模式**: CacheApiKeyService实现API密钥认证和访问控制
-- **管理接口双重鉴权模式**: `/admin/cache/**` 在管理 API Key 之外，可按场景叠加固定管理员账号密码二次校验，适用于高风险缓存维护操作
-- **操作审计模式**: 缓存管理操作历史记录和追踪机制
+- **管理员双链路鉴权模式** (2026-08-03): 人员交互统一 `t_user + JWT + ROLE_ADMIN + /admin/**`；机器运维 `X-API-Key + /ops/**` 只读。兼容期旧 `/admin/cache/**`、`/admin/logs/**` 仍可用 API Key，但交互式能力已迁移到 `/admin/ops/**`。
+- **Admin 分层模式**: `admin.controller` 仅协议与权限；`admin.service` 编排领域服务；专用 VO 脱敏；`AdminAuditPublisher` 异步写 `t_operation_audit`。
+- **操作审计模式**: 管理员写操作与运维变更统一写入 `t_operation_audit`；支付状态变更继续写 `t_payment_audit`。
 - **日志记录标准化模式**: LogUtils统一日志工具类，标准化用户操作日志格式
 
 ## 关键技术决策

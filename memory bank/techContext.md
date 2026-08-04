@@ -30,7 +30,10 @@
 - **调用链追踪**: TraceIdFilter + SLF4J MDC，支持从请求头 `X-Trace-Id` 透传或自动生成 32 位 UUID，所有日志自动携带 `[%X{traceId}]`
 - **业务指标**: ApiMetrics（api_requests_total / api_exceptions_total）+ SlowRequestInterceptor（slow_requests_total），Counter 使用 ConcurrentHashMap 缓存，路径模板化（BEST_MATCHING_PATTERN_ATTRIBUTE）防高基数
 - **监控端点**: `/actuator/prometheus`，通过 management 端口 `127.0.0.1:8081` 暴露 Prometheus 指标
-- **管理缓存接口**: `/admin/cache/user-package/refresh-all`，需同时提供管理 API Key 与 `application.yml` 中 `cache.management.admin.account/password` 配置的管理员账号密码
+- **管理缓存接口**: 交互式请用 JWT 管理员 `POST /admin/ops/cache/user-package/evict-all`（需 reason）。兼容期保留 `/admin/cache/user-package/refresh-all`（API Key + 二次账号密码）。
+- **管理员 API**: `/admin/users|packages|models|orders|audits|dashboard|ops/**`，JWT + ROLE_ADMIN。
+- **运维诊断**: `/ops/**` 仅 `X-API-Key` Header；Actuator 仍在 `127.0.0.1:8081`。
+- **管理员前端** (2026-08-03): 仓库内 `admin-web/`（Vue3+TS+Vite+Element Plus），生产路径 `/admin/`，开发代理 `/api -> 127.0.0.1:8080`，Cookie 鉴权，不使用管理 API Key。
 
 
 - **CORS 配置驱动** (2026-08-03 00:45): `SecurityConfig` / `WebConfig` 从 `app.cors.*` 读取允许源/方法/头/凭据/maxAge；默认允许源含 localhost、局域网 IP、`chat.instser.cn`；可用 `CORS_ALLOWED_ORIGINS` 环境变量覆盖。Controller 层硬编码 CORS 已同步为 `chat.instser.cn`。

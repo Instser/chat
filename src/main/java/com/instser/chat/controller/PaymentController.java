@@ -25,6 +25,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
@@ -126,6 +127,40 @@ public class PaymentController {
             log.warn("获取用户ID失败", e);
             return null;
         }
+    }
+
+    /**
+     * 判断当前用户是否为管理员
+     */
+    private boolean isAdmin(Authentication authentication) {
+        if (authentication == null || !authentication.isAuthenticated()) {
+            return false;
+        }
+        Object principal = authentication.getPrincipal();
+        if (principal instanceof com.instser.chat.security.UserDetailsServiceImpl.CustomUserDetails details) {
+            String role = details.getRole();
+            return role != null && "admin".equalsIgnoreCase(role);
+        }
+        return authentication.getAuthorities().stream()
+                .anyMatch(a -> "ROLE_ADMIN".equalsIgnoreCase(a.getAuthority()));
+    }
+
+    /**
+     * 校验订单归属：管理员可访问任意订单，普通用户仅可访问本人订单
+     */
+    private Result<?> assertOrderAccess(UserOrder order, Authentication authentication) {
+        Long currentUserId = getCurrentUserId(authentication);
+        if (currentUserId == null) {
+            return Result.unauthorized("请先登录");
+        }
+        if (isAdmin(authentication)) {
+            return null;
+        }
+        if (order.getUserId() == null || !order.getUserId().equals(currentUserId)) {
+            log.warn("用户{}尝试访问他人订单{}", currentUserId, order.getOrderNo());
+            return Result.forbidden("无权访问该订单");
+        }
+        return null;
     }
 
     /**
@@ -331,16 +366,22 @@ public class PaymentController {
      * 查询支付状态 - 返回简化格式
      */
     @GetMapping("/status/{orderNo}")
-    public Result<?> getPaymentStatus(@PathVariable String orderNo) {
-        LogUtils.logUserOperation(log, null, "API调用", "查询支付状态接口，订单号：{}", orderNo);
+    public Result<?> getPaymentStatus(@PathVariable String orderNo, Authentication authentication) {
+        Long currentUserId = getCurrentUserId(authentication);
+        LogUtils.logUserOperation(log, currentUserId, "API调用", "查询支付状态接口，订单号：{}", orderNo);
 
         try {
-            LogUtils.logUserDebug(log, null, "支付查询", "开始查询支付状态，订单号：{}", orderNo);
+            LogUtils.logUserDebug(log, currentUserId, "支付查询", "开始查询支付状态，订单号：{}", orderNo);
 
             UserOrder order = paymentService.queryPaymentStatus(orderNo);
             if (order == null) {
-                LogUtils.logUserWarning(log, null, "API响应", "未找到订单，订单号：{}", orderNo);
+                LogUtils.logUserWarning(log, currentUserId, "API响应", "未找到订单，订单号：{}", orderNo);
                 return ErrorResponseUtil.orderNotFound();
+            }
+
+            Result<?> accessDenied = assertOrderAccess(order, authentication);
+            if (accessDenied != null) {
+                return accessDenied;
             }
 
             LogUtils.logUserDebug(log, order.getUserId(), "支付查询", "找到订单，订单号：{}，状态：{}", orderNo, order.getPaymentStatus());
@@ -354,7 +395,7 @@ public class PaymentController {
             LogUtils.logUserOperation(log, order.getUserId(), "API响应", "查询支付状态成功，订单号：{}，状态：{}", orderNo, response.getMessage());
             return Result.success(response);
         } catch (Exception e) {
-            LogUtils.logUserError(log, null, "API异常", "查询支付状态失败，订单号：{}，错误：{}", e, orderNo, e.getMessage());
+            LogUtils.logUserError(log, currentUserId, "API异常", "查询支付状态失败，订单号：{}，错误：{}", e, orderNo, e.getMessage());
             return ErrorResponseUtil.paymentStatusQueryFailed();
         }
     }
@@ -384,11 +425,16 @@ public class PaymentController {
      * 获取订单详细信息 - 返回完整格式
      */
     @GetMapping("/order/{orderNo}")
-    public Result<UserOrderVO> getOrderDetail(@PathVariable String orderNo) {
+    public Result<?> getOrderDetail(@PathVariable String orderNo, Authentication authentication) {
         try {
             UserOrder order = paymentService.queryPaymentStatus(orderNo);
             if (order == null) {
                 return Result.failed("订单不存在");
+            }
+
+            Result<?> accessDenied = assertOrderAccess(order, authentication);
+            if (accessDenied != null) {
+                return accessDenied;
             }
 
             // 获取套餐信息
@@ -403,12 +449,27 @@ public class PaymentController {
     }
 
     /**
-     * 获取用户订单列表
+     * 获取当前用户订单列表（仅本人；管理员可显式指定 userId）
      */
     @GetMapping("/orders")
-    public Result<List<UserOrderVO>> getUserOrders(@RequestParam(defaultValue = "1") Long userId) {
+    public Result<?> getUserOrders(@RequestParam(required = false) Long userId,
+                                   Authentication authentication) {
         try {
-            List<UserOrder> orders = orderService.getOrdersByUserId(userId);
+            Long currentUserId = getCurrentUserId(authentication);
+            if (currentUserId == null) {
+                return Result.unauthorized("请先登录");
+            }
+
+            Long targetUserId = currentUserId;
+            if (userId != null && !userId.equals(currentUserId)) {
+                if (!isAdmin(authentication)) {
+                    log.warn("用户{}尝试查询用户{}的订单列表，已拒绝", currentUserId, userId);
+                    return Result.forbidden("无权查询其他用户订单");
+                }
+                targetUserId = userId;
+            }
+
+            List<UserOrder> orders = orderService.getOrdersByUserId(targetUserId);
             List<UserOrderVO> orderVOs = VOConverter.toUserOrderVOList(orders);
             return Result.success(orderVOs);
         } catch (Exception e) {
@@ -475,11 +536,21 @@ public class PaymentController {
     }
 
     /**
-     * 查询支付状态并同步最新状态
+     * 查询支付状态并同步最新状态（仅本人订单；管理员可跨用户）
      */
     @GetMapping("/status/sync/{orderNo}")
-    public Result<PaymentStatusResponseVO> getPaymentStatusWithSync(@PathVariable String orderNo) {
+    public Result<?> getPaymentStatusWithSync(@PathVariable String orderNo, Authentication authentication) {
         try {
+            UserOrder order = paymentService.queryPaymentStatus(orderNo);
+            if (order == null) {
+                return Result.failed("订单不存在");
+            }
+
+            Result<?> accessDenied = assertOrderAccess(order, authentication);
+            if (accessDenied != null) {
+                return accessDenied;
+            }
+
             PaymentStatusResponseVO response = paymentService.queryAndSyncPaymentStatus(orderNo);
             return Result.success(response, "查询支付状态成功");
         } catch (Exception e) {
@@ -489,9 +560,10 @@ public class PaymentController {
     }
 
     /**
-     * 手动同步单个订单状态
+     * 手动同步单个订单状态（仅管理员）
      */
     @PostMapping("/sync/{orderNo}")
+    @PreAuthorize("hasRole('ADMIN')")
     public Result<String> syncOrderStatus(@PathVariable String orderNo) {
         try {
             boolean success = paymentSyncService.syncOrderStatus(orderNo);
@@ -507,9 +579,10 @@ public class PaymentController {
     }
 
     /**
-     * 手动触发批量状态同步
+     * 手动触发批量状态同步（仅管理员）
      */
     @PostMapping("/sync/batch")
+    @PreAuthorize("hasRole('ADMIN')")
     public Result<Map<String, Object>> batchSyncOrders(@RequestParam(defaultValue = "50") int maxCount) {
         try {
             int syncCount = paymentSyncService.syncPendingOrders(maxCount);
@@ -527,9 +600,10 @@ public class PaymentController {
     }
 
     /**
-     * 手动触发全量状态同步
+     * 手动触发全量状态同步（仅管理员；兼容期保留，后续由受限任务替代）
      */
     @PostMapping("/sync/all")
+    @PreAuthorize("hasRole('ADMIN')")
     public Result<PaymentSyncService.SyncResult> fullSyncOrders() {
         try {
             PaymentSyncService.SyncResult result = paymentSyncService.manualSyncAll();
@@ -541,9 +615,10 @@ public class PaymentController {
     }
 
     /**
-     * 手动同步单个订单状态（管理员接口）
+     * 手动同步单个订单状态（管理员接口；兼容期保留）
      */
     @PostMapping("/admin/sync/order/{orderNo}")
+    @PreAuthorize("hasRole('ADMIN')")
     public Result<Boolean> syncSingleOrder(@PathVariable String orderNo) {
         try {
             log.info("手动同步订单状态，订单号: {}", orderNo);

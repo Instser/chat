@@ -6,6 +6,7 @@ import com.instser.chat.service.PaymentAuditService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.format.annotation.DateTimeFormat;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
@@ -40,9 +41,10 @@ public class PaymentAuditController {
     private final PaymentAuditService paymentAuditService;
 
     /**
-     * 根据订单号查询审计日志
+     * 根据订单号查询审计日志（仅管理员）
      */
     @GetMapping("/order/{orderNo}")
+    @PreAuthorize("hasRole('ADMIN')")
     public Result<List<PaymentAudit>> getAuditByOrderNo(@PathVariable @NotBlank String orderNo, Authentication authentication) {
         try {
             List<PaymentAudit> auditList = paymentAuditService.getAuditByOrderNo(orderNo);
@@ -54,9 +56,10 @@ public class PaymentAuditController {
     }
 
     /**
-     * 根据操作类型查询审计日志
+     * 根据操作类型查询审计日志（仅管理员）
      */
     @GetMapping("/operation/{operationType}")
+    @PreAuthorize("hasRole('ADMIN')")
     public Result<List<PaymentAudit>> getAuditByOperationType(Authentication authentication,
             @PathVariable @NotBlank String operationType,
             @RequestParam @NotNull @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
@@ -71,9 +74,10 @@ public class PaymentAuditController {
     }
 
     /**
-     * 根据操作人查询审计日志
+     * 根据操作人查询审计日志（仅管理员）
      */
     @GetMapping("/operator/{operatorId}")
+    @PreAuthorize("hasRole('ADMIN')")
     public Result<List<PaymentAudit>> getAuditByOperator(Authentication authentication,
             @PathVariable @NotNull Long operatorId,
             @RequestParam @NotNull @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) LocalDateTime startTime,
