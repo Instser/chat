@@ -1208,3 +1208,4 @@
 - [x] 运维监控 AI 时间刻度 1d/7d/30d/all（2026-08-06 15:06）
 - [x] 运维监控模型探测改手动、排除 monitoring HTTP 统计（2026-08-06）
 - [x] 运维监控图表标签重叠与 TTFT [object Object] 修复（2026-08-06）
+- [x] 用户前端 Application error（static 路径错位）热修复 2026-08-06

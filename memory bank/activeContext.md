@@ -1806,3 +1806,8 @@
 ## 2026-08-06 图表标签优化
 - TTFT 图弃用 dataset 行对象 tooltip（修复 [object Object]）；改平行数组 + 显式 formatter
 - 各图：hideOverlap、短标签、关闭线系列 dataLabel、饼图只显示名、containLabel 加高
+
+## 2026-08-06 15:51 用户前端 Application error 修复
+- 根因：standalone 部署时 static 落在 `.next/static/static/`，HTML 引用 `/_next/static/chunks/app/page-062d85c84db38926.js` 404 → 客户端崩溃
+- 处理：rsync 提升 nested static；重启 next；systemd 托管 tousechat-frontend
+- 验收：home=200 pagejs=200
