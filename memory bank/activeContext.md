@@ -1811,3 +1811,8 @@
 - 根因：standalone 部署时 static 落在 `.next/static/static/`，HTML 引用 `/_next/static/chunks/app/page-062d85c84db38926.js` 404 → 客户端崩溃
 - 处理：rsync 提升 nested static；重启 next；systemd 托管 tousechat-frontend
 - 验收：home=200 pagejs=200
+
+## 2026-08-06 Chat history 不同步 New Chat
+- 根因：all-chats 独立 allChats 仅 user 时加载；context createNewChat 只改侧边栏
+- 另：getChats 无参后端默认 limit=20
+- 修复：pathname 进入刷新 + 与 context.chats 合并 + 分页拉全量；Build W-iREJLdhxR30Zsmq1o7A 已部署
