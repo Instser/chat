@@ -6,9 +6,16 @@
         <div class="sub">
           进程内快照（类似 Grafana 轻量面板）· 更新于 {{ generatedAt || '-' }}
           <span v-if="healthStatus" class="health-pill" :class="healthClass">{{ healthStatus }}</span>
+          <span class="range-tag">{{ rangeLabel }} · {{ aiSourceLabel }}</span>
         </div>
       </div>
       <div class="actions">
+        <el-radio-group v-model="range" size="small" @change="onRangeChange">
+          <el-radio-button value="1d">近1日</el-radio-button>
+          <el-radio-button value="7d">近7日</el-radio-button>
+          <el-radio-button value="30d">近30日</el-radio-button>
+          <el-radio-button value="all">进程累计</el-radio-button>
+        </el-radio-group>
         <el-switch v-model="autoRefresh" active-text="自动刷新" />
         <el-button :loading="loading" type="primary" @click="load">刷新</el-button>
       </div>
@@ -16,11 +23,11 @@
 
     <div class="card-grid" v-loading="loading">
       <div class="metric-card">
-        <div class="metric-label">AI 调用成功/失败</div>
+        <div class="metric-label">AI 调用成功/失败（{{ rangeLabel }}）</div>
         <div class="metric-value">{{ aiSuccess }} / {{ aiFailed }}</div>
       </div>
       <div class="metric-card">
-        <div class="metric-label">HTTP 请求总量</div>
+        <div class="metric-label">HTTP 请求总量（进程累计）</div>
         <div class="metric-value">{{ httpTotal }}</div>
       </div>
       <div class="metric-card">
@@ -28,7 +35,7 @@
         <div class="metric-value">{{ heapUsed }} / {{ heapMax }}</div>
       </div>
       <div class="metric-card">
-        <div class="metric-label">近7日支付成功</div>
+        <div class="metric-label">支付成功（{{ paymentWindowLabel }}）</div>
         <div class="metric-value">{{ paid7d }}</div>
       </div>
       <div class="metric-card">
@@ -40,16 +47,23 @@
     <el-row :gutter="12" class="charts">
       <el-col :xs="24" :lg="12">
         <el-card shadow="never" class="block">
-          <template #header>AI 调用（成功/失败）</template>
-          <div ref="aiPieRef" class="chart"></div>
-          <div class="hint">来源：Micrometer ai_calls_total · 进程累计</div>
+          <template #header>AI 调用趋势（{{ rangeLabel }}）</template>
+          <div ref="aiTimelineRef" class="chart"></div>
+          <div class="hint">{{ timelineHint }}</div>
         </el-card>
       </el-col>
       <el-col :xs="24" :lg="12">
         <el-card shadow="never" class="block">
-          <template #header>AI 按模型耗时 / TTFT</template>
+          <template #header>AI 成功/失败（{{ rangeLabel }}）</template>
+          <div ref="aiPieRef" class="chart"></div>
+          <div class="hint">{{ aiSourceHint }}</div>
+        </el-card>
+      </el-col>
+      <el-col :xs="24">
+        <el-card shadow="never" class="block">
+          <template #header>AI 按模型耗时 / TTFT（{{ rangeLabel }}）</template>
           <div ref="aiBarRef" class="chart"></div>
-          <div class="hint">左轴=调用次数 · 右轴=TTFT/总耗时(ms) · dataset 对齐模型名</div>
+          <div class="hint">左轴=调用次数 · 右轴=TTFT/总耗时(ms) · 切换时间刻度后重新聚合</div>
         </el-card>
       </el-col>
 
@@ -77,7 +91,7 @@
       </el-col>
       <el-col :xs="24" :lg="12">
         <el-card shadow="never" class="block">
-          <template #header>支付 / 订单（近 7 日收入）</template>
+          <template #header>支付 / 订单（{{ paymentWindowLabel }}收入）</template>
           <div ref="paymentLineRef" class="chart"></div>
           <div class="hint">来源：t_user_order 真实统计（非模拟）</div>
         </el-card>
@@ -112,9 +126,11 @@ import { showApiError } from '@/utils/request'
 
 const loading = ref(false)
 const autoRefresh = ref(true)
+const range = ref<'1d' | '7d' | '30d' | 'all'>('7d')
 const data = ref<Record<string, any>>({})
 let timer: number | undefined
 
+const aiTimelineRef = ref<HTMLDivElement | null>(null)
 const aiPieRef = ref<HTMLDivElement | null>(null)
 const aiBarRef = ref<HTMLDivElement | null>(null)
 const httpBarRef = ref<HTMLDivElement | null>(null)
@@ -134,12 +150,49 @@ const healthClass = computed(() => {
   return 'bad'
 })
 
+const rangeLabel = computed(() => {
+  switch (range.value) {
+    case '1d':
+      return '近1日'
+    case '30d':
+      return '近30日'
+    case 'all':
+      return '进程累计'
+    default:
+      return '近7日'
+  }
+})
+const aiSourceLabel = computed(() =>
+  data.value.ai?.source === 'process-lifetime' ? 'Micrometer 累计' : '小时桶窗口',
+)
+const aiSourceHint = computed(() =>
+  data.value.ai?.source === 'process-lifetime'
+    ? '来源：Micrometer 进程累计（重启清零，无时间窗）'
+    : '来源：进程内小时桶窗口（重启清空；最长保留 30 天）',
+)
+const timelineHint = computed(() =>
+  range.value === 'all'
+    ? '进程累计无时间轴；请选 1日/7日/30日 查看趋势'
+    : range.value === '1d'
+      ? '按小时桶'
+      : '按日汇总（由小时桶聚合）',
+)
+const paymentWindowLabel = computed(() => {
+  const days = data.value.payment?.period?.days ?? data.value.payment?.windowDays ?? 7
+  return `近${days}日`
+})
+
 const aiSuccess = computed(() => data.value.ai?.totals?.callsSuccess ?? 0)
 const aiFailed = computed(() => data.value.ai?.totals?.callsFailed ?? 0)
 const httpTotal = computed(() => data.value.http?.totalRequests ?? 0)
 const heapUsed = computed(() => data.value.system?.jvm?.heapUsedMb ?? '-')
 const heapMax = computed(() => data.value.system?.jvm?.heapMaxMb ?? '-')
-const paid7d = computed(() => data.value.payment?.last7Days?.successfulOrders ?? 0)
+const paid7d = computed(
+  () =>
+    data.value.payment?.period?.successfulOrders ??
+    data.value.payment?.last7Days?.successfulOrders ??
+    0,
+)
 const modelRows = computed(() => {
   const models = data.value.models?.models
   return Array.isArray(models) ? models : []
@@ -169,6 +222,66 @@ function emptyOption(title: string) {
 }
 
 function renderCharts() {
+  // AI timeline
+  const aiTimeline = ensureChart(aiTimelineRef.value)
+  const timeline = data.value.ai?.timeline || []
+  if (aiTimeline) {
+    if (!timeline.length) {
+      aiTimeline.setOption(
+        emptyOption(range.value === 'all' ? '进程累计无趋势轴，请切换 1/7/30 日' : '暂无窗口采样'),
+        true,
+      )
+    } else {
+      aiTimeline.setOption(
+        {
+          tooltip: { trigger: 'axis' },
+          legend: { data: ['调用次数', '成功', '失败', 'TTFT均值(ms)'] },
+          grid: { left: 48, right: 56, top: 36, bottom: 48 },
+          xAxis: {
+            type: 'category',
+            data: timeline.map((p: any) => p.label || p.bucket),
+            axisLabel: { rotate: timeline.length > 14 ? 30 : 0 },
+          },
+          yAxis: [
+            { type: 'value', name: '次数', minInterval: 1 },
+            { type: 'value', name: 'ms', splitLine: { show: false } },
+          ],
+          series: [
+            {
+              name: '调用次数',
+              type: 'bar',
+              yAxisIndex: 0,
+              data: timeline.map((p: any) => Number(p.calls) || 0),
+              barMaxWidth: 24,
+            },
+            {
+              name: '成功',
+              type: 'line',
+              yAxisIndex: 0,
+              data: timeline.map((p: any) => Number(p.success) || 0),
+              showSymbol: false,
+            },
+            {
+              name: '失败',
+              type: 'line',
+              yAxisIndex: 0,
+              data: timeline.map((p: any) => Number(p.failed) || 0),
+              showSymbol: false,
+            },
+            {
+              name: 'TTFT均值(ms)',
+              type: 'line',
+              yAxisIndex: 1,
+              data: timeline.map((p: any) => (p.ttftMeanMs == null ? null : Number(p.ttftMeanMs))),
+              connectNulls: false,
+            },
+          ],
+        },
+        true,
+      )
+    }
+  }
+
   // AI pie
   const aiPie = ensureChart(aiPieRef.value)
   const statusPie = data.value.ai?.statusPie || []
@@ -447,7 +560,7 @@ function renderCharts() {
 async function load() {
   loading.value = true
   try {
-    data.value = (await getOpsMonitoring()) as Record<string, any>
+    data.value = (await getOpsMonitoring(range.value)) as Record<string, any>
     await nextTick()
     renderCharts()
   } catch (e) {
@@ -455,6 +568,10 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+function onRangeChange() {
+  load()
 }
 
 function onResize() {
@@ -501,6 +618,17 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.range-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 11px;
+  font-weight: 600;
 }
 .health-pill {
   display: inline-block;

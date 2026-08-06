@@ -12,6 +12,7 @@ import com.instser.chat.dto.ErrorAnalysisRequest;
 import com.instser.chat.entity.AiModel;
 import com.instser.chat.entity.User;
 import com.instser.chat.entity.UserOrder;
+import com.instser.chat.metrics.AiCallWindowStore;
 import com.instser.chat.service.AiModelService;
 import com.instser.chat.service.OrderService;
 import com.instser.chat.service.PaymentAnalyticsService;
@@ -101,6 +102,7 @@ public class AdminOpsService {
     private final RestTemplate restTemplate;
     private final AdminAuditPublisher adminAuditPublisher;
     private final MeterRegistry meterRegistry;
+    private final AiCallWindowStore aiCallWindowStore;
 
     public Map<String, Object> version() {
         Map<String, Object> info = new LinkedHashMap<>();
@@ -183,23 +185,28 @@ public class AdminOpsService {
      * 管理后台 Grafana 风格监控汇总（快照，非长期时序库）。
      * 覆盖：AI 调用 / HTTP / 系统资源 / 支付订单 / 模型连通。
      * 模型探测失败只影响 models 块，不拖垮整接口其它块。
+     *
+     * @param range AI 时间窗：1d / 7d / 30d / all（进程累计 Micrometer）
      */
-    public Map<String, Object> monitoring() {
+    public Map<String, Object> monitoring(String range) {
+        String normalized = normalizeRange(range);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("generatedAt", Instant.now().toString());
-        data.put("note", "进程内快照指标；无 Prometheus 长期存储时趋势图基于当前累计值与业务日统计");
+        data.put("range", normalized);
+        data.put("supportedRanges", List.of("1d", "7d", "30d", "all"));
+        data.put("note", "AI 默认读进程内小时桶窗口；all 为 Micrometer 进程累计。重启后窗口清空。");
 
         // 1) 系统资源
         data.put("system", buildSystemMetrics());
 
-        // 2) AI 调用（Micrometer）
-        data.put("ai", buildAiMetrics());
+        // 2) AI 调用（窗口 or 进程累计）
+        data.put("ai", buildAiMetrics(normalized));
 
         // 3) HTTP/API
         data.put("http", buildHttpMetrics());
 
-        // 4) 支付/订单
-        data.put("payment", buildPaymentMetrics());
+        // 4) 支付/订单（窗口与 AI 对齐：1d/7d/30d；all 仍用 7d 业务统计）
+        data.put("payment", buildPaymentMetrics(paymentDaysForRange(normalized)));
 
         // 5) 模型连通探测（短预算隔离，失败只记 models）
         try {
@@ -280,15 +287,71 @@ public class AdminOpsService {
         return system;
     }
 
-    private Map<String, Object> buildAiMetrics() {
+    private Map<String, Object> buildAiMetrics(String range) {
+        if (!"all".equals(range)) {
+            return buildAiWindowMetrics(range);
+        }
+        return buildAiProcessLifetimeMetrics();
+    }
+
+    /** 1d/7d/30d：进程内小时桶窗口。 */
+    private Map<String, Object> buildAiWindowMetrics(String range) {
+        int hours = hoursForRange(range);
+        AiCallWindowStore.Snapshot snap = aiCallWindowStore.snapshot(hours);
+
+        Map<String, Object> ai = new LinkedHashMap<>();
+        Map<String, Object> totals = new LinkedHashMap<>();
+        long success = ((Number) snap.totals.getOrDefault("successCount", 0L)).longValue();
+        long failed = ((Number) snap.totals.getOrDefault("failedCount", 0L)).longValue();
+        totals.put("callsTotal", success + failed);
+        totals.put("callsSuccess", success);
+        totals.put("callsFailed", failed);
+        totals.put("active", gaugeValue("ai_calls_active"));
+        // token 仍只有进程累计（窗口未单独记 token）
+        totals.put("promptTokens", round0(counterTotal("ai_token_consumption_total", Map.of("type", "prompt"))));
+        totals.put("completionTokens", round0(counterTotal("ai_token_consumption_total", Map.of("type", "completion"))));
+        double denom = success + failed;
+        totals.put("successRate", denom > 0 ? round4(success / denom) : null);
+        totals.put("ttftMeanMs", snap.totals.get("ttftMeanMs"));
+        totals.put("durationMeanMs", snap.totals.get("durationMeanMs"));
+        ai.put("totals", totals);
+        ai.put("byModel", snap.byModel);
+        ai.put("timeline", snap.timeline);
+        ai.put("window", snap.meta);
+        ai.put("source", "process-window");
+        ai.put("range", range);
+
+        List<Map<String, Object>> statusPie = new ArrayList<>();
+        statusPie.add(Map.of("name", "success", "value", success));
+        statusPie.add(Map.of("name", "failed", "value", failed));
+        ai.put("statusPie", statusPie);
+
+        List<Map<String, Object>> modelBars = snap.byModel.stream()
+                .filter(m -> {
+                    Object model = m.get("model");
+                    return model != null && !"unknown".equals(String.valueOf(model)) && !String.valueOf(model).isBlank();
+                })
+                .map(m -> {
+                    Map<String, Object> bar = new LinkedHashMap<>();
+                    bar.put("name", String.valueOf(m.get("model")));
+                    bar.put("calls", ((Number) m.getOrDefault("successCount", 0L)).longValue()
+                            + ((Number) m.getOrDefault("failedCount", 0L)).longValue());
+                    bar.put("ttftMeanMs", m.get("ttftMeanMs"));
+                    bar.put("durationMeanMs", m.get("durationMeanMs"));
+                    return bar;
+                }).collect(Collectors.toList());
+        ai.put("modelBars", modelBars);
+        // 窗口模式失败明细仍回落 Micrometer（无按窗失败分类存储）
+        ai.put("failures", buildMicrometerFailures());
+        return ai;
+    }
+
+    /** all：Micrometer 进程累计（重启清零）。 */
+    private Map<String, Object> buildAiProcessLifetimeMetrics() {
         Map<String, Object> ai = new LinkedHashMap<>();
         double total = counterTotal("ai_calls_total", null);
         double success = counterTotal("ai_calls_total", Map.of("status", "success"));
         double failed = counterTotal("ai_calls_total", Map.of("status", "failed"));
-        // 无 tag 的 total 计数器与带 tag 的会并存；优先用 success+failed 还原
-        if (success + failed <= 0 && total > 0) {
-            // keep total
-        }
         Map<String, Object> totals = new LinkedHashMap<>();
         totals.put("callsTotal", round0(Math.max(total, success + failed)));
         totals.put("callsSuccess", round0(success));
@@ -299,8 +362,14 @@ public class AdminOpsService {
         double denom = success + failed;
         totals.put("successRate", denom > 0 ? round4(success / denom) : null);
         ai.put("totals", totals);
+        ai.put("source", "process-lifetime");
+        ai.put("range", "all");
+        ai.put("window", Map.of(
+                "bucketUnit", "process",
+                "note", "Micrometer 进程累计，无时间窗；重启清空"
+        ));
+        ai.put("timeline", List.of());
 
-        // 按模型：duration / ttft / failed
         Map<String, Map<String, Object>> byModel = new LinkedHashMap<>();
         for (Meter meter : meterRegistry.find("ai_call_duration_seconds").meters()) {
             if (!(meter instanceof Timer timer)) {
@@ -327,7 +396,6 @@ public class AdminOpsService {
                 row.put("failedCount", ((Number) row.get("failedCount")).longValue() + count);
             }
             if (count > 0) {
-                // 简单加权均值（多 status 时近似）
                 double prevMean = ((Number) row.get("durationMeanMs")).doubleValue();
                 long prevCount = ((Number) row.get("durationCount")).longValue() - count;
                 double meanMs = timer.mean(TimeUnit.MILLISECONDS);
@@ -363,31 +431,14 @@ public class AdminOpsService {
                         ((Number) a.getOrDefault("durationCount", 0L)).longValue()))
                 .collect(Collectors.toList());
         ai.put("byModel", modelRows);
+        ai.put("failures", buildMicrometerFailures());
 
-        List<Map<String, Object>> failures = new ArrayList<>();
-        for (Meter meter : meterRegistry.find("ai_calls_failed_total").meters()) {
-            if (!(meter instanceof Counter counter)) {
-                continue;
-            }
-            Map<String, Object> row = new LinkedHashMap<>();
-            row.put("model", tagValue(meter, "model"));
-            row.put("errorType", tagValue(meter, "error_type"));
-            row.put("count", round0(counter.count()));
-            failures.add(row);
-        }
-        failures.sort((a, b) -> Double.compare(
-                ((Number) b.get("count")).doubleValue(),
-                ((Number) a.get("count")).doubleValue()));
-        ai.put("failures", failures);
-
-        // 图表序列：成功/失败饼图 + 模型调用柱
         List<Map<String, Object>> statusPie = new ArrayList<>();
         statusPie.add(Map.of("name", "success", "value", totals.get("callsSuccess")));
         statusPie.add(Map.of("name", "failed", "value", totals.get("callsFailed")));
         ai.put("statusPie", statusPie);
 
         List<Map<String, Object>> modelBars = modelRows.stream()
-                // 过滤无有效模型名的脏序列，避免前端 x 轴「unknown」与真实模型错位
                 .filter(m -> {
                     Object model = m.get("model");
                     return model != null && !"unknown".equals(String.valueOf(model)) && !String.valueOf(model).isBlank();
@@ -403,6 +454,56 @@ public class AdminOpsService {
                 }).collect(Collectors.toList());
         ai.put("modelBars", modelBars);
         return ai;
+    }
+
+    private List<Map<String, Object>> buildMicrometerFailures() {
+        List<Map<String, Object>> failures = new ArrayList<>();
+        for (Meter meter : meterRegistry.find("ai_calls_failed_total").meters()) {
+            if (!(meter instanceof Counter counter)) {
+                continue;
+            }
+            Map<String, Object> row = new LinkedHashMap<>();
+            row.put("model", tagValue(meter, "model"));
+            row.put("errorType", tagValue(meter, "error_type"));
+            row.put("count", round0(counter.count()));
+            failures.add(row);
+        }
+        failures.sort((a, b) -> Double.compare(
+                ((Number) b.get("count")).doubleValue(),
+                ((Number) a.get("count")).doubleValue()));
+        return failures;
+    }
+
+    private static String normalizeRange(String range) {
+        if (range == null || range.isBlank()) {
+            return "7d";
+        }
+        String r = range.trim().toLowerCase(Locale.ROOT);
+        return switch (r) {
+            case "1d", "24h", "day", "today" -> "1d";
+            case "7d", "week" -> "7d";
+            case "30d", "month" -> "30d";
+            case "all", "lifetime", "process", "long" -> "all";
+            default -> "7d";
+        };
+    }
+
+    private static int hoursForRange(String range) {
+        return switch (range) {
+            case "1d" -> 24;
+            case "30d" -> 24 * 30;
+            case "all" -> AiCallWindowStore.MAX_HOURS;
+            default -> 24 * 7; // 7d
+        };
+    }
+
+    private static int paymentDaysForRange(String range) {
+        return switch (range) {
+            case "1d" -> 1;
+            case "30d" -> 30;
+            case "all" -> 7; // 支付无进程窗，all 仍展示近 7 日业务统计
+            default -> 7;
+        };
     }
 
     private Map<String, Object> buildHttpMetrics() {
@@ -507,6 +608,11 @@ public class AdminOpsService {
     }
 
     private Map<String, Object> buildPaymentMetrics() {
+        return buildPaymentMetrics(7);
+    }
+
+    private Map<String, Object> buildPaymentMetrics(int days) {
+        int windowDays = Math.max(1, Math.min(days, 90));
         Map<String, Object> payment = new LinkedHashMap<>();
         long orderTotal = orderService.count();
         long paidOrders = orderService.count(new LambdaQueryWrapper<UserOrder>().eq(UserOrder::getPaymentStatus, 1));
@@ -518,7 +624,8 @@ public class AdminOpsService {
         ));
 
         LocalDate end = LocalDate.now();
-        LocalDate start = end.minusDays(7);
+        LocalDate start = end.minusDays(windowDays);
+        payment.put("windowDays", windowDays);
         PaymentAnalyticsVO analytics;
         try {
             analytics = paymentAnalyticsService.getPaymentOverview(start, end);
@@ -534,17 +641,19 @@ public class AdminOpsService {
             return payment;
         }
 
-        Map<String, Object> last7 = new LinkedHashMap<>();
-        last7.put("startDate", String.valueOf(analytics.getStartDate()));
-        last7.put("endDate", String.valueOf(analytics.getEndDate()));
-        last7.put("totalOrders", analytics.getTotalOrders());
-        last7.put("successfulOrders", analytics.getSuccessfulOrders());
-        last7.put("canceledOrders", analytics.getCanceledOrders());
-        last7.put("refundedOrders", analytics.getRefundedOrders());
-        last7.put("successRate", analytics.getSuccessRate());
-        last7.put("totalRevenue", analytics.getTotalRevenue());
-        last7.put("averageOrderAmount", analytics.getAverageOrderAmount());
-        payment.put("last7Days", last7);
+        Map<String, Object> lastWindow = new LinkedHashMap<>();
+        lastWindow.put("startDate", String.valueOf(analytics.getStartDate()));
+        lastWindow.put("endDate", String.valueOf(analytics.getEndDate()));
+        lastWindow.put("days", windowDays);
+        lastWindow.put("totalOrders", analytics.getTotalOrders());
+        lastWindow.put("successfulOrders", analytics.getSuccessfulOrders());
+        lastWindow.put("canceledOrders", analytics.getCanceledOrders());
+        lastWindow.put("refundedOrders", analytics.getRefundedOrders());
+        lastWindow.put("successRate", analytics.getSuccessRate());
+        lastWindow.put("totalRevenue", analytics.getTotalRevenue());
+        lastWindow.put("averageOrderAmount", analytics.getAverageOrderAmount());
+        payment.put("last7Days", lastWindow); // 兼容旧前端字段名
+        payment.put("period", lastWindow);
 
         List<Map<String, Object>> daily = new ArrayList<>();
         if (analytics.getDailyRevenueStats() != null) {

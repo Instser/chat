@@ -13,8 +13,10 @@ public class AiCallMetrics {
      * 1. 它只关心 Micrometer 指标怎么注册、怎么递增、怎么记录耗时。
      * 2. 它不关心业务上的 AI 请求怎么发、流式响应怎么解析、什么时候收到首个 token。
      * 3. 业务侧应优先使用 AiCallMonitor，由 Monitor 收集一次调用的上下文后再调用本类。
+     * 4. 同步写入 AiCallWindowStore，供运维监控按 1d/7d/30d 窗口聚合。
      */
     private final MeterRegistry registry;
+    private final AiCallWindowStore windowStore;
 
     /*
      * Counter 是只能递增的计数器，适合记录“累计发生了多少次”。
@@ -40,8 +42,9 @@ public class AiCallMetrics {
      */
     private final AtomicLong activeCalls = new AtomicLong(0);
 
-    public AiCallMetrics(MeterRegistry registry) {
+    public AiCallMetrics(MeterRegistry registry, AiCallWindowStore windowStore) {
         this.registry = registry;
+        this.windowStore = windowStore;
 
         /*
          * Micrometer 的指标名相同但 tag 不同，会形成同一类指标的不同时间序列。
@@ -107,6 +110,7 @@ public class AiCallMetrics {
         successCalls.increment();
         promptTokens.increment(promptTok);
         completionTokens.increment(completionTok);
+        windowStore.recordSuccess(model, ttftMs, totalMs);
 
         // 调用已结束，活跃调用数必须减一；失败路径中也有对应 decrement。
         activeCalls.decrementAndGet();
@@ -130,6 +134,7 @@ public class AiCallMetrics {
                 .tag("model", model).tag("error_type", errorType)
                 .register(registry).increment();
         failedCalls.increment();
+        windowStore.recordFailure(model);
         activeCalls.decrementAndGet();
     }
 }

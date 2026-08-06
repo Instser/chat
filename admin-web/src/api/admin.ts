@@ -123,8 +123,8 @@ export function getOpsMetrics() {
   return apiGet('/admin/ops/metrics/summary')
 }
 
-export function getOpsMonitoring() {
-  return apiGet<Record<string, unknown>>('/admin/ops/monitoring')
+export function getOpsMonitoring(range: string = '7d') {
+  return apiGet<Record<string, unknown>>('/admin/ops/monitoring', { params: { range } })
 }
 
 export function getOpsCacheSummary() {

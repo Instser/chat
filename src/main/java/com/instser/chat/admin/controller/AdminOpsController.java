@@ -42,8 +42,9 @@ public class AdminOpsController {
 
     @GetMapping("/monitoring")
     @Operation(summary = "运维监控汇总（AI/HTTP/系统/支付/模型连通）")
-    public Result<Map<String, Object>> monitoring() {
-        return Result.success(adminOpsService.monitoring());
+    public Result<Map<String, Object>> monitoring(
+            @RequestParam(value = "range", required = false, defaultValue = "7d") String range) {
+        return Result.success(adminOpsService.monitoring(range));
     }
 
     @GetMapping("/cache/summary")

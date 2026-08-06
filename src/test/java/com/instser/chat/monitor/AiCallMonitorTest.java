@@ -18,7 +18,7 @@ class AiCallMonitorTest {
     @BeforeEach
     void setUp() {
         registry = new SimpleMeterRegistry();
-        metrics = new AiCallMetrics(registry);
+        metrics = new AiCallMetrics(registry, new com.instser.chat.metrics.AiCallWindowStore());
         monitor = new AiCallMonitor(metrics);
     }
 

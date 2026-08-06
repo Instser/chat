@@ -1205,3 +1205,4 @@
 - 修复：AsyncContext + OutputStream；前端 onError/重试 id 兜底
 - 验收：直连/公网 HTTP1.1/HTTP2 curl exit 0，FINAL_CHUNK=True
 - [x] 运维监控支付假数据与 TTFT 错位修复（2026-08-04 19:20）
+- [x] 运维监控 AI 时间刻度 1d/7d/30d/all（2026-08-06 15:06）

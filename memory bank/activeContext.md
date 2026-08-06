@@ -1793,3 +1793,7 @@
 - 假数据 120：PaymentAnalyticsServiceImpl 硬编码已改为 t_user_order 实查
 - TTFT 图：双 Y 轴 + dataset 对齐；过滤 unknown 模型
 - 现网：近7日 successfulOrders=0（真实）；全量 paid=3/total=58
+
+## 2026-08-06 15:06 AI 监控时间刻度
+- monitoring?range=1d|7d|30d|all；AiCallWindowStore 小时桶；前端 radio 切换
+- 注意：仍是进程内，重启清空；非 Prometheus 长期库
