@@ -1802,3 +1802,7 @@
 - 原频率：监控页 30s 自动刷新 + 每次 monitoring 内 checkAiApi + health 再探一轮
 - 现：monitoring 默认不探；GET /admin/ops/monitoring/models-probe 手动
 - HTTP Top 路径：拦截器与汇总均排除 /admin/ops/monitoring*
+
+## 2026-08-06 图表标签优化
+- TTFT 图弃用 dataset 行对象 tooltip（修复 [object Object]）；改平行数组 + 显式 formatter
+- 各图：hideOverlap、短标签、关闭线系列 dataLabel、饼图只显示名、containLabel 加高

@@ -250,6 +250,84 @@ function emptyOption(title: string) {
   }
 }
 
+/** 缩短模型名，避免 x 轴重叠；完整名放 tooltip */
+function shortModelLabel(name: string, max = 16): string {
+  const s = String(name || '').trim()
+  if (!s) return '-'
+  // 去掉常见前缀噪音
+  const cleaned = s.replace(/^(openai|google|anthropic|azure)[/:]/i, '')
+  if (cleaned.length <= max) return cleaned
+  return `${cleaned.slice(0, max - 1)}…`
+}
+
+/** 缩短 HTTP 路径标签 */
+function shortPathLabel(name: string, max = 28): string {
+  const s = String(name || '')
+  if (s.length <= max) return s
+  return `…${s.slice(-(max - 1))}`
+}
+
+function formatNum(v: unknown, digits = 0): string {
+  if (v == null || v === '' || Number.isNaN(Number(v))) return '-'
+  const n = Number(v)
+  return digits > 0 ? n.toFixed(digits) : String(Math.round(n))
+}
+
+/**
+ * dataset 模式下 series 的 value 可能是整行对象；
+ * 必须从 dimension 取值，否则会显示 [object Object]。
+ */
+function seriesNumericValue(param: any, dimension?: string): number | null {
+  if (param == null) return null
+  const data = param.data
+  if (dimension && data && typeof data === 'object' && !Array.isArray(data)) {
+    const raw = data[dimension]
+    if (raw == null || raw === '') return null
+    const n = Number(raw)
+    return Number.isFinite(n) ? n : null
+  }
+  if (typeof data === 'number') return Number.isFinite(data) ? data : null
+  if (Array.isArray(data)) {
+    const idx = param.encode?.y?.[0]
+    const raw = typeof idx === 'number' ? data[idx] : data[data.length - 1]
+    if (raw == null) return null
+    const n = Number(raw)
+    return Number.isFinite(n) ? n : null
+  }
+  if (param.value != null && typeof param.value !== 'object') {
+    const n = Number(param.value)
+    return Number.isFinite(n) ? n : null
+  }
+  return null
+}
+
+function axisTooltip(params: any, units: Record<string, string> = {}): string {
+  const rows = Array.isArray(params) ? params : [params]
+  if (!rows.length) return ''
+  const title = rows[0]?.axisValueLabel || rows[0]?.name || ''
+  const lines = rows.map((p: any) => {
+    // 优先用 series 维度映射；fallback value
+    const dimHint =
+      p.seriesName?.includes('TTFT')
+        ? 'ttft'
+        : p.seriesName?.includes('总耗时')
+          ? 'duration'
+          : p.seriesName?.includes('次数') || p.seriesName?.includes('调用')
+            ? 'calls'
+            : undefined
+    const v = seriesNumericValue(p, dimHint)
+    const unit = units[p.seriesName] ?? (p.seriesName?.includes('ms') || p.seriesName?.includes('耗时') || p.seriesName?.includes('TTFT') ? ' ms' : '')
+    const digits = unit.includes('ms') ? 1 : 0
+    return `${p.marker}${p.seriesName}: ${formatNum(v, digits)}${v == null ? '' : unit}`
+  })
+  return `<div style="font-weight:600;margin-bottom:4px">${title}</div>${lines.join('<br/>')}`
+}
+
+function pieLabelFormatter(params: any): string {
+  // 只显示名称，数值进 tooltip，减少扇区标签重叠
+  return String(params?.name ?? '')
+}
+
 function renderCharts() {
   // AI timeline
   const aiTimeline = ensureChart(aiTimelineRef.value)
@@ -261,19 +339,39 @@ function renderCharts() {
         true,
       )
     } else {
+      const dense = timeline.length > 12
       aiTimeline.setOption(
         {
-          tooltip: { trigger: 'axis' },
-          legend: { data: ['调用次数', '成功', '失败', 'TTFT均值(ms)'] },
-          grid: { left: 48, right: 56, top: 36, bottom: 48 },
+          tooltip: {
+            trigger: 'axis',
+            confine: true,
+            formatter: (params: any) =>
+              axisTooltip(params, {
+                调用次数: '',
+                成功: '',
+                失败: '',
+                'TTFT均值(ms)': ' ms',
+              }),
+          },
+          legend: {
+            top: 0,
+            type: 'scroll',
+            data: ['调用次数', '成功', '失败', 'TTFT均值(ms)'],
+          },
+          grid: { left: 52, right: 56, top: 40, bottom: dense ? 56 : 40, containLabel: true },
           xAxis: {
             type: 'category',
             data: timeline.map((p: any) => p.label || p.bucket),
-            axisLabel: { rotate: timeline.length > 14 ? 30 : 0 },
+            axisLabel: {
+              rotate: dense ? 35 : 0,
+              interval: dense ? 'auto' : 0,
+              hideOverlap: true,
+              fontSize: 11,
+            },
           },
           yAxis: [
-            { type: 'value', name: '次数', minInterval: 1 },
-            { type: 'value', name: 'ms', splitLine: { show: false } },
+            { type: 'value', name: '次数', minInterval: 1, splitNumber: 4 },
+            { type: 'value', name: 'ms', splitLine: { show: false }, splitNumber: 4 },
           ],
           series: [
             {
@@ -281,21 +379,26 @@ function renderCharts() {
               type: 'bar',
               yAxisIndex: 0,
               data: timeline.map((p: any) => Number(p.calls) || 0),
-              barMaxWidth: 24,
+              barMaxWidth: 18,
+              label: { show: false },
             },
             {
               name: '成功',
               type: 'line',
               yAxisIndex: 0,
               data: timeline.map((p: any) => Number(p.success) || 0),
-              showSymbol: false,
+              showSymbol: timeline.length <= 8,
+              symbolSize: 6,
+              label: { show: false },
             },
             {
               name: '失败',
               type: 'line',
               yAxisIndex: 0,
               data: timeline.map((p: any) => Number(p.failed) || 0),
-              showSymbol: false,
+              showSymbol: timeline.length <= 8,
+              symbolSize: 6,
+              label: { show: false },
             },
             {
               name: 'TTFT均值(ms)',
@@ -303,6 +406,9 @@ function renderCharts() {
               yAxisIndex: 1,
               data: timeline.map((p: any) => (p.ttftMeanMs == null ? null : Number(p.ttftMeanMs))),
               connectNulls: false,
+              showSymbol: true,
+              symbolSize: 6,
+              label: { show: false },
             },
           ],
         },
@@ -320,14 +426,24 @@ function renderCharts() {
     } else {
       aiPie.setOption(
         {
-          tooltip: { trigger: 'item' },
-          legend: { bottom: 0 },
+          tooltip: {
+            trigger: 'item',
+            confine: true,
+            formatter: (p: any) => `${p.name}<br/>${p.marker}${p.value}（${p.percent}%）`,
+          },
+          legend: { bottom: 0, type: 'scroll' },
           series: [
             {
               type: 'pie',
-              radius: ['40%', '68%'],
+              radius: ['42%', '68%'],
+              center: ['50%', '46%'],
               data: statusPie.map((x: any) => ({ name: x.name, value: Number(x.value) || 0 })),
-              label: { formatter: '{b}: {c}' },
+              label: {
+                formatter: pieLabelFormatter,
+                fontSize: 11,
+              },
+              labelLine: { length: 10, length2: 8 },
+              avoidLabelOverlap: true,
             },
           ],
         },
@@ -336,7 +452,7 @@ function renderCharts() {
     }
   }
 
-  // AI model bars：次数与耗时量纲不同，必须双 Y 轴，否则柱/线视觉错位
+  // AI model bars：显式 categories + 平行数组，tooltip 绝不吐 object
   const aiBar = ensureChart(aiBarRef.value)
   const modelBars = (data.value.ai?.modelBars || []).filter(
     (m: any) => m && m.name && m.name !== 'unknown',
@@ -345,65 +461,107 @@ function renderCharts() {
     if (!modelBars.length) {
       aiBar.setOption(emptyOption('暂无按模型耗时数据'), true)
     } else {
-      // 用 dataset + encode 保证类目与系列按同一行对齐，避免 name 与数值错位
-      const source = modelBars.map((m: any) => ({
-        model: String(m.name),
-        calls: Number(m.calls) || 0,
-        ttft: m.ttftMeanMs == null ? null : Number(m.ttftMeanMs),
-        duration: m.durationMeanMs == null ? null : Number(m.durationMeanMs),
-      }))
+      const fullNames = modelBars.map((m: any) => String(m.name))
+      const shortNames = fullNames.map((n: string) => shortModelLabel(n, modelBars.length > 6 ? 12 : 16))
+      const calls = modelBars.map((m: any) => Number(m.calls) || 0)
+      const ttft = modelBars.map((m: any) =>
+        m.ttftMeanMs == null ? null : Number(m.ttftMeanMs),
+      )
+      const duration = modelBars.map((m: any) =>
+        m.durationMeanMs == null ? null : Number(m.durationMeanMs),
+      )
+      const denseModels = modelBars.length > 5
       aiBar.setOption(
         {
           tooltip: {
             trigger: 'axis',
             axisPointer: { type: 'shadow' },
+            confine: true,
             formatter: (params: any) => {
               const rows = Array.isArray(params) ? params : [params]
-              const model = rows[0]?.axisValueLabel || rows[0]?.name || ''
+              const idx = rows[0]?.dataIndex ?? 0
+              const full = fullNames[idx] || rows[0]?.axisValueLabel || ''
               const lines = rows.map((p: any) => {
-                const v = p.data?.[p.encode?.y?.[0]] ?? p.value
-                const unit = p.seriesName?.includes('次') ? '' : ' ms'
-                return `${p.marker}${p.seriesName}: ${v == null ? '-' : v}${unit}`
+                // 这里 data 是 number | null，不是 object
+                const raw = p.value
+                const v =
+                  raw == null || (typeof raw === 'object' && raw !== null)
+                    ? null
+                    : Number(raw)
+                const isCount = p.seriesName === '调用次数'
+                const unit = isCount ? '' : ' ms'
+                const text =
+                  v == null || Number.isNaN(v) ? '-' : isCount ? String(Math.round(v)) : v.toFixed(1)
+                return `${p.marker}${p.seriesName}: ${text}${v == null || Number.isNaN(v) ? '' : unit}`
               })
-              return `${model}<br/>${lines.join('<br/>')}`
+              return `<div style="font-weight:600;margin-bottom:4px">${full}</div>${lines.join('<br/>')}`
             },
           },
-          legend: { data: ['调用次数', 'TTFT均值(ms)', '总耗时均值(ms)'] },
-          grid: { left: 48, right: 56, top: 36, bottom: 64 },
-          dataset: { source },
+          legend: {
+            top: 0,
+            type: 'scroll',
+            data: ['调用次数', 'TTFT均值(ms)', '总耗时均值(ms)'],
+          },
+          grid: {
+            left: 52,
+            right: 56,
+            top: 40,
+            bottom: denseModels ? 72 : 48,
+            containLabel: true,
+          },
           xAxis: {
             type: 'category',
-            axisLabel: { rotate: 25, interval: 0, hideOverlap: false },
+            data: shortNames,
+            axisLabel: {
+              rotate: denseModels ? 40 : 20,
+              interval: 0,
+              hideOverlap: true,
+              fontSize: 11,
+              formatter: (val: string) => shortModelLabel(val, denseModels ? 10 : 14),
+            },
           },
           yAxis: [
-            { type: 'value', name: '次数', minInterval: 1 },
-            { type: 'value', name: 'ms', splitLine: { show: false } },
+            { type: 'value', name: '次数', minInterval: 1, splitNumber: 4 },
+            { type: 'value', name: 'ms', splitLine: { show: false }, splitNumber: 4 },
           ],
           series: [
             {
               name: '调用次数',
               type: 'bar',
               yAxisIndex: 0,
-              encode: { x: 'model', y: 'calls' },
-              barMaxWidth: 36,
+              data: calls,
+              barMaxWidth: denseModels ? 22 : 32,
+              // 柱顶仅次数，且自动避让
+              label: {
+                show: modelBars.length <= 8,
+                position: 'top',
+                fontSize: 10,
+                color: '#6b7280',
+                formatter: (p: any) => formatNum(p.value),
+              },
             },
             {
               name: 'TTFT均值(ms)',
               type: 'line',
               yAxisIndex: 1,
-              encode: { x: 'model', y: 'ttft' },
+              data: ttft,
               connectNulls: false,
               symbol: 'circle',
-              symbolSize: 8,
+              symbolSize: 7,
+              // 线系列默认 label 在 dataset 下会吐 object；彻底关闭
+              label: { show: false },
+              emphasis: { focus: 'series' },
             },
             {
               name: '总耗时均值(ms)',
               type: 'line',
               yAxisIndex: 1,
-              encode: { x: 'model', y: 'duration' },
+              data: duration,
               connectNulls: false,
               symbol: 'circle',
-              symbolSize: 8,
+              symbolSize: 7,
+              label: { show: false },
+              emphasis: { focus: 'series' },
             },
           ],
         },
@@ -419,18 +577,44 @@ function renderCharts() {
     if (!topPaths.length) {
       httpBar.setOption(emptyOption('暂无 HTTP 路径采样'), true)
     } else {
-      const rows = [...topPaths].reverse()
+      const rows = [...topPaths].slice(0, 12).reverse()
+      const fullPaths = rows.map((r: any) => String(r.name))
       httpBar.setOption(
         {
-          tooltip: { trigger: 'axis' },
-          grid: { left: 120, right: 20, top: 20, bottom: 24 },
-          xAxis: { type: 'value' },
-          yAxis: { type: 'category', data: rows.map((r: any) => r.name) },
+          tooltip: {
+            trigger: 'axis',
+            confine: true,
+            formatter: (params: any) => {
+              const p = Array.isArray(params) ? params[0] : params
+              const idx = p?.dataIndex ?? 0
+              const full = fullPaths[idx] || p?.name || ''
+              return `${full}<br/>${p.marker}次数: ${formatNum(p.value)}`
+            },
+          },
+          grid: { left: 8, right: 28, top: 12, bottom: 12, containLabel: true },
+          xAxis: { type: 'value', minInterval: 1, splitNumber: 3 },
+          yAxis: {
+            type: 'category',
+            data: fullPaths.map((n) => shortPathLabel(n, 26)),
+            axisLabel: {
+              fontSize: 11,
+              width: 150,
+              overflow: 'truncate',
+            },
+          },
           series: [
             {
               type: 'bar',
               data: rows.map((r: any) => Number(r.value) || 0),
               itemStyle: { color: '#3b82f6' },
+              barMaxWidth: 18,
+              label: {
+                show: true,
+                position: 'right',
+                fontSize: 10,
+                color: '#6b7280',
+                formatter: (p: any) => formatNum(p.value),
+              },
             },
           ],
         },
@@ -448,15 +632,33 @@ function renderCharts() {
     } else {
       httpStatus.setOption(
         {
-          tooltip: { trigger: 'axis' },
-          grid: { left: 40, right: 16, top: 20, bottom: 36 },
-          xAxis: { type: 'category', data: statusBars.map((s: any) => String(s.name)) },
-          yAxis: { type: 'value' },
+          tooltip: {
+            trigger: 'axis',
+            confine: true,
+            formatter: (params: any) => {
+              const p = Array.isArray(params) ? params[0] : params
+              return `${p.axisValueLabel || p.name}<br/>${p.marker}${formatNum(p.value)}`
+            },
+          },
+          grid: { left: 40, right: 16, top: 20, bottom: 36, containLabel: true },
+          xAxis: {
+            type: 'category',
+            data: statusBars.map((s: any) => String(s.name)),
+            axisLabel: { hideOverlap: true },
+          },
+          yAxis: { type: 'value', minInterval: 1, splitNumber: 4 },
           series: [
             {
               type: 'bar',
               data: statusBars.map((s: any) => Number(s.value) || 0),
               itemStyle: { color: '#10b981' },
+              barMaxWidth: 36,
+              label: {
+                show: statusBars.length <= 8,
+                position: 'top',
+                fontSize: 10,
+                formatter: (p: any) => formatNum(p.value),
+              },
             },
           ],
         },
@@ -474,15 +676,34 @@ function renderCharts() {
     } else {
       systemBar.setOption(
         {
-          tooltip: { trigger: 'axis' },
-          grid: { left: 40, right: 16, top: 20, bottom: 36 },
-          xAxis: { type: 'category', data: resourceBars.map((r: any) => r.name) },
-          yAxis: { type: 'value' },
+          tooltip: {
+            trigger: 'axis',
+            confine: true,
+            formatter: (params: any) => {
+              const p = Array.isArray(params) ? params[0] : params
+              return `${p.axisValueLabel || p.name}<br/>${p.marker}${formatNum(p.value, 1)}`
+            },
+          },
+          grid: { left: 40, right: 16, top: 20, bottom: 48, containLabel: true },
+          xAxis: {
+            type: 'category',
+            data: resourceBars.map((r: any) => r.name),
+            axisLabel: { rotate: 20, hideOverlap: true, fontSize: 11 },
+          },
+          yAxis: { type: 'value', splitNumber: 4 },
           series: [
             {
               type: 'bar',
               data: resourceBars.map((r: any) => Number(r.value) || 0),
               itemStyle: { color: '#8b5cf6' },
+              barMaxWidth: 36,
+              label: {
+                show: true,
+                position: 'top',
+                fontSize: 10,
+                color: '#6b7280',
+                formatter: (p: any) => formatNum(p.value, 1),
+              },
             },
           ],
         },
@@ -499,16 +720,40 @@ function renderCharts() {
     if (!daily.length && !methods.length) {
       paymentLine.setOption(emptyOption('暂无支付统计'), true)
     } else if (daily.length) {
+      const densePay = daily.length > 10
       paymentLine.setOption(
         {
-          tooltip: { trigger: 'axis' },
-          legend: { data: ['日收入'] },
-          grid: { left: 48, right: 16, top: 36, bottom: 36 },
+          tooltip: {
+            trigger: 'axis',
+            confine: true,
+            formatter: (params: any) => {
+              const p = Array.isArray(params) ? params[0] : params
+              return `${p.axisValueLabel || p.name}<br/>${p.marker}日收入: ${formatNum(p.value, 2)}`
+            },
+          },
+          legend: { data: ['日收入'], top: 0 },
+          grid: {
+            left: 48,
+            right: 16,
+            top: 36,
+            bottom: densePay ? 48 : 36,
+            containLabel: true,
+          },
           xAxis: {
             type: 'category',
             data: daily.map((d: any) => d.date),
+            axisLabel: {
+              rotate: densePay ? 30 : 0,
+              hideOverlap: true,
+              fontSize: 11,
+              formatter: (v: string) => {
+                // 日期只显示 MM-DD，减少重叠
+                const s = String(v)
+                return s.length >= 10 ? s.slice(5) : s
+              },
+            },
           },
-          yAxis: { type: 'value', name: '金额' },
+          yAxis: { type: 'value', name: '金额', splitNumber: 4 },
           series: [
             {
               name: '日收入',
@@ -516,6 +761,9 @@ function renderCharts() {
               smooth: true,
               data: daily.map((d: any) => Number(d.revenue) || 0),
               areaStyle: { opacity: 0.12 },
+              showSymbol: daily.length <= 10,
+              symbolSize: 6,
+              label: { show: false },
             },
           ],
         },
@@ -524,18 +772,25 @@ function renderCharts() {
     } else {
       paymentLine.setOption(
         {
-          tooltip: { trigger: 'item' },
-          legend: { bottom: 0 },
+          tooltip: {
+            trigger: 'item',
+            confine: true,
+            formatter: (p: any) => `${p.name}<br/>${p.marker}${p.value}（${p.percent}%）`,
+          },
+          legend: { bottom: 0, type: 'scroll' },
           series: [
             {
               name: '支付方式',
               type: 'pie',
-              radius: ['35%', '65%'],
+              radius: ['38%', '65%'],
+              center: ['50%', '46%'],
               data: methods.map((m: any) => ({
                 name: m.name,
                 value: Number(m.value) || 0,
               })),
-              label: { formatter: '{b}: {c}' },
+              label: { formatter: pieLabelFormatter, fontSize: 11 },
+              labelLine: { length: 10, length2: 8 },
+              avoidLabelOverlap: true,
             },
           ],
         },
@@ -550,23 +805,49 @@ function renderCharts() {
     if (!modelRows.value.length) {
       modelBar.setOption(emptyOption('暂无模型探测结果'), true)
     } else {
+      const codes = modelRows.value.map((m: any) => String(m.modelCode || ''))
+      const denseProbe = codes.length > 5
       modelBar.setOption(
         {
           tooltip: {
             trigger: 'axis',
+            confine: true,
             formatter: (params: any) => {
               const p = Array.isArray(params) ? params[0] : params
               const row = modelRows.value[p.dataIndex] || {}
-              return `${row.modelCode}<br/>状态: ${row.status}<br/>耗时: ${row.latencyMs ?? '-'} ms<br/>${row.message || ''}`
+              const latency =
+                typeof p.value === 'object' && p.value != null
+                  ? p.value.value
+                  : p.value
+              return [
+                `<div style="font-weight:600">${row.modelCode || p.name || ''}</div>`,
+                `状态: ${row.status ?? '-'}`,
+                `耗时: ${formatNum(latency)} ms`,
+                row.timedOut ? '超时: 是' : '超时: 否',
+                row.message ? `说明: ${row.message}` : '',
+              ]
+                .filter(Boolean)
+                .join('<br/>')
             },
           },
-          grid: { left: 40, right: 16, top: 20, bottom: 48 },
+          grid: {
+            left: 48,
+            right: 16,
+            top: 20,
+            bottom: denseProbe ? 64 : 44,
+            containLabel: true,
+          },
           xAxis: {
             type: 'category',
-            data: modelRows.value.map((m: any) => m.modelCode),
-            axisLabel: { rotate: 20 },
+            data: codes.map((c) => shortModelLabel(c, denseProbe ? 10 : 14)),
+            axisLabel: {
+              rotate: denseProbe ? 35 : 15,
+              interval: 0,
+              hideOverlap: true,
+              fontSize: 11,
+            },
           },
-          yAxis: { type: 'value', name: 'ms' },
+          yAxis: { type: 'value', name: 'ms', splitNumber: 4 },
           series: [
             {
               type: 'bar',
@@ -577,6 +858,18 @@ function renderCharts() {
                     m.status === 'UP' ? '#10b981' : m.timedOut ? '#f59e0b' : '#ef4444',
                 },
               })),
+              barMaxWidth: 28,
+              label: {
+                show: codes.length <= 8,
+                position: 'top',
+                fontSize: 10,
+                color: '#6b7280',
+                formatter: (p: any) => {
+                  const v =
+                    typeof p.value === 'object' && p.value != null ? p.value.value : p.value
+                  return formatNum(v)
+                },
+              },
             },
           ],
         },
@@ -726,7 +1019,7 @@ onBeforeUnmount(() => {
 }
 .chart {
   width: 100%;
-  height: 300px;
+  height: 340px;
 }
 .hint {
   margin-top: 4px;
