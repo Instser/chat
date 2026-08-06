@@ -39,8 +39,8 @@
         <div class="metric-value">{{ paid7d }}</div>
       </div>
       <div class="metric-card">
-        <div class="metric-label">模型探测 UP</div>
-        <div class="metric-value">{{ modelUp }} / {{ modelTotal }}</div>
+        <div class="metric-label">模型探测 UP（手动）</div>
+        <div class="metric-value">{{ modelTotal ? `${modelUp} / ${modelTotal}` : '-' }}</div>
       </div>
     </div>
 
@@ -99,9 +99,24 @@
 
       <el-col :xs="24">
         <el-card shadow="never" class="block">
-          <template #header>模型实时连通探测</template>
+          <template #header>
+            <div class="probe-header">
+              <span>模型实时连通探测（手动）</span>
+              <div class="probe-actions">
+                <span class="probe-meta" v-if="probeMeta">{{ probeMeta }}</span>
+                <el-button type="primary" size="small" :loading="probing" @click="probeModels">
+                  探测模型
+                </el-button>
+              </div>
+            </div>
+          </template>
           <div ref="modelBarRef" class="chart"></div>
-          <el-table :data="modelRows" size="small" border style="margin-top: 12px">
+          <el-empty
+            v-if="!modelRows.length && !probing"
+            :description="modelsIdleText"
+            :image-size="64"
+          />
+          <el-table v-else :data="modelRows" size="small" border style="margin-top: 12px" v-loading="probing">
             <el-table-column prop="modelCode" label="模型" min-width="160" />
             <el-table-column prop="status" label="状态" width="100" />
             <el-table-column prop="latencyMs" label="耗时(ms)" width="100" />
@@ -121,13 +136,18 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import * as echarts from 'echarts'
 import type { ECharts } from 'echarts'
-import { getOpsMonitoring } from '@/api/admin'
+import { getOpsMonitoring, probeOpsModels } from '@/api/admin'
 import { showApiError } from '@/utils/request'
+import { ElMessage } from 'element-plus'
 
 const loading = ref(false)
+const probing = ref(false)
 const autoRefresh = ref(true)
 const range = ref<'1d' | '7d' | '30d' | 'all'>('7d')
 const data = ref<Record<string, any>>({})
+/** 手动探测结果，不随自动刷新覆盖 */
+const modelProbe = ref<Record<string, any> | null>(null)
+const lastProbeAt = ref<string>('')
 let timer: number | undefined
 
 const aiTimelineRef = ref<HTMLDivElement | null>(null)
@@ -194,11 +214,20 @@ const paid7d = computed(
     0,
 )
 const modelRows = computed(() => {
-  const models = data.value.models?.models
+  const models = modelProbe.value?.models ?? data.value.models?.models
   return Array.isArray(models) ? models : []
 })
 const modelUp = computed(() => modelRows.value.filter((m: any) => m.status === 'UP').length)
 const modelTotal = computed(() => modelRows.value.length)
+const modelsIdleText = computed(() => {
+  if (modelProbe.value?.message) return String(modelProbe.value.message)
+  return '点击右上角「探测模型」发起真实可聊检测；自动刷新不会探测'
+})
+const probeMeta = computed(() => {
+  if (!lastProbeAt.value) return ''
+  const st = modelProbe.value?.status || ''
+  return `上次探测 ${lastProbeAt.value}${st ? ` · ${st}` : ''}`
+})
 
 function ensureChart(el: HTMLDivElement | null): ECharts | null {
   if (!el) return null
@@ -560,13 +589,35 @@ function renderCharts() {
 async function load() {
   loading.value = true
   try {
-    data.value = (await getOpsMonitoring(range.value)) as Record<string, any>
+    // 默认不探测模型；探测结果保存在 modelProbe，避免自动刷新冲掉
+    data.value = (await getOpsMonitoring(range.value, false)) as Record<string, any>
     await nextTick()
     renderCharts()
   } catch (e) {
     showApiError(e, '加载监控数据失败')
   } finally {
     loading.value = false
+  }
+}
+
+async function probeModels() {
+  probing.value = true
+  try {
+    const result = (await probeOpsModels()) as Record<string, any>
+    modelProbe.value = result
+    lastProbeAt.value = new Date().toLocaleString()
+    data.value = {
+      ...data.value,
+      models: result,
+    }
+    await nextTick()
+    renderCharts()
+    const up = modelRows.value.filter((m: any) => m.status === 'UP').length
+    ElMessage.success(`探测完成：UP ${up} / ${modelRows.value.length}`)
+  } catch (e) {
+    showApiError(e, '模型探测失败')
+  } finally {
+    probing.value = false
   }
 }
 
@@ -629,6 +680,23 @@ onBeforeUnmount(() => {
   color: #3730a3;
   font-size: 11px;
   font-weight: 600;
+}
+.probe-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.probe-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.probe-meta {
+  color: #6b7280;
+  font-size: 12px;
+  font-weight: 400;
 }
 .health-pill {
   display: inline-block;

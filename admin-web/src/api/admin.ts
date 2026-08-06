@@ -123,8 +123,15 @@ export function getOpsMetrics() {
   return apiGet('/admin/ops/metrics/summary')
 }
 
-export function getOpsMonitoring(range: string = '7d') {
-  return apiGet<Record<string, unknown>>('/admin/ops/monitoring', { params: { range } })
+export function getOpsMonitoring(range: string = '7d', probeModels = false) {
+  return apiGet<Record<string, unknown>>('/admin/ops/monitoring', {
+    params: { range, probeModels },
+  })
+}
+
+/** 手动真实可聊探测全部可用模型（不随自动刷新） */
+export function probeOpsModels() {
+  return apiGet<Record<string, unknown>>('/admin/ops/monitoring/models-probe')
 }
 
 export function getOpsCacheSummary() {

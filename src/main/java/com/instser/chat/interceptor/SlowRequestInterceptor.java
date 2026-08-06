@@ -60,10 +60,25 @@ public class SlowRequestInterceptor implements HandlerInterceptor {
                     method, path, costMs, status, traceId);
         }
 
-        apiMetrics.recordRequest(method, path, status);
-        if (ex != null) {
-            apiMetrics.recordException(method, path, ex.getClass().getSimpleName());
+        // 运维监控接口自身不计入 HTTP 路径统计，避免自动刷新自激刷榜
+        if (!isMonitoringSelfPath(path)) {
+            apiMetrics.recordRequest(method, path, status);
+            if (ex != null) {
+                apiMetrics.recordException(method, path, ex.getClass().getSimpleName());
+            }
+        } else if (ex != null) {
+            // 监控接口异常仍记日志，但不进路径计数
+            log.warn("MONITORING_REQUEST_ERROR method={} path={} costMs={} status={} ex={} traceId={}",
+                    method, path, costMs, status, ex.getClass().getSimpleName(), traceId);
         }
+    }
+
+    private static boolean isMonitoringSelfPath(String path) {
+        if (path == null || path.isBlank()) {
+            return false;
+        }
+        String p = path.toLowerCase();
+        return p.contains("/admin/ops/monitoring") || p.endsWith("/ops/monitoring");
     }
 
     private Counter getOrCreateSlowCounter(String threshold) {

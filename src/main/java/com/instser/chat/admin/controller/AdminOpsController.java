@@ -41,10 +41,17 @@ public class AdminOpsController {
     }
 
     @GetMapping("/monitoring")
-    @Operation(summary = "运维监控汇总（AI/HTTP/系统/支付/模型连通）")
+    @Operation(summary = "运维监控汇总（AI/HTTP/系统/支付；模型探测默认关闭）")
     public Result<Map<String, Object>> monitoring(
-            @RequestParam(value = "range", required = false, defaultValue = "7d") String range) {
-        return Result.success(adminOpsService.monitoring(range));
+            @RequestParam(value = "range", required = false, defaultValue = "7d") String range,
+            @RequestParam(value = "probeModels", required = false, defaultValue = "false") boolean probeModels) {
+        return Result.success(adminOpsService.monitoring(range, probeModels));
+    }
+
+    @GetMapping("/monitoring/models-probe")
+    @Operation(summary = "手动探测全部可用模型（真实可聊）")
+    public Result<Map<String, Object>> probeModels() {
+        return Result.success(adminOpsService.probeModelsNow());
     }
 
     @GetMapping("/cache/summary")

@@ -1797,3 +1797,8 @@
 ## 2026-08-06 15:06 AI 监控时间刻度
 - monitoring?range=1d|7d|30d|all；AiCallWindowStore 小时桶；前端 radio 切换
 - 注意：仍是进程内，重启清空；非 Prometheus 长期库
+
+## 2026-08-06 15:12 模型探测改手动 + 排除 monitoring 路径
+- 原频率：监控页 30s 自动刷新 + 每次 monitoring 内 checkAiApi + health 再探一轮
+- 现：monitoring 默认不探；GET /admin/ops/monitoring/models-probe 手动
+- HTTP Top 路径：拦截器与汇总均排除 /admin/ops/monitoring*

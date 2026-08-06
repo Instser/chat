@@ -119,19 +119,41 @@ public class AdminOpsService {
     }
 
     public Map<String, Object> health() {
+        // 仪表盘/健康接口可探测 AI；运维监控页默认不自动探测，见 healthLite()
+        return buildHealth(true);
+    }
+
+    /** 不含外网 AI 探测的轻量健康，避免监控自动刷新打爆上游。 */
+    public Map<String, Object> healthLite() {
+        return buildHealth(false);
+    }
+
+    private Map<String, Object> buildHealth(boolean probeAi) {
         Map<String, Object> health = new LinkedHashMap<>();
         Map<String, Object> components = new LinkedHashMap<>();
         components.put("application", component("UP", ManagementFactory.getRuntimeMXBean().getUptime(), null));
         components.put("database", checkDatabase());
         components.put("redis", checkRedis());
-        components.put("aiApi", checkAiApi());
+        if (probeAi) {
+            components.put("aiApi", checkAiApi());
+        } else {
+            components.put("aiApi", Map.of(
+                    "status", "SKIPPED",
+                    "message", "监控页默认跳过 AI 探测，请手动点击「探测模型」",
+                    "probe", "manual-only"
+            ));
+        }
 
-        // 任一组件 DOWN/DEGRADED 都只降级整体状态，不抛错、不拖垮请求
-        boolean allUp = components.values().stream()
-                .allMatch(c -> "UP".equals(((Map<?, ?>) c).get("status")));
-        boolean anyNotUp = components.values().stream()
-                .anyMatch(c -> !"UP".equals(((Map<?, ?>) c).get("status")));
-        health.put("status", allUp ? "UP" : (anyNotUp ? "DEGRADED" : "UP"));
+        // SKIPPED 不视为故障；DOWN/DEGRADED 才降级
+        boolean degraded = components.values().stream().anyMatch(c -> {
+            Object st = ((Map<?, ?>) c).get("status");
+            return "DOWN".equals(st) || "DEGRADED".equals(st);
+        });
+        boolean allUp = components.values().stream().allMatch(c -> {
+            Object st = ((Map<?, ?>) c).get("status");
+            return "UP".equals(st) || "SKIPPED".equals(st);
+        });
+        health.put("status", degraded ? "DEGRADED" : (allUp ? "UP" : "DEGRADED"));
         health.put("components", components);
         health.put("checkedAt", Instant.now().toString());
         return health;
@@ -189,12 +211,20 @@ public class AdminOpsService {
      * @param range AI 时间窗：1d / 7d / 30d / all（进程累计 Micrometer）
      */
     public Map<String, Object> monitoring(String range) {
+        return monitoring(range, false);
+    }
+
+    /**
+     * @param probeModels true 时才对外网模型做真实可聊探测；默认 false，由前端手动触发。
+     */
+    public Map<String, Object> monitoring(String range, boolean probeModels) {
         String normalized = normalizeRange(range);
         Map<String, Object> data = new LinkedHashMap<>();
         data.put("generatedAt", Instant.now().toString());
         data.put("range", normalized);
         data.put("supportedRanges", List.of("1d", "7d", "30d", "all"));
-        data.put("note", "AI 默认读进程内小时桶窗口；all 为 Micrometer 进程累计。重启后窗口清空。");
+        data.put("probeModels", probeModels);
+        data.put("note", "AI 指标为进程内窗口；模型连通默认手动探测，避免自动刷新打上游。");
 
         // 1) 系统资源
         data.put("system", buildSystemMetrics());
@@ -202,31 +232,51 @@ public class AdminOpsService {
         // 2) AI 调用（窗口 or 进程累计）
         data.put("ai", buildAiMetrics(normalized));
 
-        // 3) HTTP/API
+        // 3) HTTP/API（已排除 monitoring 自监控路径）
         data.put("http", buildHttpMetrics());
 
         // 4) 支付/订单（窗口与 AI 对齐：1d/7d/30d；all 仍用 7d 业务统计）
         data.put("payment", buildPaymentMetrics(paymentDaysForRange(normalized)));
 
-        // 5) 模型连通探测（短预算隔离，失败只记 models）
-        try {
-            data.put("models", checkAiApi());
-        } catch (Exception ex) {
-            log.warn("monitoring models probe failed: {}", sanitize(ex.getMessage()));
-            data.put("models", Map.of(
-                    "status", "DOWN",
-                    "message", "模型探测异常: " + sanitize(ex.getMessage()),
-                    "models", List.of()
-            ));
+        // 5) 模型连通：默认不探测；手动时才跑 checkAiApi
+        if (probeModels) {
+            data.put("models", probeModelsNow());
+        } else {
+            data.put("models", idleModelsProbePlaceholder());
         }
 
-        // 健康总览（复用，含 DB/Redis/AI）
+        // 健康总览：监控页用轻量版，避免自动刷新二次探测 AI
         try {
-            data.put("health", health());
+            data.put("health", healthLite());
         } catch (Exception ex) {
             data.put("health", Map.of("status", "DEGRADED", "message", sanitize(ex.getMessage())));
         }
         return data;
+    }
+
+    /** 仅模型探测，供运维页手动按钮调用。 */
+    public Map<String, Object> probeModelsNow() {
+        try {
+            return checkAiApi();
+        } catch (Exception ex) {
+            log.warn("manual models probe failed: {}", sanitize(ex.getMessage()));
+            return Map.of(
+                    "status", "DOWN",
+                    "message", "模型探测异常: " + sanitize(ex.getMessage()),
+                    "models", List.of(),
+                    "probe", "manual"
+            );
+        }
+    }
+
+    private Map<String, Object> idleModelsProbePlaceholder() {
+        Map<String, Object> idle = new LinkedHashMap<>();
+        idle.put("status", "IDLE");
+        idle.put("message", "尚未探测。点击「探测模型」发起真实可聊检测（不会随自动刷新执行）");
+        idle.put("models", List.of());
+        idle.put("probe", "manual-only");
+        idle.put("probedModels", 0);
+        return idle;
     }
 
     private Map<String, Object> buildSystemMetrics() {
@@ -506,6 +556,17 @@ public class AdminOpsService {
         };
     }
 
+    /** 监控接口自身路径，不进入 HTTP Top 统计。 */
+    static boolean isMonitoringSelfPath(String path) {
+        if (path == null || path.isBlank()) {
+            return false;
+        }
+        String p = path.toLowerCase(Locale.ROOT);
+        return p.contains("/admin/ops/monitoring")
+                || p.endsWith("/ops/monitoring")
+                || p.contains("/admin/ops/monitoring/models-probe");
+    }
+
     private Map<String, Object> buildHttpMetrics() {
         Map<String, Object> http = new LinkedHashMap<>();
         List<Map<String, Object>> requests = new ArrayList<>();
@@ -518,9 +579,13 @@ public class AdminOpsService {
             if (!(meter instanceof Counter counter)) {
                 continue;
             }
+            String path = tagValue(meter, "path");
+            // 不把监控页自身请求算进 Top 路径，避免自激刷榜
+            if (isMonitoringSelfPath(path)) {
+                continue;
+            }
             long c = Math.round(counter.count());
             String method = tagValue(meter, "method");
-            String path = tagValue(meter, "path");
             String status = tagValue(meter, "status");
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("method", method);
@@ -572,9 +637,13 @@ public class AdminOpsService {
             if (!(meter instanceof Counter counter)) {
                 continue;
             }
+            String path = tagValue(meter, "path");
+            if (isMonitoringSelfPath(path)) {
+                continue;
+            }
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("method", tagValue(meter, "method"));
-            row.put("path", tagValue(meter, "path"));
+            row.put("path", path);
             row.put("exceptionType", tagValue(meter, "exception_type"));
             row.put("count", round0(counter.count()));
             exceptions.add(row);
