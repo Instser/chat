@@ -59,9 +59,9 @@ spring:
   datasource:
     type: com.alibaba.druid.pool.DruidDataSource
     driver-class-name: com.mysql.cj.jdbc.Driver
-    url: jdbc:mysql://203.0.113.14:3306/chat?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&connectionTimeZone=Asia/Shanghai
+    url: jdbc:mysql://127.0.0.1:3306/chat?useUnicode=true&characterEncoding=utf8&zeroDateTimeBehavior=convertToNull&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&connectionTimeZone=Asia/Shanghai
     username: chat
-    password: H3KezazNwkWwLNF2
+    password: your-mysql-password
     # 数据库连接初始化SQL，设置会话时区为上海时区
     hikari:
       connection-init-sql: SET time_zone = '+08:00'
@@ -463,7 +463,7 @@ exchange:
 app:
   # CORS配置 - 允许localhost、局域网和生产域名访问
   cors:
-    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:*,https://localhost:*,http://127.0.0.1:*,https://127.0.0.1:*,http://192.168.1.100:*,https://192.168.1.100:*,http://192.168.1.101:*,https://192.168.1.101:*,https://chat.instser.cn,http://chat.instser.cn,http://203.0.113.16:3000}
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:*,https://localhost:*,http://127.0.0.1:*,https://127.0.0.1:*,http://192.168.1.100:*,https://192.168.1.100:*,http://192.168.1.101:*,https://192.168.1.101:*,https://chat.instser.cn,http://chat.instser.cn,http://home.example.com:*,https://home.example.com:*,http://203.0.113.16:3000}
     allowed-methods: ${CORS_ALLOWED_METHODS:*}
     allowed-headers: ${CORS_ALLOWED_HEADERS:*}
     allow-credentials: ${CORS_ALLOW_CREDENTIALS:true}
