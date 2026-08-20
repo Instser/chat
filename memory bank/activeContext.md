@@ -1,15 +1,14 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-08-04 01:16:00
+**📅 最后更新**: 2026-08-20 16:25:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v153.0
+**📊 文档版本**: v154.0
 
 ## 当前任务
-- 管理员后台已部署上线：`/admin/` 静态站 + 后端 `/api/admin/**` + 审计 SQL。
-- 用户前端现网保持运行（本次本机 Next 重建失败，未覆盖）。
+- **前后端统一部署到家用服务器** — 原公网服务器 `203.0.113.14` 已到期，前端从公网机迁到家用机 `home.example.com:9001`（宝塔环境）。家用机已装 Node 22、部署用户前端（systemd `tousechat-frontend-pub` :3001）+ 管理前端（`/opt/tousechat-admin`），Nginx 站点 `chat.instser.cn` 已配（80 端口，本机验收全通过）。
+- **待配 CDN** — 家用机 9080 端口外网可达（运营商只封 80/443，不封 9080），不需要新公网机/frp。CDN 回源 `home.example.com:9080`（HTTP，回源 Host: `chat.instser.cn`），SSL 在 CDN。SSE 兼容性需实测。
 - 待确认：是否引入 Flyway/Liquibase。
 - 待观察后清理：旧 `/admin/cache`/`/admin/logs` API Key 写入口与缓存二次密码；阶段 D 旧表 DROP；阶段 E SQL 归档。
-- 用户前端本机构建 `ignoreDuringBuilds` 报错需单独排查后再发版。
 
 
 ## 2026-08-04 13:53 运维监控面板
@@ -18,6 +17,7 @@
 - 域名 `chat.instser.cn` 外网仍可能受阿里云备案拦截影响。
 
 ## 最新完成任务
+✅ **家用机前端部署与统一架构迁移** — 原公网服务器 `203.0.113.14` 已到期，前端从公网机迁到家用机 `home.example.com:9001`（宝塔环境，SSH 端口从 27016→9001）。家用机已装 Node 22（`/www/server/nodejs/v22.14.0`，软链 `/usr/local/bin/node`）；用户前端 Next.js standalone 部署到 `/opt/tousechat-frontend`，systemd `tousechat-frontend-pub`（:3001）；admin-web 部署到 `/opt/tousechat-admin`；Nginx 站点 `chat.instser.cn` 配置完成（80 端口，`/api/`→8080 本机直连 SSE 流式，`/admin/`→静态，`/`→3001）。家用机本机验收全通过（首页 200、API 401、admin 200、静态 200）。待配 CDN：家用机 9080 端口外网可达（运营商只封 80/443，不封 9080），不需要新公网机/frp。CDN 回源 `home.example.com:9080`（HTTP，Host: `chat.instser.cn`），SSL 在 CDN 配。SSE 兼容性需实测。文档：`docs/26-08-20_16-25_家用机前端部署与统一架构迁移_v1.0.md`。 (2026-08-20 16:25)
 ✅ **前后端与管理员后台部署** — 部署文档补充 `/admin/` 与后端发版流程；后端 jar 部署 `chat:chat_00 RUNNING`；`t_operation_audit` 管理字段 SQL 已执行；admin-web 挂载 `/opt/tousechat-admin`，公网机验收 `/admin/` 200、admin API 401。用户前端现网 200 保留（本机 Next 重建失败未覆盖）。文档：`docs/26-08-04_01-16_前后端与管理员后台部署记录_v1.0.md`。 (2026-08-04 01:16)
 ✅ **管理员前端 admin-web 落地** — 当前仓库 `admin-web/`（Vue3+TS+Vite+Element Plus+Pinia），`base=/admin/`，Cookie JWT 登录，页面覆盖概览/用户/套餐/模型/订单/审计/运维；`npm run build` 成功。文档：`docs/26-08-03_22-05_管理员前端admin-web落地_v1.0.md`、`admin-web/README.md`。 (2026-08-03 22:05)
 ✅ **运维管理后台后端 + 冗余清理 B/C 安全项** — 新增 `com.instser.chat.admin`；JWT+ROLE_ADMIN；审计与 SQL 增量；兼容期旧入口 Deprecated。文档：`docs/26-08-03_21-31_运维管理后台与冗余清理实施_v1.0.md`。 (2026-08-03 21:31)
