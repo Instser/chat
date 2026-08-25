@@ -102,6 +102,17 @@
             <version>${druid.version}</version>
         </dependency>
 
+        <!-- Flyway 数据库版本控制 -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+        <!-- Flyway 对 MySQL 的支持（包含 MySQL 8.0 特性） -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-mysql</artifactId>
+        </dependency>
+
         <!-- Spring Boot Validation -->
         <dependency>
             <groupId>org.springframework.boot</groupId>

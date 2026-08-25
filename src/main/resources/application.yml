@@ -117,6 +117,30 @@ spring:
             multi-statement-allow: true           # 允许多语句执行
             none-base-statement-allow: true       # 允许非基础语句
 
+  # Flyway 数据库版本控制配置
+  # 说明：生产/开发数据库已存在完整表结构，采用 baseline（基线标记）模式引入
+  # - baseline-on-migrate: 首次对已有库执行迁移时，将当前库标记为基线版本而非报错
+  # - baseline-version: 基线版本号 = 1，后续增量迁移脚本从 V2 起编号
+  # - V1__baseline.sql 为空占位脚本，仅标记基线点，不重建已有库
+  flyway:
+    enabled: ${FLYWAY_ENABLED:true}
+    # 迁移脚本目录（默认 classpath:db/migration）
+    locations: classpath:db/migration
+    # 对已有库启用基线标记（关键：避免对已有表重复执行建表语句）
+    baseline-on-migrate: true
+    # 基线版本：低于此版本的迁移脚本不会执行，高于此版本的才会应用
+    baseline-version: 1
+    # 已存在的 flyway_schema_history 表版本在 baseline-version 以下的将被标记为 baseline
+    baseline-description: "现有数据库基线（引入 Flyway 前的完整表结构）"
+    # 迁移脚本编码
+    encoding: UTF-8
+    # 校验迁移脚本 checksum（防止已应用的脚本被篡改）
+    validate-on-migrate: true
+    # 表名（默认 flyway_schema_history，保持默认）
+    table: flyway_schema_history
+    # 占位符替换关闭（避免与 SQL 中的 ${...} 冲突）
+    placeholder-replacement: false
+
   # Jackson配置
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss

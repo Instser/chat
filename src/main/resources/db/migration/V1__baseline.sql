@@ -1,0 +1,25 @@
+-- ============================================================
+-- Flyway V1 基线脚本
+-- ============================================================
+-- 作用：标记引入 Flyway 前的现有数据库状态为版本基线
+-- 说明：本脚本为空占位（no-op），不创建/修改任何表结构
+--       现有数据库的完整表结构（16+ 张业务表）在引入 Flyway 前已存在
+--       后续增量迁移脚本从 V2 起编号
+--
+-- 引入背景：
+--   此前数据库变更通过 sql/ 目录下按日期命名的 92 个 SQL 脚本手工管理
+--   存在执行顺序不可控、无法追踪已执行状态、多环境不一致等问题
+--   引入 Flyway 后由 flyway_schema_history 表统一追踪迁移版本
+--
+-- 基线包含的表（截至 2026-08-03）：
+--   t_admin_operation_log / t_admin_user / t_ai_model / t_chat_message
+--   t_chat_session / t_file_upload / t_oauth2_audit_log / t_package
+--   t_payment_audit / t_system_setting / t_user / t_user_account
+--   t_user_daily_usage / t_user_oauth / t_user_order / t_web_search_content
+--   t_operation_audit（审计表，2026-08-03 新增管理员审计字段）
+--
+-- 注意：如需新建环境，请先从 sql/chat.sql 导入基础表结构后再启动应用
+--       Flyway 将自动识别为基线并从 V2 起应用增量迁移
+-- ============================================================
+
+-- 空占位脚本，无 SQL 语句需要执行

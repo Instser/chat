@@ -1,13 +1,13 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-08-22 10:45:00
+**📅 最后更新**: 2026-08-25 16:41:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v157.0
+**📊 文档版本**: v158.0
 
 ## 当前任务
 - **前后端统一部署到家用服务器** — 原公网服务器 `203.0.113.14` 已到期，前端从公网机迁到家用机 `home.example.com:9001`（宝塔环境）。家用机已装 Node 22、部署用户前端（systemd `tousechat-frontend-pub` :3001）+ 管理前端（`/opt/tousechat-admin`），Nginx 站点 `chat.instser.cn` 已配（80 端口，本机验收全通过）。
 - **待配 CDN** — 家用机 9080 端口外网可达（运营商只封 80/443，不封 9080），不需要新公网机/frp。CDN 回源 `home.example.com:9080`（HTTP，回源 Host: `chat.instser.cn`），SSL 在 CDN。SSE 兼容性需实测。
-- 待确认：是否引入 Flyway/Liquibase。
+- ✅ **已引入 Flyway 数据库版本控制**（baseline 模式）— pom.xml 新增 `flyway-core`/`flyway-mysql`（9.16.3，Spring Boot BOM 管理），application.yml 新增 `spring.flyway.*` 配置（baseline-on-migrate=true, baseline-version=1），`src/main/resources/db/migration/V1__baseline.sql` 空占位标记基线；后续增量迁移从 V2 起，根目录 `sql/` 保留作历史参考不再新增。待部署后验证启动日志基线标记行为。
 - **待部署验证：一键试用功能**（`/auth/trial` 2h 会话）— 代码与测试已完成，尚未部署到家用机；上线后验证登录页试用按钮、2h 过期 401、IP 日限流。
 - 待观察后清理：旧 `/admin/cache`/`/admin/logs` API Key 写入口与缓存二次密码；阶段 D 旧表 DROP；阶段 E SQL 归档。
 
@@ -18,6 +18,7 @@
 - 域名 `chat.instser.cn` 外网仍可能受阿里云备案拦截影响。
 
 ## 最新完成任务
+✅ **Flyway 数据库版本控制引入（baseline 模式）** — 先提交工作区改动（一键试用+模型凭证修复+memory bank，commit ae14cce，23 文件）；pom.xml 新增 `flyway-core`+`flyway-mysql`（版本由 Spring Boot 3.1.12 BOM 管理 = 9.16.3）；application.yml 新增 `spring.flyway.*` 配置块（`baseline-on-migrate: true`、`baseline-version: 1`、`validate-on-migrate: true`、`placeholder-replacement: false`）；建立 `src/main/resources/db/migration/` 目录，`V1__baseline.sql` 为空占位脚本（标记现有 16+ 张业务表为基线，不重建已有库），配套 `README.md` 说明命名规范与新建增量流程；策略：生产/开发库已有完整表结构，仅标记基线，后续增量迁移从 V2 起编号，根目录 `sql/` 保留作历史参考不再新增。本地无 Maven、mvnw wrapper 缺失 `.mvn` 目录，未做编译验证；待部署后观察 Flyway 启动日志确认基线标记。同步 techContext/progress/activeContext。 (2026-08-25 16:41)
 ✅ **一键试用功能（2小时临时会话）** — 登录页新增「一键试用」按钮：`POST /api/auth/trial` 免注册发放 2h JWT/Cookie（`authType=trial` claim），体验与普通用户完全一致，仅过期时间不同；体验用户为 `t_user` 普通 USER 记录（`guest_` 前缀 + 随机密码不可登录 + 默认套餐），48h 未活跃由每日任务软删；IP 维度 Redis 日限 10 次（Redis 异常放行）。改动：`TrialProperties`/`TrialService(Impl)`/`TrialLoginRequest(Result)`、`JwtUtil` 重载、`AuthController#trial`、`SecurityConfig` permitAll、前端 `lib/api.ts`+`auth-context.tsx`+`login-form.tsx`。验证：JDK17 全量 `mvn test` 130/130 通过（新增 `JwtUtilTrialTokenTest` 3 用例）、前端 tsc 改动文件无错误。文档：`docs/26-08-22 一键试用功能设计.md`，README/README-OPS 已同步。**未部署，部署验证待执行。** (2026-08-22 10:45)
 ✅ **后端重新部署（模型管理改动）** — 按 `docs/前后端部署说明/architecture.md` 七-B 标准流程：本地 JDK17 `mvn -DskipTests clean package` BUILD SUCCESS（jar 111M）→ `scp_home.exp` 上传 `/tmp/chat-new.jar` 到家用机（100%）→ `ssh_home_sudo.exp` 备份旧 jar（`.bak.YYYYMMDDHHMM`）+ 替换 + `chown www:www` + supervisor `restart chat:chat_00` → **RUNNING** (pid 3300812) → 家用机本机验收 `/api/models`=401、`/api/admin/dashboard/overview`=401。本次改动不涉及 DDL，无 SQL 执行。文档：`docs/26-08-20_19-42_后端重新部署模型管理改动_v1.0.md`。 (2026-08-20 19:42)
 ✅ **模型管理允许代码重复 + 凭据编辑去 reason** — 应管理员后台体验诉求：①`AdminModelService.create/update` 移除 `modelCode` 唯一性/冲突拦截，允许同一模型代码对应多套凭据/端点配置（`selectByModelCode` SQL 已带 `LIMIT 1`，重复场景取首条，聊天链路无影响；数据库无 model_code 唯一约束，无 DDL 变更）；②`AdminModelCredentialRequest.reason` 由 `@NotBlank` 改为 `@Size(max=500)` 可空，`updateCredential` 审计日志对空 reason 兜底 `N/A`，顺带为 `create/update` 审计日志的空 reason 兜底；③前端 `ModelsView.vue` 凭据弹窗移除「原因」表单项与 `cred.reason`，`api/admin.ts` 的 `updateModelCredential` 类型 `reason` 改可选。后端 `mvn -DskipTests compile` BUILD SUCCESS、`AiModelTest`/`ModelChatProbeSupportTest` 通过；前端 `vue-tsc --noEmit` 通过。`AdminErrorCodes.MODEL_CONFLICT` 常量保留（其他 service 仍用同类常量）。文档：`docs/26-08-20_18-49_模型管理允许代码重复与凭据编辑去reason_v1.0.md`。 (2026-08-20 18:49)

@@ -5,6 +5,7 @@
 - **框架**: Spring Boot 3.1.12
 - **ORM**: MyBatis-Plus 3.5.7
 - **数据库**: MySQL 8.0 (已从5.7升级完成)
+- **数据库版本控制**: Flyway 9.16.3（Spring Boot 3.1.12 BOM 管理），baseline 模式引入，迁移脚本位于 `src/main/resources/db/migration/`，V1 为基线占位，增量从 V2 起编号
 - **连接池**: Druid 1.2.23
 - **响应式**: Spring WebFlux (用于流式响应)
 - **安全**: Spring Security Crypto (密码加密)、Spring Security OAuth2 Client (第三方登录)
@@ -63,6 +64,7 @@
 2. **工作目录**: 所有操作限制在chat文件夹内
 3. **依赖管理**: 使用Maven进行依赖管理，添加/移除依赖需要用户确认
 4. **数据库**: 使用MySQL，SQL文件生成在根目录sql文件夹中
+   - **版本控制**: 引入 Flyway 后，新的数据库变更通过 `src/main/resources/db/migration/V{n}__{描述}.sql` 管理；根目录 `sql/` 保留作历史参考，不再新增
 5. **编码规范**: 遵循阿里巴巴Java开发规范
 
 ## 架构模式

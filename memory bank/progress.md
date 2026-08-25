@@ -3,6 +3,7 @@
 
 # progress 更新
 
+- 2026-08-25 16:41: 引入 Flyway 数据库版本控制（baseline 模式）；先提交现有改动（一键试用+模型凭证修复，commit ae14cce）；新增 flyway-core/flyway-mysql 依赖、application.yml 配置、db/migration 目录与 V1 基线脚本；V1 为空占位，增量从 V2 起；本地无 Maven 未做编译验证。
 - 2026-08-22 10:45: 一键试用功能完成（/auth/trial 2h 会话，体验与普通用户一致）；全量测试 130/130；README/README-OPS/设计文档已同步；未部署。
 - 2026-08-04 01:16: 部署文档优化；后端与 admin-web 上线；审计 SQL 已执行；用户前端本机重建失败保留现网。
 - 2026-08-03 22:05: 管理员前端 admin-web 完成（Vue3+TS+Vite，/admin base，build 成功）。
@@ -14,9 +15,22 @@
 
 # 项目进度状态
 
-**📅 最后更新**: 2026-08-22 10:45:00
+**📅 最后更新**: 2026-08-25 16:41:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v146.0
+**📊 文档版本**: v147.0
+
+## 🚀 最新完成功能 (2026-08-25)
+
+### Flyway 数据库版本控制引入 ✅
+- **完成时间**: 2026年8月25日 16:41
+- **前置**: 先提交现有工作区改动（一键试用+模型凭证编辑修复+memory bank，commit ae14cce，23 文件）
+- **依赖**: pom.xml 新增 `flyway-core` + `flyway-mysql`（版本由 Spring Boot 3.1.12 BOM 管理 = 9.16.3）
+- **配置**: application.yml 新增 `spring.flyway.*` 块（baseline-on-migrate=true, baseline-version=1, validate-on-migrate=true, placeholder-replacement=false）
+- **基线**: `src/main/resources/db/migration/V1__baseline.sql` 空占位脚本，标记现有 16+ 张表为基线，不重建已有库
+- **README**: `src/main/resources/db/migration/README.md` 说明命名规范与新建增量流程
+- **策略**: baseline 模式——生产/开发库已有完整表结构，仅标记基线，后续增量迁移从 V2 起编号
+- **未做**: 本地无 Maven/mvnnw wrapper 缺失，未做编译验证；尚未在应用启动时验证 Flyway 实际执行
+- **待办**: 部署后验证 Flyway 启动日志（基线标记 + 无迁移待执行）；后续数据库变更改用 V{n}__{描述}.sql
 
 ## 🚀 最新完成功能 (2026-08-22)
 
