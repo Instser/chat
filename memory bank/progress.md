@@ -3,6 +3,7 @@
 
 # progress 更新
 
+- 2026-08-22 10:45: 一键试用功能完成（/auth/trial 2h 会话，体验与普通用户一致）；全量测试 130/130；README/README-OPS/设计文档已同步；未部署。
 - 2026-08-04 01:16: 部署文档优化；后端与 admin-web 上线；审计 SQL 已执行；用户前端本机重建失败保留现网。
 - 2026-08-03 22:05: 管理员前端 admin-web 完成（Vue3+TS+Vite，/admin base，build 成功）。
 - 2026-08-03 21:31: 管理员后台后端核心 API 与清理 B/C 安全项完成；operation_audit 增量 SQL；相关测试 23/23；前端 SPA/旧表 DROP 未做。
@@ -13,9 +14,19 @@
 
 # 项目进度状态
 
-**📅 最后更新**: 2026-08-04 01:16:00
+**📅 最后更新**: 2026-08-22 10:45:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v145.0
+**📊 文档版本**: v146.0
+
+## 🚀 最新完成功能 (2026-08-22)
+
+### 一键试用（2 小时临时会话）✅
+- **完成时间**: 2026年8月22日 10:45
+- **后端**: `POST /api/auth/trial`（permitAll）；`TrialService(Impl)`：IP 日限流（Redis 异常放行）→ 查找/创建 `guest_` 体验用户（复用 `registerUser` 注册链，默认套餐）→ 签发 2h JWT（`authType=trial` claim）+ Cookie；`@Scheduled` 每日 03:10 软删 48h 未活跃 guest；`trial.*` 配置全部环境变量可覆盖
+- **前端**: 登录页「一键试用」按钮；`auth-context.trialLogin()`；localStorage `guest-id` 复用（聊天记录保留）；无任何试用横幅/文案
+- **测试**: JDK17 全量 `mvn test` 130/130 通过（新增 `JwtUtilTrialTokenTest` 3 用例）；前端 tsc 改动文件无错误
+- **文档**: `docs/26-08-22 一键试用功能设计.md`；README、README-OPS 已同步
+- **待办**: 部署到家用机并做部署验证（2h 过期 401、IP 限流、清理任务）
 
 ## 🚀 最新完成功能 (2026-08-04)
 

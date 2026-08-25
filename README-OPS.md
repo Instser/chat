@@ -30,6 +30,12 @@ java -jar chat.jar --spring.profiles.active=prod
 | `CACHE_API_KEY` | 机器运维 API Key（仅用于 `/ops/**` 的 `X-API-Key` Header 鉴权；**不要**写入前端或 URL 查询参数） |
 | `CACHE_MANAGEMENT_ADMIN_ACCOUNT` | 兼容期内缓存写接口二次校验账号（将迁移为 JWT 管理员，勿在前端硬编码） |
 | `CACHE_MANAGEMENT_ADMIN_PASSWORD` | 兼容期内缓存写接口二次校验密码（部署后立即轮换；勿写入文档/仓库明文） |
+| `TRIAL_ENABLED` | 一键试用开关（`true`/`false`，默认 true；生产如需关闭设 false） |
+| `TRIAL_SESSION_HOURS` | 试用会话时长（小时，默认 2） |
+| `TRIAL_RETENTION_HOURS` | 体验用户保留时长（小时，默认 48，超时后每日任务软删） |
+| `TRIAL_PER_IP_DAILY_LIMIT` | 同一 IP 每天最多激活试用次数（默认 10） |
+| `TRIAL_USERNAME_PREFIX` | 体验用户用户名前缀（默认 `guest_`） |
+| `TRIAL_EMAIL_DOMAIN` | 体验用户邮箱域名（默认 `guest.local`） |
 
 ### 端口说明
 

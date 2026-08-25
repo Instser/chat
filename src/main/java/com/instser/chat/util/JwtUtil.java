@@ -38,24 +38,46 @@ public class JwtUtil {
     }
 
     /**
-     * 生成JWT Token
+     * 生成JWT Token（默认有效期）
      */
     public String generateToken(User user) {
+        return generateToken(user, jwtConfig.getExpiration());
+    }
+
+    /**
+     * 生成JWT Token（自定义有效期，单位秒）
+     */
+    public String generateToken(User user, long expirationSeconds) {
         Map<String, Object> claims = new HashMap<>();
         claims.put("userId", user.getId());
         claims.put("username", user.getUsername());
         claims.put("email", user.getEmail());
         claims.put("role", user.getRole());
 
-        return createToken(claims, user.getUsername());
+        return createToken(claims, user.getUsername(), expirationSeconds);
+    }
+
+    /**
+     * 生成一键试用JWT Token（短时效，仅过期时间与普通Token不同）
+     */
+    public String generateTrialToken(User user, long expirationSeconds) {
+        Map<String, Object> claims = new HashMap<>();
+        claims.put("userId", user.getId());
+        claims.put("username", user.getUsername());
+        claims.put("email", user.getEmail());
+        claims.put("role", user.getRole());
+        // 试用会话标记（不可见，仅用于后续统计/限流扩展）
+        claims.put("authType", "trial");
+
+        return createToken(claims, user.getUsername(), expirationSeconds);
     }
 
     /**
      * 创建Token
      */
-    private String createToken(Map<String, Object> claims, String subject) {
+    private String createToken(Map<String, Object> claims, String subject, long expirationSeconds) {
         Date now = new Date();
-        Date expiration = new Date(now.getTime() + jwtConfig.getExpiration() * 1000);
+        Date expiration = new Date(now.getTime() + expirationSeconds * 1000);
 
         return Jwts.builder()
                 .setClaims(claims)
@@ -175,14 +197,21 @@ public class JwtUtil {
     }
 
     /**
-     * 创建认证Cookie
+     * 创建认证Cookie（默认有效期）
      */
     public ResponseCookie createAuthCookie(String token) {
+        return createAuthCookie(token, jwtConfig.getExpiration());
+    }
+
+    /**
+     * 创建认证Cookie（自定义有效期，单位秒）
+     */
+    public ResponseCookie createAuthCookie(String token, long maxAgeSeconds) {
         return ResponseCookie.from(jwtConfig.getCookieName(), token)
                 .httpOnly(jwtConfig.isHttpOnly())
                 .secure(jwtConfig.isSecure())
                 .sameSite(jwtConfig.getSameSite())
-                .maxAge(Duration.ofSeconds(jwtConfig.getExpiration()))
+                .maxAge(Duration.ofSeconds(maxAgeSeconds))
                 .path(jwtConfig.getPath())
                 .build();
     }

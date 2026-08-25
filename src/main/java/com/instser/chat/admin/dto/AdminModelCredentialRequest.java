@@ -14,7 +14,6 @@ public class AdminModelCredentialRequest {
     @Size(max = 1000)
     private String apiKey;
 
-    @NotBlank
     @Size(max = 500)
     private String reason;
 }

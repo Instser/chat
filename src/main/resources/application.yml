@@ -313,6 +313,21 @@ jwt:
   # 请求头名称
   header-name: ${JWT_HEADER_NAME:Authorization}
 
+# 一键试用配置
+trial:
+  # 功能开关（生产默认关闭，demo 环境打开）
+  enabled: ${TRIAL_ENABLED:true}
+  # 试用会话时长（小时）- JWT 与 Cookie 有效期，到期后与普通登录过期行为一致
+  session-hours: ${TRIAL_SESSION_HOURS:2}
+  # 体验用户保留时长（小时）- 超过后每日清理任务软删除
+  retention-hours: ${TRIAL_RETENTION_HOURS:48}
+  # 同一 IP 每天最多激活试用次数
+  per-ip-daily-limit: ${TRIAL_PER_IP_DAILY_LIMIT:10}
+  # 体验用户用户名前缀
+  username-prefix: ${TRIAL_USERNAME_PREFIX:guest_}
+  # 体验用户邮箱域名
+  email-domain: ${TRIAL_EMAIL_DOMAIN:guest.local}
+
 # OAuth2配置
 oauth2:
   # 安全配置

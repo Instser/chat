@@ -67,7 +67,7 @@ export function updateModelVisibility(id: string, status: number, reason: string
   return apiPatch<AdminModel>(`/admin/models/${id}/visibility`, { status, reason })
 }
 
-export function updateModelCredential(id: string, data: { baseUrl?: string; apiKey: string; reason: string }) {
+export function updateModelCredential(id: string, data: { baseUrl?: string; apiKey: string; reason?: string }) {
   return apiPut<AdminModel>(`/admin/models/${id}/credential`, data)
 }
 

@@ -174,7 +174,7 @@ public class SecurityConfig {
             // 配置请求授权
             .authorizeHttpRequests(authz -> authz
                 // 公开接口 (注意：context-path是/api，所以这里的路径是相对于/api的)
-                .requestMatchers("/auth/login", "/auth/register").permitAll()
+                .requestMatchers("/auth/login", "/auth/register", "/auth/trial").permitAll()
                 .requestMatchers("/druid/**").permitAll()
                 .requestMatchers("/actuator/**").permitAll()
                 .requestMatchers("/error").permitAll()

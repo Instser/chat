@@ -40,6 +40,16 @@ public interface UserService extends IService<User> {
     User registerUser(String username, String email, String password, String avatar);
 
     /**
+     * 注册试用用户（一键试用，随机密码不可用于登录）
+     *
+     * @param username 用户名
+     * @param email    邮箱
+     * @param password 随机密码
+     * @return 创建的用户对象
+     */
+    User registerGuestUser(String username, String email, String password);
+
+    /**
      * 用户登录
      *
      * @param email    邮箱

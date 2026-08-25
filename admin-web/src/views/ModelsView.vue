@@ -60,7 +60,6 @@
       <el-form label-width="90px">
         <el-form-item label="baseUrl"><el-input v-model="cred.baseUrl" /></el-form-item>
         <el-form-item label="API Key"><el-input v-model="cred.apiKey" type="password" show-password /></el-form-item>
-        <el-form-item label="原因"><el-input v-model="cred.reason" /></el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="credVisible = false">取消</el-button>
@@ -100,7 +99,7 @@ const form = reactive({
   baseUrl: '',
   reason: '',
 })
-const cred = reactive({ baseUrl: '', apiKey: '', reason: '' })
+const cred = reactive({ baseUrl: '', apiKey: '' })
 
 async function load() {
   loading.value = true
@@ -134,7 +133,7 @@ function openEdit(row: AdminModel) {
 
 function openCredential(row: AdminModel) {
   credId.value = row.id
-  Object.assign(cred, { baseUrl: row.baseUrl || '', apiKey: '', reason: '' })
+  Object.assign(cred, { baseUrl: row.baseUrl || '', apiKey: '' })
   credVisible.value = true
 }
 

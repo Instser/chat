@@ -57,45 +57,7 @@ public class UserServiceImpl extends ServiceImpl<UserDao, User> implements UserS
         LogUtils.logUserOperation(log, null, "OAuth2用户注册开始", "邮箱：{}，用户名：{}", email, username);
 
         try {
-            // 检查邮箱是否已存在
-            if (getUserByEmail(email) != null) {
-                LogUtils.logUserWarning(log, null, "注册失败", "邮箱已存在：{}", email);
-                throw new BusinessException("邮箱已被注册");
-            }
-
-            LogUtils.logUserDebug(log, null, "注册验证", "邮箱验证通过：{}", email);
-
-            // 检查用户名是否已存在
-            if (getUserByUsername(username) != null) {
-                LogUtils.logUserWarning(log, null, "注册失败", "用户名已存在：{}", username);
-                throw new BusinessException("用户名已被使用");
-            }
-
-            LogUtils.logUserDebug(log, null, "注册验证", "用户名验证通过：{}", username);
-
-            // 创建用户
-            LocalDateTime now = LocalDateTime.now();
-            User user = new User();
-            user.setUsername(username);
-            user.setEmail(email);
-            user.setPassword(passwordEncoder.encode(password)); // OAuth2用户的随机密码
-            user.setAvatar(avatar);
-            user.setRole("user");
-            user.setStatus(1);
-            user.setLastLoginTime(now); // OAuth2注册即登录，设置最后登录时间
-            user.setCreatedTime(now);
-            user.setUpdateTime(now);
-
-            this.save(user);
-
-            LogUtils.logUserOperation(log, user.getId(), "OAuth2用户注册成功", "邮箱：{}，用户名：{}", email, username);
-
-            // 为新用户创建账户信息
-            userAccountService.initUserAccount(user.getId());
-
-            // 为新用户自动绑定ID为1的套餐
-            bindDefaultPackage(user.getId());
-
+            User user = createUserInternal(username, email, password, avatar, "OAuth2用户注册成功");
             return user;
 
         } catch (BusinessException e) {
@@ -105,6 +67,72 @@ public class UserServiceImpl extends ServiceImpl<UserDao, User> implements UserS
             LogUtils.logUserError(log, null, "OAuth2用户注册异常", "邮箱：{}，异常：{}", e, email, e.getMessage());
             throw new BusinessException("注册失败", e);
         }
+    }
+
+    @Override
+    @Transactional
+    public User registerGuestUser(String username, String email, String password) {
+        LogUtils.logUserOperation(log, null, "试用用户注册开始", "邮箱：{}，用户名：{}", email, username);
+
+        try {
+            User user = createUserInternal(username, email, password, null, "试用用户注册成功");
+            return user;
+
+        } catch (BusinessException e) {
+            LogUtils.logUserWarning(log, null, "试用用户注册失败", "邮箱：{}，原因：{}", email, e.getMessage());
+            throw e;
+        } catch (Exception e) {
+            LogUtils.logUserError(log, null, "试用用户注册异常", "邮箱：{}，异常：{}", e, email, e.getMessage());
+            throw new BusinessException("注册失败", e);
+        }
+    }
+
+    /**
+     * 用户注册内部逻辑（OAuth2与试用用户共用）
+     * 职责：唯一性校验、创建用户、初始化账户、绑定默认套餐
+     */
+    private User createUserInternal(String username, String email, String password, String avatar,
+                                    String successLogTag) {
+        // 检查邮箱是否已存在
+        if (getUserByEmail(email) != null) {
+            LogUtils.logUserWarning(log, null, "注册失败", "邮箱已存在：{}", email);
+            throw new BusinessException("邮箱已被注册");
+        }
+
+        LogUtils.logUserDebug(log, null, "注册验证", "邮箱验证通过：{}", email);
+
+        // 检查用户名是否已存在
+        if (getUserByUsername(username) != null) {
+            LogUtils.logUserWarning(log, null, "注册失败", "用户名已存在：{}", username);
+            throw new BusinessException("用户名已被使用");
+        }
+
+        LogUtils.logUserDebug(log, null, "注册验证", "用户名验证通过：{}", username);
+
+        // 创建用户
+        LocalDateTime now = LocalDateTime.now();
+        User user = new User();
+        user.setUsername(username);
+        user.setEmail(email);
+        user.setPassword(passwordEncoder.encode(password)); // 随机密码，不用于登录
+        user.setAvatar(avatar);
+        user.setRole("user");
+        user.setStatus(1);
+        user.setLastLoginTime(now); // 注册即登录，设置最后登录时间
+        user.setCreatedTime(now);
+        user.setUpdateTime(now);
+
+        this.save(user);
+
+        LogUtils.logUserOperation(log, user.getId(), successLogTag, "邮箱：{}，用户名：{}", email, username);
+
+        // 为新用户创建账户信息
+        userAccountService.initUserAccount(user.getId());
+
+        // 为新用户自动绑定ID为1的套餐
+        bindDefaultPackage(user.getId());
+
+        return user;
     }
 
     /**

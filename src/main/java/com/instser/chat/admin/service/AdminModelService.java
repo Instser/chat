@@ -2,7 +2,6 @@ package com.instser.chat.admin.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.instser.chat.admin.audit.AdminAuditPublisher;
-import com.instser.chat.admin.common.AdminErrorCodes;
 import com.instser.chat.admin.common.SensitiveMasker;
 import com.instser.chat.admin.dto.AdminModelCredentialRequest;
 import com.instser.chat.admin.dto.AdminModelUpsertRequest;
@@ -54,32 +53,28 @@ public class AdminModelService {
 
     @Transactional
     public Result<AdminModelVO> create(AdminModelUpsertRequest request) {
-        AiModel existing = aiModelService.getModelByCode(request.getModelCode());
-        if (existing != null) {
-            return new Result<>(AdminErrorCodes.MODEL_CONFLICT, "模型代码已存在");
-        }
+        // 允许模型代码重复（同一代码可对应不同凭据/端点配置），不再做唯一性拦截。
         AiModel model = new AiModel();
         apply(model, request);
         model.setCreatedTime(LocalDateTime.now());
         model.setUpdateTime(LocalDateTime.now());
         aiModelService.save(model);
+        String createReason = StringUtils.hasText(request.getReason()) ? request.getReason() : "N/A";
         adminAuditPublisher.success("MODEL_CREATE", String.valueOf(model.getId()),
-                "code=" + model.getModelCode() + ",reason=" + request.getReason());
+                "code=" + model.getModelCode() + ",reason=" + createReason);
         return Result.success(toVo(model), "模型已创建");
     }
 
     @Transactional
     public Result<AdminModelVO> update(Long modelId, AdminModelUpsertRequest request) {
         AiModel model = requireModel(modelId);
-        AiModel byCode = aiModelService.getModelByCode(request.getModelCode());
-        if (byCode != null && !byCode.getId().equals(modelId)) {
-            return new Result<>(AdminErrorCodes.MODEL_CONFLICT, "模型代码与其他记录冲突");
-        }
+        // 允许模型代码重复，更新时不再校验代码冲突。
         apply(model, request);
         model.setUpdateTime(LocalDateTime.now());
         aiModelService.updateById(model);
+        String updateReason = StringUtils.hasText(request.getReason()) ? request.getReason() : "N/A";
         adminAuditPublisher.success("MODEL_UPDATE", String.valueOf(modelId),
-                "code=" + model.getModelCode() + ",reason=" + request.getReason());
+                "code=" + model.getModelCode() + ",reason=" + updateReason);
         return Result.success(toVo(model), "模型已更新");
     }
 
@@ -92,8 +87,10 @@ public class AdminModelService {
         model.setApiKey(request.getApiKey().trim());
         model.setUpdateTime(LocalDateTime.now());
         aiModelService.updateById(model);
+        // reason 现为可选字段，留空时记录占位，便于审计链路保持统一格式。
+        String reason = StringUtils.hasText(request.getReason()) ? request.getReason() : "N/A";
         adminAuditPublisher.success("MODEL_CREDENTIAL_UPDATE", String.valueOf(modelId),
-                "apiKeyUpdated=true,reason=" + request.getReason());
+                "apiKeyUpdated=true,reason=" + reason);
         return Result.success(toVo(model), "模型凭据已更新");
     }
 

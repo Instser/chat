@@ -1,10 +1,15 @@
 package com.instser.chat.controller;
 
+import com.instser.chat.common.exception.BusinessException;
 import com.instser.chat.common.result.Result;
+import com.instser.chat.common.result.ResultCode;
 import com.instser.chat.common.util.ErrorResponseUtil;
 import com.instser.chat.common.util.LogUtils;
+import com.instser.chat.config.TrialProperties;
+import com.instser.chat.dto.TrialLoginResult;
 import com.instser.chat.dto.request.ChangePasswordRequest;
 import com.instser.chat.dto.request.LoginRequest;
+import com.instser.chat.dto.request.TrialLoginRequest;
 
 import com.instser.chat.dto.request.UpdateProfileRequest;
 import com.instser.chat.entity.Package;
@@ -12,6 +17,7 @@ import com.instser.chat.entity.User;
 import com.instser.chat.entity.UserAccount;
 import com.instser.chat.security.UserDetailsServiceImpl;
 import com.instser.chat.service.PackageService;
+import com.instser.chat.service.TrialService;
 import com.instser.chat.service.UserAccountService;
 import com.instser.chat.service.UserService;
 import com.instser.chat.util.JwtUtil;
@@ -20,6 +26,7 @@ import com.instser.chat.vo.UserVO;
 import io.swagger.v3.oas.annotations.Operation;
 
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +40,7 @@ import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
 
 /**
@@ -61,6 +69,8 @@ public class AuthController {
     private final UserAccountService userAccountService;
     private final PackageService packageService;
     private final JwtUtil jwtUtil;
+    private final TrialService trialService;
+    private final TrialProperties trialProperties;
     
 
     
@@ -109,6 +119,43 @@ public class AuthController {
             return ResponseEntity.ok(ErrorResponseUtil.invalidCredentials());
         } catch (Exception e) {
             LogUtils.logUserError(log, null, "API异常", "用户登录异常，用户标识：{}，错误：{}", e, userIdentifier, e.getMessage());
+            return ResponseEntity.ok(ErrorResponseUtil.loginFailed("Login failed. Please try again later."));
+        }
+    }
+
+    /**
+     * 一键试用：任何人点击即发放短时效临时会话
+     * 体验内容与普通用户完全一致，仅会话过期时间不同（默认2小时）
+     */
+    @PostMapping("/trial")
+    public ResponseEntity<?> trial(@RequestBody(required = false) TrialLoginRequest request,
+                                   HttpServletRequest httpRequest,
+                                   HttpServletResponse response) {
+        Long guestId = request != null ? request.getGuestId() : null;
+        String clientIp = getClientIp(httpRequest);
+        LogUtils.logUserOperation(log, null, "API调用", "一键试用接口，IP：{}，guestId：{}", clientIp, guestId);
+
+        try {
+            TrialLoginResult result = trialService.createTrialSession(guestId, clientIp);
+            User user = result.getUser();
+
+            // 设置Cookie（有效期与试用Token一致）
+            response.addHeader(HttpHeaders.SET_COOKIE,
+                    jwtUtil.createAuthCookie(result.getToken(), result.getSessionSeconds()).toString());
+
+            UserVO userVO = VOConverter.toUserVO(user);
+            LogUtils.logUserOperation(log, user.getId(), "API响应", "一键试用成功，用户名：{}", user.getUsername());
+
+            return ResponseEntity.ok(Result.success(userVO, "登录成功"));
+
+        } catch (BusinessException e) {
+            LogUtils.logUserWarning(log, null, "一键试用", "试用失败，IP：{}，原因：{}", clientIp, e.getMessage());
+            // 限流与服务不可用返回各自错误码，其余按业务失败处理
+            ResultCode resultCode = Integer.valueOf(ResultCode.TOO_MANY_REQUESTS.getCode()).equals(e.getCode())
+                    ? ResultCode.TOO_MANY_REQUESTS : ResultCode.SERVICE_UNAVAILABLE;
+            return ResponseEntity.ok(ErrorResponseUtil.createErrorResponse(resultCode, e.getMessage()));
+        } catch (Exception e) {
+            LogUtils.logUserError(log, null, "API异常", "一键试用异常，IP：{}，错误：{}", e, clientIp, e.getMessage());
             return ResponseEntity.ok(ErrorResponseUtil.loginFailed("Login failed. Please try again later."));
         }
     }
@@ -277,6 +324,21 @@ public class AuthController {
             LogUtils.logUserError(log, null, "更新用户资料", "更新用户资料失败", e);
             return ResponseEntity.status(500).body(Result.failed("用户信息更新失败"));
         }
+    }
+
+    /**
+     * 获取客户端IP（优先取反向代理头）
+     */
+    private String getClientIp(HttpServletRequest request) {
+        String xForwardedFor = request.getHeader("X-Forwarded-For");
+        if (StringUtils.hasText(xForwardedFor)) {
+            return xForwardedFor.split(",")[0].trim();
+        }
+        String xRealIp = request.getHeader("X-Real-IP");
+        if (StringUtils.hasText(xRealIp)) {
+            return xRealIp;
+        }
+        return request.getRemoteAddr();
     }
 
     /**
