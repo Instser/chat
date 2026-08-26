@@ -1,8 +1,8 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-08-26 14:54:00
+**📅 最后更新**: 2026-08-26 15:23:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v162.0
+**📊 文档版本**: v163.0
 
 ## 当前任务
 - **三机架构已联通** — 原公网服务器 `203.0.113.14` 已到期，现三机架构：阿里云 CDN（`chat.instser.cn` 443 HTTPS）→ frps 公网机（`home.example.com` DDNS，回源 9080）→ 家用机（内网 192.168.1.2，frpc 穿透）。`home.example.com` 是 DDNS 指向 frps 公网机的域名，不是家用机。所有 `home.example.com:端口` 都是 frp 穿透。CDN 回源端口必须 9080（默认 80 会导致 504）。全链路验收通过（2026-08-26）。
@@ -17,6 +17,8 @@
 - 域名 `chat.instser.cn` 外网仍可能受阿里云备案拦截影响。
 
 ## 最新完成任务
+✅ **全量移除截断检测 + 自动续写功能（已部署）** — 删除 6 个文件（`TruncationDetectionService`/`TruncationDetectionServiceImpl`/`ChatContinuationService`/`ContinuationConfig`/`ContinuationThreadPoolMonitor`/`ChatUsageRecorder`）及空目录 `service/continuation`、`service/usage`；改造 `StreamCompletionCoordinator` 移除截断检测/续写/Token 估算三依赖，`complete()` 简化为直接执行完成副作用（落库/标题/usage/完成帧），保留中断状态传递；清理 `ChatResponseDTO.savedByContinuation` 字段、`ExcludeMonitorLogFilter` 中续写监控 logger 引用、`ChatServiceImpl` 相关注释、`README` 智能续写特性行；3 个测试类构造参数与 import 同步调整。全局残留扫描 0 命中；`mvn -Dmaven.compiler.proc=full compile` 0 ERROR；全量 130 测试 0 失败 0 错误 BUILD SUCCESS。**已部署家用机**：JDK17 `mvn -DskipTests clean package` BUILD SUCCESS（jar 112M）→ scp 上传 → 备份旧 jar（`.bak.202608261620`）+ 替换 + supervisor `restart chat:chat_00` → **RUNNING**（pid 2073986）→ 启动日志 `Started ChatApplication in 17.782s`，无 Flyway/截断检测/续写报错，线程池初始化正常无 `ContinuationConfig`；验收 `/api/models`=401、`/api/admin/dashboard/overview`=401、`/api/auth/trial` OPTIONS=200、8080 LISTEN。 (2026-08-26 16:20)
+
 ✅ **traceId 覆盖补漏（ForkJoinPool/AsyncListener/SimpleAsyncTaskExecutor）** — 部署后线上日志发现仍有空 traceId：①`ForkJoinPool.commonPool`（标题生成 `CompletableFuture.supplyAsync` 无 Executor）→ `AiResponseCompletionHandler` 捕获 traceId 用 `ReactorMdcUtils.callWithTraceId` 包裹 supplyAsync；②`SimpleAsyncTaskExecutor`（`@EventListener+@Async` 默认执行器）→ 新建 `AsyncConfig` 实现 `AsyncConfigurer`，全局默认 @Async 执行器指向带 `MdcTaskDecorator` 的 `baseAsyncExecutor`；③`MdcTaskDecorator` 在提交线程 MDC 为空时生成独立 traceId（启动预热等场景）；④`http-nio-8080-exec` 异步回调空 traceId（`AsyncListener` 在容器线程执行不经 TraceIdFilter）→ `ChatApiController.registerAsyncCancelHooks` 捕获 traceId 用 `runWithTraceId` 包裹所有回调；⑤`ReactorMdcUtils` 新增 `callWithTraceId(Supplier)` 支持有返回值异步任务。编译 BUILD SUCCESS，11 测试通过。重新部署后线上验证：`boundedElastic-1`/`http-nio-8080-exec` 最新日志全部带 traceId，旧空 `[]` 均为旧进程残留。 (2026-08-26 14:54)
 ✅ **后端重新部署（traceId 优化 + 日志查看页面 + Flyway 修复）** — 本地 JDK17 `mvn -DskipTests clean package` BUILD SUCCESS（jar 112M）→ scp 上传 → 严格 `stop`+确认端口释放+确认旧进程退出+`start`（旧 pid 3300812 已退出，新 pid 1668957）→ **Flyway 启动崩溃**：生产库用户 `chat` 无 `user_variables_by_thread` 系统表 SELECT 权限，Flyway 查询报 `SELECT command denied` 导致进程反复重启。修复：supervisor `chat.ini` 加 `environment=FLYWAY_ENABLED="false"` 禁用 Flyway（application.yml 已支持 `${FLYWAY_ENABLED:true}`）→ `reread+update+restart` → RUNNING，8080 监听。后端验收 `/api/models`/`/api/admin/log-viewer/files`=401。前端 `npm run build`（含 LogsView）→ tar 打包 794K → scp → 备份替换 `/opt/tousechat-admin` → 验收 `/admin/`/`/admin/logs`=200、`LogsView-*.js`=200。文档：`docs/26-08-26_12-42_后端重新部署traceId优化与日志页面_v1.0.md`。 (2026-08-26 12:42)
 ✅ **管理员后台日志查看页面** — 新增日志查看功能，支持按 traceId 筛选、关键词搜索、级别过滤。后端新增 `AdminLogController`（`/admin/log-viewer`，JWT admin 鉴权；路径避开旧 `/admin/logs/**` permitAll）+ `AdminLogService`（文件白名单 `jinyu-chat-all/error/monitor.log`，`RandomAccessFile` 从后向前高效尾部读取，三级筛选 traceId/keyword/level）；前端新增 `LogsView.vue`（文件选择+traceId输入+关键词+级别+行数+黑底日志内容区+复制全部）+ API 函数 + 类型 + 路由 `/logs` + 菜单「日志查看」。与上轮 traceId 全链路优化配合，管理员可输入一个 traceId 查看该请求完整链路日志（含异步线程）。后端 `mvn -DskipTests compile` BUILD SUCCESS；前端 `vue-tsc --noEmit` 通过。无依赖/DB 变更。文档：`docs/26-08-26_12-20_管理员后台日志查看页面_v1.0.md`。待部署。 (2026-08-26 12:20)

@@ -57,7 +57,7 @@ import java.util.Map;
  * @see RetryPrepareHandler 重试上下文准备
  * @see EditResendPrepareHandler 编辑重发上下文准备
  * @see AiStreamProcessor 上游 AI 流消费
- * @see StreamCompletionCoordinator 续写 + 完成副作用
+ * @see StreamCompletionCoordinator 完成副作用
  */
 @Slf4j
 @Service
@@ -86,7 +86,7 @@ public class ChatServiceImpl implements ChatService {
     private final ChatPersistenceService chatPersistenceService;
     /** AI 流式消费主路径；引用：{@link AiStreamProcessor#stream} */
     private final AiStreamProcessor aiStreamProcessor;
-    /** 流结束后的续写 + completeSideEffects；引用：{@link StreamCompletionCoordinator#complete} */
+    /** 流结束后的完成副作用；引用：{@link StreamCompletionCoordinator#complete} */
     private final StreamCompletionCoordinator streamCompletionCoordinator;
     /** AI 请求体截断日志；引用：{@link AiRequestLogger#logAiRequestDetails} */
     private final AiRequestLogger aiRequestLogger;
@@ -574,7 +574,7 @@ public class ChatServiceImpl implements ChatService {
      * {@link AiRequestLogger#logAiRequestDetails}（请求日志回调）
      * </p>
      *
-     * @param interfaceType 业务入口标识：chat / retry / edit-resend（影响截断检测等策略）
+     * @param interfaceType 业务入口标识：chat / retry / edit-resend（影响 skill 更新策略）
      */
     private ChatResponseDTO streamChatWithAI(ChatRequestDTO request, AiModel model, ChatStreamSink sink,
                                              boolean willGenerateTitle, String interfaceType) {

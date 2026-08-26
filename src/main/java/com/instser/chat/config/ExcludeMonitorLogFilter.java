@@ -53,7 +53,6 @@ public class ExcludeMonitorLogFilter extends Filter<ILoggingEvent> {
         String loggerName = event.getLoggerName();
         if (loggerName != null) {
             if (loggerName.equals("com.instser.chat.monitor.PerformanceMonitor") ||
-                loggerName.equals("com.instser.chat.monitor.ContinuationThreadPoolMonitor") ||
                 loggerName.equals("com.instser.chat.service.cache.CacheMonitoringService")) {
                 return FilterReply.DENY;
             }

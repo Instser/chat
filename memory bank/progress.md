@@ -1214,6 +1214,9 @@
 | 2025-07-16 21:14:00 | v73.0 | 完成OAuth2登录功能架构增强设计，包含零信任安全模型、系统韧性、缓存策略等企业级功能设计 | Augment Agent |
 
 
+| 2026-08-26 15:23:00 | v163.0 | 全量移除截断检测与自动续写功能，删除 6 文件 + 2 空目录，改造 StreamCompletionCoordinator，130 测试全通过 | Codex |
+
+
 ## 2026-08-03 18:18 关键词状态机 skill 注入
 - 已实现 PromptSkill* + AiStreamProcessor 接入；Redis TTL 30m
 - 后端 jar 已部署 home.example.com；E2E: 你是谁无 skill / React→FRONTEND / Spring→BACKEND 切换

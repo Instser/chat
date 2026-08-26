@@ -2,8 +2,6 @@ package com.instser.chat.service.serviceimpl;
 
 import com.instser.chat.service.stream.AiRequestLogger;
 
-import com.instser.chat.service.usage.ChatUsageRecorder;
-
 import com.instser.chat.service.completion.StreamCompletionCoordinator;
 
 import com.instser.chat.service.persistence.ChatPersistenceService;
@@ -21,7 +19,6 @@ import com.instser.chat.service.ChatSessionService;
 import com.instser.chat.service.ChatTitleService;
 import com.instser.chat.service.FileUploadService;
 import com.instser.chat.service.NetworkSearchOrchestrator;
-import com.instser.chat.service.TruncationDetectionService;
 import com.instser.chat.service.WebSearchContentService;
 import com.instser.chat.service.ai.OpenAiCompatibleChatClient;
 import com.instser.chat.service.completion.AiResponseCompletionHandler;
@@ -30,14 +27,11 @@ import com.instser.chat.service.context.ChatContextBuilder;
 import com.instser.chat.service.prepare.ChatPrepareHandler;
 import com.instser.chat.service.prepare.EditResendPrepareHandler;
 import com.instser.chat.service.prepare.RetryPrepareHandler;
-import com.instser.chat.service.continuation.ChatContinuationService;
 import com.instser.chat.service.stream.AiStreamProcessor;
 import com.instser.chat.service.stream.ChatStreamEventWriter;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.reactive.function.client.WebClient;
-
-import java.util.concurrent.Executor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -119,7 +113,7 @@ class ChatServiceImplStreamCharacterizationTest {
                 new ChatRequestValidator(mock(AiModelService.class), chatLimitService, mock(ChatRateLimitService.class), mock(ChatInterruptService.class), mock(ChatSessionService.class), chatMessageService, new ChatPersistenceService(chatMessageService, mock(ChatSessionService.class), fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), mock(WebSearchContentService.class)))),
                 new ChatPersistenceService(chatMessageService, mock(ChatSessionService.class), fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), mock(WebSearchContentService.class))),
                 new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new com.instser.chat.service.stream.UpstreamDeltaParser(new ContentPolicy(), new com.instser.chat.service.content.PromptLeakGuard()), mock(ChatInterruptService.class), mock(AiCallMonitor.class), new com.instser.chat.service.stream.StreamSubscriptionRegistry(), com.instser.chat.service.prompt.PromptSkillTestSupport.createService()),
-                new StreamCompletionCoordinator(mock(TruncationDetectionService.class), mock(ChatContinuationService.class), new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), mock(WebSearchContentService.class)), new ChatUsageRecorder()),
+                new StreamCompletionCoordinator(new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), mock(WebSearchContentService.class))),
                 new AiRequestLogger()
         );
     }

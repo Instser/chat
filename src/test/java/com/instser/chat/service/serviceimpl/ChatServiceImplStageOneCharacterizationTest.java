@@ -2,8 +2,6 @@ package com.instser.chat.service.serviceimpl;
 
 import com.instser.chat.service.stream.AiRequestLogger;
 
-import com.instser.chat.service.usage.ChatUsageRecorder;
-
 import com.instser.chat.service.completion.StreamCompletionCoordinator;
 
 import com.instser.chat.service.persistence.ChatPersistenceService;
@@ -31,10 +29,8 @@ import com.instser.chat.service.FileUploadService;
 import com.instser.chat.service.GeminiNetworkService;
 import com.instser.chat.service.NetworkAiService;
 import com.instser.chat.service.NetworkSearchOrchestrator;
-import com.instser.chat.service.TruncationDetectionService;
 import com.instser.chat.service.WebSearchContentService;
 import com.instser.chat.service.content.ContentPolicy;
-import com.instser.chat.service.continuation.ChatContinuationService;
 import com.instser.chat.service.stream.AiStreamProcessor;
 import com.instser.chat.service.stream.ChatStreamEventWriter;
 import com.instser.chat.service.context.ChatContextBuilder;
@@ -55,7 +51,6 @@ import org.springframework.web.reactive.function.client.WebClient;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.Executor;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -88,10 +83,8 @@ class ChatServiceImplStageOneCharacterizationTest {
     private final ChatRateLimitService chatRateLimitService = mock(ChatRateLimitService.class);
     private final FileUploadService fileUploadService = mock(FileUploadService.class);
     private final ChatInterruptService chatInterruptService = mock(ChatInterruptService.class);
-    private final TruncationDetectionService truncationDetectionService = mock(TruncationDetectionService.class);
     private final WebSearchContentService webSearchContentService = mock(WebSearchContentService.class);
     private final RestTemplate restTemplate = new RestTemplate();
-    private final Executor continuationExecutor = Runnable::run;
     private final AiCallMonitor aiCallMonitor = mock(AiCallMonitor.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final ChatTitleService chatTitleService = new ChatTitleServiceImpl(aiModelService, chatSessionService, restTemplate);
@@ -307,7 +300,7 @@ class ChatServiceImplStageOneCharacterizationTest {
                 new ChatRequestValidator(aiModelService, chatLimitService, chatRateLimitService, chatInterruptService, chatSessionService, chatMessageService, new ChatPersistenceService(chatMessageService, chatSessionService, fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, chatTitleService, webSearchContentService))),
                 new ChatPersistenceService(chatMessageService, chatSessionService, fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, chatTitleService, webSearchContentService)),
                 new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new com.instser.chat.service.stream.UpstreamDeltaParser(new ContentPolicy(), new com.instser.chat.service.content.PromptLeakGuard()), chatInterruptService, aiCallMonitor, new com.instser.chat.service.stream.StreamSubscriptionRegistry(), com.instser.chat.service.prompt.PromptSkillTestSupport.createService()),
-                new StreamCompletionCoordinator(truncationDetectionService, mock(ChatContinuationService.class), new AiResponseCompletionHandler(chatMessageService, chatLimitService, chatTitleService, webSearchContentService), new ChatUsageRecorder()),
+                new StreamCompletionCoordinator(new AiResponseCompletionHandler(chatMessageService, chatLimitService, chatTitleService, webSearchContentService)),
                 new AiRequestLogger()
         );
     }
