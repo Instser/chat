@@ -28,23 +28,22 @@
 - **数据库字符集**: utf8mb4_unicode_ci
 - **时区**: 系统默认时区
 
-## 生产服务器环境（2026-08-20 更新）
-- **架构变更**: 原公网服务器 `203.0.113.14` 已到期，前后端统一部署到家用服务器 `home.example.com`
-- **家用服务器 SSH**: `home.example.com:9001`（IP `120.82.48.3`，密码 `cgbz..6757`，sudo 同密码）— 端口从 27016 改为 9001
-- **宝塔面板**: 端口 `18842`，Nginx 1.24.0（宝塔版 `/www/server/nginx/sbin/nginx`）
-- **Node 22**: `/www/server/nodejs/v22.14.0/bin/node`（v22.14.0，软链 `/usr/local/bin/node`）— 2026-08-20 安装
+## 生产服务器环境（2026-08-26 更新）
+- **架构变更**: 原公网服务器 `203.0.113.14` 已到期，现三机架构（CDN + frps 公网机 + 家用机）
+- **`home.example.com` 是 DDNS 域名**，指向 **frps 公网机**（公网 IP 动态，不固定），不是家用机本身
+- **`home.example.com:端口` 全部是 frp 穿透**（9080→家用机80、9001→家用机SSH），frps 公网机只做 TCP 中转
+- **frps 公网机**: 80/443 不可用，只能用 9000-9100 端口；frps 监听 7000；不放业务
+- **家用机**: 内网 192.168.1.2，无公网 IP（运营商级 NAT），SSH 经 frp `home.example.com:9001`（密码 `cgbz..6757`）
+- **宝塔面板**: 端口 `18842`（本机 `http://192.168.1.2:18842`），Nginx 1.24.0（宝塔版）
+- **Node 22**: `/www/server/nodejs/v22.14.0/bin/node`（软链 `/usr/local/bin/node`）
 - **用户前端**: systemd `tousechat-frontend-pub`（:3001，`/opt/tousechat-frontend/`，Next.js standalone）
 - **管理员前端**: Nginx 静态（`/opt/tousechat-admin/`，Vue3+Vite SPA，`base: '/admin/'`）
-- **Nginx 站点**: `/www/server/panel/vhost/nginx/chat.instser.cn.conf`（80 端口，`/api/`→8080 本机直连）
+- **Nginx 站点**: `/www/server/panel/vhost/nginx/chat.instser.cn.conf`（80 端口，server_name 含 `chat.instser.cn home.example.com`，`/api/`→8080 本机直连）
 - **后端**: supervisor `chat:chat_00`（:8080 + :8081 Actuator 本机）
-- **Redis**: `127.0.0.1:6379`（本机）
-- **MySQL**: :3306
-- **frpc**: `/usr/local/bin/frpc`（已装但不再需要，家用机 9080 直接可达）
-- **家用机 9080 外网可达**（运营商只封 80/443，不封 9080），不需要新公网机/frp
-- **CDN**: 阿里云 CDN 回源 `home.example.com:9080`（HTTP，回源 Host: `chat.instser.cn`），SSL 在 CDN 配
-- **家用机 80/443 外网不可达**（家宽封端口），9080 可达
-- **部署文档**: `docs/26-08-20_16-25_家用机前端部署与统一架构迁移_v1.0.md`
-- **SSH expect 脚本**（本机 /tmp）: `ssh_home.exp`/`ssh_home_sudo.exp`/`scp_home.exp`
+- **Redis**: `127.0.0.1:6379`（本机）/ **MySQL**: :3306
+- **frpc**: `/usr/local/bin/frpc`，systemd active，连接 frps 公网机建立隧道
+- **CDN**: 阿里云 CDN 加速域名 `chat.instser.cn`，回源 `home.example.com:9080`（HTTP，回源 Host: `chat.instser.cn`，回源端口必须 9080 不能是 80），SSL 在 CDN 配
+- **部署文档**: `docs/26-08-20_16-25_家用机前端部署与统一架构迁移_v1.0.md`（v2.0）
 - **日志**: SLF4J + Logback (优化配置，分离式日志记录，支持 MDC traceId 全链路追踪)
 - **调用链追踪**: TraceIdFilter + SLF4J MDC，支持从请求头 `X-Trace-Id` 透传或自动生成 32 位 UUID，所有日志自动携带 `[%X{traceId}]`
 - **业务指标**: ApiMetrics（api_requests_total / api_exceptions_total）+ SlowRequestInterceptor（slow_requests_total），Counter 使用 ConcurrentHashMap 缓存，路径模板化（BEST_MATCHING_PATTERN_ATTRIBUTE）防高基数
