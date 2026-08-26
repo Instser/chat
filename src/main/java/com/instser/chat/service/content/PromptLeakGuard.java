@@ -32,10 +32,7 @@ public class PromptLeakGuard {
             "now, strictly adhere to all the above settings",
             "your name:** 'to use ai'",
             "your name: 'to use ai'",
-            "creator:** the chinese company",
-            "who are you？",
-            // 历史伪注入痕迹；不含当前精简 identity 正文中的常规句子，避免误杀
-            "fake user: who are you"
+            "creator:** the chinese company"
     );
 
     /**

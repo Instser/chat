@@ -133,7 +133,7 @@ public class AiResponseCompletionHandler {
             }));
             String generatedTitle = titleFuture.get(5, TimeUnit.SECONDS);
             long titleDuration = System.currentTimeMillis() - titleStartTime;
-            if (generatedTitle != null && !generatedTitle.equals("New Chat")) {
+            if (generatedTitle != null && !generatedTitle.equals("新对话")) {
                 log.info("标题生成成功: [{}], 耗时: {}ms", generatedTitle, titleDuration);
                 return generatedTitle;
             }

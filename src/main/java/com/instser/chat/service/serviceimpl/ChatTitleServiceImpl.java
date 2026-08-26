@@ -91,7 +91,7 @@ public class ChatTitleServiceImpl implements ChatTitleService {
                 return null;
             }
             String cleanedTitle = cleanTitle(rawTitle);
-            if (cleanedTitle != null && !cleanedTitle.equals("New Chat")) {
+            if (cleanedTitle != null && !cleanedTitle.equals("新对话")) {
                 boolean saved = chatSessionService.updateSessionTitle(sessionId, cleanedTitle);
                 if (saved) {
                     log.info("标题保存到数据库成功: {}", cleanedTitle);
@@ -136,13 +136,13 @@ public class ChatTitleServiceImpl implements ChatTitleService {
 
     private String cleanTitle(String title) {
         if (title == null || title.trim().isEmpty()) {
-            return "New Chat";
+            return "新对话";
         }
         String cleaned = title.trim()
                 .replaceAll("^[\"']+|[\"']+$", "")
                 .replaceAll("\\s+", " ")
                 .trim();
-        return cleaned.isEmpty() ? "New Chat" : cleaned;
+        return cleaned.isEmpty() ? "新对话" : cleaned;
     }
 
     private String callAiForTitleWithHttpClient(String titlePrompt, AiModel model) {

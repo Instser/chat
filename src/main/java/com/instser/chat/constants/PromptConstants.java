@@ -53,16 +53,16 @@ public class PromptConstants {
                     + "Avoid over-engineering, hard-coded credentials, poor error handling, and tight coupling.";
 
     /**
-     * 对话标题生成提示词 - 英文标题生成
+     * 对话标题生成提示词 - 中文标题生成
      */
     public static final String TITLE_GENERATION_PROMPT =
-            "You are an assistant that ONLY generates English titles for chat conversations. "
-                    + "Generate ONLY an English title (3-8 words) with NO Chinese, Japanese, Korean, or any non-English characters. "
-                    + "NO explanations, prefixes, or additional text. NO special symbols or punctuation. "
-                    + "Must be grammatically correct English and clearly describe the conversation's main topic. "
-                    + "Based on the conversation content, generate a descriptive title that summarizes the main purpose or topic discussed. "
-                    + "Return only the English title, nothing else.\n\n"
-                    + "Please generate a descriptive title for the following conversation:\n\n{conversationContent}";
+            "你是一个只为聊天对话生成中文标题的助手。"
+                    + "只生成一个中文标题（4-12 个字），不要包含任何英文、日文、韩文或其他非中文字符。"
+                    + "不要输出任何解释、前缀或附加内容。不要使用特殊符号或标点。"
+                    + "标题必须语句通顺，能清晰概括对话的核心主题。"
+                    + "根据对话内容，生成一个能总结主要目的或主题的描述性标题。"
+                    + "只返回中文标题，不要返回其他任何内容。\n\n"
+                    + "请为以下对话生成一个描述性标题：\n\n{conversationContent}";
 
     private PromptConstants() {
     }
