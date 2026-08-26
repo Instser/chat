@@ -31,6 +31,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpServletRequest;
 
 import com.instser.chat.dto.request.DeleteSessionRequest;
+import com.instser.chat.util.ReactorMdcUtils;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -508,42 +509,50 @@ public class ChatApiController {
     }
 
     private void registerAsyncCancelHooks(AsyncContext asyncContext, String sessionId, Long userId) {
+        // 异步 Servlet 回调在容器线程执行，不经过 TraceIdFilter，需手动传递 traceId
+        final String traceId = ReactorMdcUtils.captureTraceId();
         asyncContext.addListener(new AsyncListener() {
             @Override
             public void onComplete(AsyncEvent event) {
-                // 正常 complete 时 registry 多半已 remove；cancel 幂等
-                if (sessionId != null) {
-                    streamSubscriptionRegistry.cancel(sessionId, StreamTerminalReason.CANCELLED);
-                }
+                ReactorMdcUtils.runWithTraceId(traceId, () -> {
+                    // 正常 complete 时 registry 多半已 remove；cancel 幂等
+                    if (sessionId != null) {
+                        streamSubscriptionRegistry.cancel(sessionId, StreamTerminalReason.CANCELLED);
+                    }
+                });
             }
 
             @Override
             public void onTimeout(AsyncEvent event) {
-                LogUtils.logUserSessionWarning(log, userId, sessionId, "API超时", "流 async 超时");
-                if (sessionId != null) {
-                    streamSubscriptionRegistry.cancel(sessionId, StreamTerminalReason.TIMEOUT);
-                    if (userId != null) {
-                        chatInterruptService.interruptChat(sessionId, userId);
+                ReactorMdcUtils.runWithTraceId(traceId, () -> {
+                    LogUtils.logUserSessionWarning(log, userId, sessionId, "API超时", "流 async 超时");
+                    if (sessionId != null) {
+                        streamSubscriptionRegistry.cancel(sessionId, StreamTerminalReason.TIMEOUT);
+                        if (userId != null) {
+                            chatInterruptService.interruptChat(sessionId, userId);
+                        }
                     }
-                }
-                try {
-                    event.getAsyncContext().complete();
-                } catch (Exception ignored) {
-                }
+                    try {
+                        event.getAsyncContext().complete();
+                    } catch (Exception ignored) {
+                    }
+                });
             }
 
             @Override
             public void onError(AsyncEvent event) {
-                Throwable ex = event.getThrowable();
-                LogUtils.logUserSessionWarning(log, userId, sessionId, "API通道错误", "async error: {}",
-                        ex != null ? ex.getMessage() : "null");
-                if (sessionId != null) {
-                    StreamTerminalReason reason = StreamTerminalReason.FAILURE;
-                    if (ex instanceof IOException) {
-                        reason = StreamTerminalReason.WRITE_FAILED;
+                ReactorMdcUtils.runWithTraceId(traceId, () -> {
+                    Throwable ex = event.getThrowable();
+                    LogUtils.logUserSessionWarning(log, userId, sessionId, "API通道错误", "async error: {}",
+                            ex != null ? ex.getMessage() : "null");
+                    if (sessionId != null) {
+                        StreamTerminalReason reason = StreamTerminalReason.FAILURE;
+                        if (ex instanceof IOException) {
+                            reason = StreamTerminalReason.WRITE_FAILED;
+                        }
+                        streamSubscriptionRegistry.cancel(sessionId, reason);
                     }
-                    streamSubscriptionRegistry.cancel(sessionId, reason);
-                }
+                });
             }
 
             @Override

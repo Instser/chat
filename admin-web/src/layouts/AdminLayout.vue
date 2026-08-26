@@ -53,6 +53,7 @@ const menus = [
   { path: '/orders', title: '订单支付' },
   { path: '/audits', title: '审计中心' },
   { path: '/ops', title: '运维中心' },
+  { path: '/logs', title: '日志查看' },
 ]
 
 const active = computed(() => route.path)

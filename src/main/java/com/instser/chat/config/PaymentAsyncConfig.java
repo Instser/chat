@@ -43,15 +43,18 @@ public class PaymentAsyncConfig {
         
         // 拒绝策略：由调用线程执行
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
-        
+
+        // 传递 MDC（traceId 等）到异步线程
+        executor.setTaskDecorator(new MdcTaskDecorator());
+
         // 等待任务完成后关闭
         executor.setWaitForTasksToCompleteOnShutdown(true);
-        
+
         // 等待时间
         executor.setAwaitTerminationSeconds(30);
-        
+
         executor.initialize();
-        
+
         log.info("支付回调异步处理线程池初始化完成");
         return executor;
     }
@@ -81,15 +84,18 @@ public class PaymentAsyncConfig {
         
         // 拒绝策略：由调用线程执行
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
-        
+
+        // 传递 MDC（traceId 等）到异步线程
+        executor.setTaskDecorator(new MdcTaskDecorator());
+
         // 等待任务完成后关闭
         executor.setWaitForTasksToCompleteOnShutdown(true);
-        
+
         // 等待时间
         executor.setAwaitTerminationSeconds(30);
-        
+
         executor.initialize();
-        
+
         log.info("Stripe Webhook异步处理线程池初始化完成");
         return executor;
     }

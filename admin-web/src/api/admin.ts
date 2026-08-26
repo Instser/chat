@@ -4,6 +4,8 @@ import type {
   AdminOrder,
   AdminPackage,
   AdminUserSummary,
+  LogFile,
+  LogTail,
   PageResult,
 } from '@/types/api'
 
@@ -164,4 +166,20 @@ export function resetLogger(loggerName: string, reason: string) {
   return apiDelete(`/admin/ops/loggers/${encodeURIComponent(loggerName)}`, {
     params: { reason },
   })
+}
+
+// ===== 日志查看 =====
+
+export function listLogFiles() {
+  return apiGet<LogFile[]>('/admin/log-viewer/files')
+}
+
+export function tailLog(params: {
+  file: string
+  lines?: number
+  traceId?: string
+  keyword?: string
+  level?: string
+}) {
+  return apiGet<LogTail>('/admin/log-viewer/tail', { params })
 }

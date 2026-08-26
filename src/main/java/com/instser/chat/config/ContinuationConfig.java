@@ -47,7 +47,10 @@ public class ContinuationConfig {
         
         // 拒绝策略：队列满时由调用线程执行
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
-        
+
+        // 传递 MDC（traceId 等）到续写线程
+        executor.setTaskDecorator(new MdcTaskDecorator());
+
         // 优雅关闭：等待任务完成后再关闭
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(30);

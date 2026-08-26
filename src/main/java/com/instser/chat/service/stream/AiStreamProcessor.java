@@ -10,6 +10,7 @@ import com.instser.chat.service.content.ContentPolicy;
 import com.instser.chat.service.prompt.PromptSkillService;
 import com.instser.chat.service.prompt.SkillUpdateMode;
 import com.instser.chat.util.ChatSessionManager;
+import com.instser.chat.util.ReactorMdcUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.buffer.DataBufferUtils;
@@ -137,6 +138,8 @@ public class AiStreamProcessor {
                                         CompletionCallback completionCallback,
                                         ErrorPersister errorPersister,
                                         BiFunction<Map<String, Object>, AiModel, Void> requestLogger) {
+        // 捕获请求线程 traceId，供 subscribe/doOnCancel 等异步回调恢复 MDC
+        final String traceId = ReactorMdcUtils.captureTraceId();
         ChatSessionManager sessionManager = new ChatSessionManager(
                 chatInterruptService, request.getSessionId(), request.getUserId());
         sessionManager.register();
@@ -166,7 +169,7 @@ public class AiStreamProcessor {
             };
 
             Disposable disposable = lineFlux
-                    .doOnCancel(() -> {
+                    .doOnCancel(() -> ReactorMdcUtils.runWithTraceId(traceId, () -> {
                         log.info("上游流被取消 sessionId={}", request.getSessionId());
                         streamState.markInterrupted();
                         if (!streamState.isInterruptSaved()) {
@@ -190,11 +193,11 @@ public class AiStreamProcessor {
                         log.info("STREAM_TERMINAL sessionId={} reason=cancelled contentLen={} reasoningLen={}",
                                 request.getSessionId(), streamState.content().length(), streamState.reasoning().length());
                         closeTerminal.run();
-                    })
+                    }))
                     .subscribe(
                             line -> {
                             },
-                            error -> {
+                            error -> ReactorMdcUtils.runWithTraceId(traceId, () -> {
                                 log.error("异步流错误 sessionId={}", request.getSessionId(), error);
                                 try {
                                     aiCallMonitor.recordFailure(aiCtxHolder[0],
@@ -206,8 +209,8 @@ public class AiStreamProcessor {
                                 } finally {
                                     closeTerminal.run();
                                 }
-                            },
-                            () -> {
+                            }),
+                            () -> ReactorMdcUtils.runWithTraceId(traceId, () -> {
                                 try {
                                     aiCallMonitor.recordSuccess(aiCtxHolder[0]);
                                     String reason = streamState.isInterrupted() ? "interrupted_or_partial" : "success";
@@ -217,7 +220,7 @@ public class AiStreamProcessor {
                                 } finally {
                                     closeTerminal.run();
                                 }
-                            }
+                            })
                     );
 
             disposableRef.set(disposable);
@@ -275,6 +278,8 @@ public class AiStreamProcessor {
                                        BiFunction<Map<String, Object>, AiModel, Void> requestLogger,
                                        StreamResponseState streamState,
                                        AiCallMonitor.CallContext[] aiCtxHolder) {
+        // 捕获请求线程 traceId，供 publishOn 切换线程后的异步回调恢复 MDC
+        final String traceId = ReactorMdcUtils.captureTraceId();
         List<Map<String, String>> messagesWithPrompt = buildMessagesWithPrompt(request, interfaceType);
         boolean thinkingEnabled = Boolean.TRUE.equals(request.getDeepThinking());
         log.info("组装消息完成，thinking={}，interfaceType={}，消息总数: {}",
@@ -335,7 +340,7 @@ public class AiStreamProcessor {
                     return true;
                 })
                 .publishOn(Schedulers.boundedElastic())
-                .doOnNext(line -> {
+                .doOnNext(line -> ReactorMdcUtils.runWithTraceId(traceId, () -> {
                     try {
                         if (line.startsWith("data: ")) {
                             if (line.equals("data: [DONE]")) {
@@ -375,8 +380,8 @@ public class AiStreamProcessor {
                     } catch (Exception e) {
                         log.error("处理流式数据失败: {}", e.getMessage());
                     }
-                })
-                .doOnError(error -> {
+                }))
+                .doOnError(error -> ReactorMdcUtils.runWithTraceId(traceId, () -> {
                     log.error("AI API流式响应处理失败", error);
                     try {
                         String errorContent = "Request failed. Please try again later.";
@@ -389,8 +394,8 @@ public class AiStreamProcessor {
                     } catch (Exception e) {
                         log.error("发送错误消息失败", e);
                     }
-                })
-                .doOnComplete(() -> {
+                }))
+                .doOnComplete(() -> ReactorMdcUtils.runWithTraceId(traceId, () -> {
                     boolean wasManuallyInterrupted = request.getSessionId() != null
                             && chatInterruptService.isInterrupted(request.getSessionId());
                     if (lineBuffer.length() > 0) {
@@ -420,7 +425,7 @@ public class AiStreamProcessor {
                             streamState.markInterrupted();
                         }
                     }
-                });
+                }));
     }
 
     private void consumeJson(String json,

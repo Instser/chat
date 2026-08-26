@@ -69,6 +69,12 @@ const router = createRouter({
           component: () => import('@/views/OpsView.vue'),
           meta: { title: '运维中心' },
         },
+        {
+          path: 'logs',
+          name: 'logs',
+          component: () => import('@/views/LogsView.vue'),
+          meta: { title: '日志查看' },
+        },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/dashboard' },

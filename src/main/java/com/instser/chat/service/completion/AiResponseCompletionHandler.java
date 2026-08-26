@@ -11,6 +11,7 @@ import com.instser.chat.service.ChatTitleService;
 import com.instser.chat.service.WebSearchContentService;
 import com.instser.chat.service.stream.AssistantOutput;
 import com.instser.chat.service.stream.ChatStreamSink;
+import com.instser.chat.util.ReactorMdcUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -116,8 +117,11 @@ public class AiResponseCompletionHandler {
             return null;
         }
         long titleStartTime = System.currentTimeMillis();
+        // 捕获当前线程 traceId，供 ForkJoinPool 异步任务恢复 MDC
+        final String traceId = ReactorMdcUtils.captureTraceId();
         try {
-            CompletableFuture<String> titleFuture = CompletableFuture.supplyAsync(() -> {
+            CompletableFuture<String> titleFuture = CompletableFuture.supplyAsync(() ->
+                    ReactorMdcUtils.callWithTraceId(traceId, () -> {
                 try {
                     List<Map<String, String>> messagesForTitle = chatTitleService.buildTitleMessages(originalMessages, aiContent);
                     return chatTitleService.generateSessionTitle(sessionId, messagesForTitle);
@@ -126,7 +130,7 @@ public class AiResponseCompletionHandler {
                             sessionId, e.getClass().getSimpleName(), e.getMessage());
                     return null;
                 }
-            });
+            }));
             String generatedTitle = titleFuture.get(5, TimeUnit.SECONDS);
             long titleDuration = System.currentTimeMillis() - titleStartTime;
             if (generatedTitle != null && !generatedTitle.equals("New Chat")) {

@@ -65,12 +65,13 @@ public class PerformanceOptimizationConfig {
         
         // 拒绝策略: 调用者运行策略 (避免任务丢失)
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
-        
+
+        executor.setTaskDecorator(new MdcTaskDecorator());
         executor.initialize();
-        
-        log.info("优化异步执行器初始化完成: 核心线程={}, 最大线程={}, 队列容量={}", 
+
+        log.info("优化异步执行器初始化完成: 核心线程={}, 最大线程={}, 队列容量={}",
                 corePoolSize, maxPoolSize, queueCapacity);
-        
+
         return executor;
     }
 
@@ -96,11 +97,12 @@ public class PerformanceOptimizationConfig {
         
         // 拒绝策略: 丢弃最老的任务
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.DiscardOldestPolicy());
-        
+
+        executor.setTaskDecorator(new MdcTaskDecorator());
         executor.initialize();
-        
+
         log.info("高并发执行器初始化完成: 核心线程=16, 最大线程=32, 队列容量=500");
-        
+
         return executor;
     }
 
@@ -126,11 +128,12 @@ public class PerformanceOptimizationConfig {
         
         // 拒绝策略: 调用者运行
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
-        
+
+        executor.setTaskDecorator(new MdcTaskDecorator());
         executor.initialize();
-        
+
         log.info("IO密集型执行器初始化完成: 核心线程=20, 最大线程=50, 队列容量=100");
-        
+
         return executor;
     }
 

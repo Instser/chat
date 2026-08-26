@@ -58,6 +58,7 @@ public class AsyncSecurityConfig implements WebMvcConfigurer {
         executor.setThreadNamePrefix("ChatAsync-");
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(30);
+        executor.setTaskDecorator(new MdcTaskDecorator());
         executor.initialize();
         return executor;
     }
@@ -92,6 +93,7 @@ public class AsyncSecurityConfig implements WebMvcConfigurer {
         executor.setThreadNamePrefix("SSE-Bypass-");
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(30);
+        executor.setTaskDecorator(new MdcTaskDecorator());
         executor.initialize();
 
         return new SecurityBypassExecutor(executor);

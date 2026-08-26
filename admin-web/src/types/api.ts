@@ -87,3 +87,17 @@ export interface AdminOrder {
   transactionId?: string
   createTime?: string
 }
+
+export interface LogFile {
+  fileName: string
+  exists: boolean
+  size?: number
+  lastModified?: number
+}
+
+export interface LogTail {
+  fileName: string
+  totalRead: number
+  filtered: number
+  lines: string[]
+}
