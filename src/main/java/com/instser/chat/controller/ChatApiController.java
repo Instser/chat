@@ -324,6 +324,7 @@ public class ChatApiController {
     private boolean validateBasicParams(String chatId, String messageId, HttpServletResponse response) throws Exception {
         if (chatId == null || chatId.trim().isEmpty()) {
             String errorContent = "Request failed. Please try again later.";
+            String errorMessage = "参数校验失败: chatId 为空";
             writeErrorResponse(response, errorContent);
 
             // 尝试保存错误响应到数据库（如果能获取到用户信息）
@@ -332,7 +333,7 @@ public class ChatApiController {
                 if (auth != null && auth.isAuthenticated()) {
                     Long userId = getCurrentUserId(auth);
                     if (userId != null) {
-                        chatService.saveErrorResponse(chatId, userId, 1L, errorContent);
+                        chatService.saveErrorResponse(chatId, userId, 1L, errorContent, errorMessage);
                         LogUtils.logUserSessionOperation(log, userId, chatId, "参数验证", "参数验证失败错误响应已保存到数据库，原因：chatId为空");
                     }
                 }
@@ -344,6 +345,7 @@ public class ChatApiController {
 
         if (messageId == null || messageId.trim().isEmpty()) {
             String errorContent = "Request failed. Please try again later.";
+            String errorMessage = "参数校验失败: messageId 为空";
             writeErrorResponse(response, errorContent);
 
             // 尝试保存错误响应到数据库（如果能获取到用户信息）
@@ -352,7 +354,7 @@ public class ChatApiController {
                 if (auth != null && auth.isAuthenticated()) {
                     Long userId = getCurrentUserId(auth);
                     if (userId != null) {
-                        chatService.saveErrorResponse(chatId, userId, 1L, errorContent);
+                        chatService.saveErrorResponse(chatId, userId, 1L, errorContent, errorMessage);
                         LogUtils.logUserSessionOperation(log, userId, chatId, "参数验证", "参数验证失败错误响应已保存到数据库，原因：messageId为空");
                     }
                 }
@@ -466,6 +468,7 @@ public class ChatApiController {
 
             if (newContent == null || newContent.trim().isEmpty()) {
                 String errorContent = "Request failed. Please try again later.";
+                String errorMessage = "参数校验失败: 编辑重发 newContent 为空";
                 try {
                     sink.writeError(errorContent);
                 } catch (Exception ignored) {
@@ -473,7 +476,7 @@ public class ChatApiController {
                 try {
                     Long userId = getCurrentUserId(authentication);
                     if (userId != null) {
-                        chatService.saveErrorResponse(chatId, userId, 1L, errorContent);
+                        chatService.saveErrorResponse(chatId, userId, 1L, errorContent, errorMessage);
                         LogUtils.logUserSessionOperation(log, userId, chatId, "参数验证", "编辑重发参数验证失败错误响应已保存到数据库，原因：newContent为空");
                     }
                 } catch (Exception e) {

@@ -79,12 +79,25 @@ public interface ChatService {
     /**
      * 保存错误响应到数据库
      *
+     * <p>兼容旧路径：errorContent 同时写入 content 与 error_message。</p>
+     *
      * @param sessionId 会话ID
      * @param userId 用户ID
      * @param modelId 模型ID
      * @param errorContent 错误内容
      */
     void saveErrorResponse(String sessionId, Long userId, Long modelId, String errorContent);
+
+    /**
+     * 保存错误响应到数据库，并写入真正的错误根因到 error_message 字段
+     *
+     * @param sessionId 会话ID
+     * @param userId 用户ID
+     * @param modelId 模型ID
+     * @param errorContent 错误内容（写入 content，面向用户的通用文案）
+     * @param errorMessage 错误根因（写入 error_message，真实的报错信息）
+     */
+    void saveErrorResponse(String sessionId, Long userId, Long modelId, String errorContent, String errorMessage);
 
     /**
      * 生成会话标题

@@ -1,8 +1,9 @@
-## 2026-08-04 13:53
-✅ 管理后台运维监控面板（echarts 5 类图 + /admin/ops/monitoring）已上线。
+## 2026-08-26 18:13
+✅ 错误落库根因记录修复：status=3 时将真实报错写入 error_message 字段（全链路）。
 
 # progress 更新
 
+- 2026-08-26 18:13: 修复错误落库只设 status=3 却不记录真实报错到 error_message 的问题。原问题：AI API 返回 429 时，后端落库 content 为 "Request failed. Please try again later."、status=3，但 error_message 为 NULL。根因两层：① sendErrorResponseMessage 漏写 setErrorMessage；② 整条异常捕获链路把真实异常 e 只写日志，传给落库的是写死通用文案。修复：新增 ErrorRootCauseExtractor 工具类从异常提取根因（HTTP 状态码+上游错误体）；ChatMessageService/ChatService/ChatPersistenceService 新增带 errorMessage 参数的 5 参数重载，旧 4 参数委托到新方法（errorContent 同时写 content 与 error_message）；AiStreamProcessor 的 3 处 catch（streamBlocking/streamAsync 启动失败/doOnError）提取根因传入 ErrorPersister；ErrorPersister 接口扩展为 5 参数；ChatServiceImpl.writeCommandException 接收 cause 参数提取根因；ChatApiController 参数校验失败写入具体校验原因；测试 6/6 + 全量 130/130 通过。
 - 2026-08-25 16:41: 引入 Flyway 数据库版本控制（baseline 模式）；先提交现有改动（一键试用+模型凭证修复，commit ae14cce）；新增 flyway-core/flyway-mysql 依赖、application.yml 配置、db/migration 目录与 V1 基线脚本；V1 为空占位，增量从 V2 起；本地无 Maven 未做编译验证。
 - 2026-08-22 10:45: 一键试用功能完成（/auth/trial 2h 会话，体验与普通用户一致）；全量测试 130/130；README/README-OPS/设计文档已同步；未部署。
 - 2026-08-04 01:16: 部署文档优化；后端与 admin-web 上线；审计 SQL 已执行；用户前端本机重建失败保留现网。
@@ -15,9 +16,26 @@
 
 # 项目进度状态
 
-**📅 最后更新**: 2026-08-25 16:41:00
+**📅 最后更新**: 2026-08-26 18:13:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v147.0
+**📊 文档版本**: v148.0
+
+## 🚀 最新完成功能 (2026-08-26)
+
+### 错误落库根因记录修复（error_message 字段） ✅
+- **完成时间**: 2026年8月26日 18:13
+- **问题描述**: 聊天报错时（如 AI API 返回 429），后端落库 status=3 但 error_message 为 NULL，content 为写死的 "Request failed. Please try again later."，真实报错信息丢失
+- **根因（近因）**: `ChatMessageServiceImpl.sendErrorResponseMessage` 漏写 `message.setErrorMessage(...)`
+- **根因（远因）**: 整条异常捕获链路（AiStreamProcessor 3 处 catch、ChatServiceImpl 顶层 catch、ChatPersistenceService.handleStreamChatException）把真实异常 `e` 只写日志/监控，传给落库的始终是写死通用文案
+- **修复方案**:
+  - 新增 `ErrorRootCauseExtractor` 工具类：从 Throwable 提取根因（异常类名 + HTTP 状态码 + 上游错误体摘要），长度上限 1000 字符，提取失败回退通用文案
+  - `ChatMessageService` / `ChatService` / `ChatPersistenceService` 新增带 `errorMessage` 参数的 5 参数重载；旧 4 参数委托到新方法（errorContent 同时写 content 与 error_message，保持向后兼容）
+  - `AiStreamProcessor.ErrorPersister` 接口扩展为 5 参数；3 处 catch 块（streamBlocking/streamAsync 启动失败/doOnError）提取根因传入落库
+  - `ChatServiceImpl.writeCommandException` 接收 `cause` 参数提取根因；`handleStreamChatException` 提取根因
+  - `ChatApiController` 参数校验失败写入具体校验原因（chatId 为空 / messageId 为空 / newContent 为空）
+  - `saveErrorResponseAndReturn` / `handleErrorResponse` 新增带 displayMessage + errorMessage 的重载
+- **测试**: 全量 `mvn test` 130/130 通过（含更新的 ChatServiceImplTest 3 + ChatServiceImplStreamCharacterizationTest 3）
+- **影响范围**: Java 代码与测试；未改 JDK/依赖/数据库/SQL
 
 ## 🚀 最新完成功能 (2026-08-25)
 

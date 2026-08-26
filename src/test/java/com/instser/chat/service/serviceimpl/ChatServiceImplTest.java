@@ -130,10 +130,12 @@ class ChatServiceImplTest {
         ChatResponseDTO result = service.processStreamChat(request, authentication(userId), sink);
 
         assertEquals(false, result.isSuccess());
+        // saveErrorResponseAndReturn 4参数版本委托到5参数，errorContent 同时写入 content 与 error_message
         verify(chatMessageService).sendErrorResponseMessage(
                 sessionId,
                 userId,
                 model.getId(),
+                "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.",
                 "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow."
         );
         verify(chatMessageService, never()).sendMessage(
@@ -210,6 +212,7 @@ class ChatServiceImplTest {
                 sessionId,
                 userId,
                 session.getModelId(),
+                "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.",
                 "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow."
         );
         InOrder order = inOrder(chatMessageService);
@@ -218,6 +221,7 @@ class ChatServiceImplTest {
                 sessionId,
                 userId,
                 session.getModelId(),
+                "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.",
                 "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow."
         );
     }
@@ -302,6 +306,7 @@ class ChatServiceImplTest {
                 sessionId,
                 userId,
                 session.getModelId(),
+                "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.",
                 "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow."
         );
         InOrder order = inOrder(chatMessageService);
@@ -315,6 +320,7 @@ class ChatServiceImplTest {
                 sessionId,
                 userId,
                 session.getModelId(),
+                "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.",
                 "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow."
         );
     }

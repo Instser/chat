@@ -1,14 +1,19 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-08-26 15:23:00
+**📅 最后更新**: 2026-08-26 18:13:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v163.0
+**📊 文档版本**: v164.0
 
 ## 当前任务
 - **三机架构已联通** — 原公网服务器 `203.0.113.14` 已到期，现三机架构：阿里云 CDN（`chat.instser.cn` 443 HTTPS）→ frps 公网机（`home.example.com` DDNS，回源 9080）→ 家用机（内网 192.168.1.2，frpc 穿透）。`home.example.com` 是 DDNS 指向 frps 公网机的域名，不是家用机。所有 `home.example.com:端口` 都是 frp 穿透。CDN 回源端口必须 9080（默认 80 会导致 504）。全链路验收通过（2026-08-26）。
 - ⚠️ **Flyway 生产已禁用** — supervisor 配置 `/www/server/panel/plugin/supervisor/profile/chat.ini` 已加 `environment=FLYWAY_ENABLED="false"` 禁用 Flyway。原因：生产库用户 `chat` 无 `user_variables_by_thread` 系统表 SELECT 权限，Flyway 启动时查询该表报 `SELECT command denied` 导致进程崩溃重启。**后续给生产库用户授予该权限后，可移除 environment 配置启用 Flyway**。
 - **待部署验证：一键试用功能**（`/auth/trial` 2h 会话）— 代码与测试已完成，尚未部署到家用机；上线后验证登录页试用按钮、2h 过期 401、IP 日限流。
+- **待部署验证：错误落库根因记录修复** — 代码与测试已完成（130/130 通过），尚未部署到家用机；部署后验证 AI API 429 等场景 error_message 字段是否记录真实根因。
 - 待观察后清理：旧 `/admin/cache`/`/admin/logs` API Key 写入口与缓存二次密码；阶段 D 旧表 DROP；阶段 E SQL 归档。
+
+
+## 2026-08-26 18:13 错误落库根因记录修复
+- 修复 status=3 落库时 error_message 字段始终为 NULL 的问题。新增 `ErrorRootCauseExtractor` 工具类从异常提取根因（HTTP 状态码+上游错误体）；`ChatMessageService`/`ChatService`/`ChatPersistenceService` 新增带 `errorMessage` 参数的 5 参数重载；`AiStreamProcessor` 的 3 处 catch 块提取根因传入落库；`ChatServiceImpl.writeCommandException` 接收 cause 参数；`ChatApiController` 参数校验写入具体原因。全量 130/130 测试通过。详见 progress.md。
 
 
 ## 2026-08-04 13:53 运维监控面板

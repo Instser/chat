@@ -23,6 +23,7 @@ import com.instser.chat.service.stream.AiStreamProcessor;
 import com.instser.chat.service.stream.ChatStreamSink;
 import com.instser.chat.service.validation.ChatRequestValidator;
 import com.instser.chat.service.validation.SessionCommandValidation;
+import com.instser.chat.util.ErrorRootCauseExtractor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.Authentication;
@@ -248,11 +249,23 @@ public class ChatServiceImpl implements ChatService {
     /**
      * 保存错误响应（status=3，不进入后续聊天上下文、不扣次）。
      *
+     * <p>兼容旧路径：errorContent 同时写入 content 与 error_message。</p>
+     *
      * <p><b>内部引用</b>：{@link ChatPersistenceService#saveErrorResponse}</p>
      */
     @Override
     public void saveErrorResponse(String sessionId, Long userId, Long modelId, String errorContent) {
         chatPersistenceService.saveErrorResponse(sessionId, userId, modelId, errorContent);
+    }
+
+    /**
+     * 保存错误响应（status=3），并写入真正的错误根因到 error_message 字段。
+     *
+     * <p><b>内部引用</b>：{@link ChatPersistenceService#saveErrorResponse}</p>
+     */
+    @Override
+    public void saveErrorResponse(String sessionId, Long userId, Long modelId, String errorContent, String errorMessage) {
+        chatPersistenceService.saveErrorResponse(sessionId, userId, modelId, errorContent, errorMessage);
     }
 
     /**
@@ -403,7 +416,7 @@ public class ChatServiceImpl implements ChatService {
             streamChatWithAI(retryRequest, model, sink, willGenerateTitle, "retry");
         } catch (Exception e) {
             log.error("处理重新生成请求异常", e);
-            writeCommandException(sessionId, sink);
+            writeCommandException(sessionId, sink, e);
         }
     }
 
@@ -512,7 +525,7 @@ public class ChatServiceImpl implements ChatService {
             streamChatWithAI(editResendRequest, model, sink, willGenerateTitle, "edit-resend");
         } catch (Exception e) {
             log.error("处理编辑重发请求异常", e);
-            writeCommandException(sessionId, sink);
+            writeCommandException(sessionId, sink, e);
         }
     }
 
@@ -646,24 +659,27 @@ public class ChatServiceImpl implements ChatService {
     }
 
     /**
-     * retry / edit-resend 顶层异常：写错误流，并尽量按会话模型落 status=3 错误消息。
+     * retry / edit-resend 顶层异常：写错误流，并尽量按会话模型落 status=3 错误消息，根因写入 error_message。
      *
      * <p><b>内部引用</b>：
      * {@link ChatStreamSink#writeError} /
      * {@link ChatSessionService#getSessionInfo} /
      * {@link AiModelService#getById} /
-     * {@link ChatPersistenceService#saveErrorResponse}
+     * {@link ChatPersistenceService#saveErrorResponse} /
+     * {@link ErrorRootCauseExtractor#extract}
      * </p>
      */
-    private void writeCommandException(String sessionId, ChatStreamSink sink) {
+    private void writeCommandException(String sessionId, ChatStreamSink sink, Exception cause) {
         try {
             String errorContent = "Request failed. Please try again later.";
+            // 从异常中提取真实根因（如 HTTP 429 + 上游错误体），写入 error_message
+            String rootCause = ErrorRootCauseExtractor.extract(cause);
             sink.writeError(errorContent);
             ChatSession chatSession = chatSessionService.getSessionInfo(sessionId);
             if (chatSession != null) {
                 AiModel model = aiModelService.getById(chatSession.getModelId());
                 if (model != null) {
-                    chatPersistenceService.saveErrorResponse(sessionId, chatSession.getUserId(), model.getId(), errorContent);
+                    chatPersistenceService.saveErrorResponse(sessionId, chatSession.getUserId(), model.getId(), errorContent, rootCause);
                 }
             }
         } catch (Exception ex) {

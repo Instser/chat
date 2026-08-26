@@ -10,6 +10,7 @@ import com.instser.chat.service.content.ContentPolicy;
 import com.instser.chat.service.prompt.PromptSkillService;
 import com.instser.chat.service.prompt.SkillUpdateMode;
 import com.instser.chat.util.ChatSessionManager;
+import com.instser.chat.util.ErrorRootCauseExtractor;
 import com.instser.chat.util.ReactorMdcUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -61,7 +62,16 @@ public class AiStreamProcessor {
 
     @FunctionalInterface
     public interface ErrorPersister {
-        void saveError(String sessionId, Long userId, Long modelId, String errorContent);
+        /**
+         * 落库 status=3 的错误消息，并将真实根因写入 error_message 字段。
+         *
+         * @param sessionId     会话ID
+         * @param userId        用户ID
+         * @param modelId       模型ID
+         * @param errorContent  错误响应内容（写入 content，面向用户的通用文案）
+         * @param errorMessage  错误根因（写入 error_message，真实的报错信息）
+         */
+        void saveError(String sessionId, Long userId, Long modelId, String errorContent, String errorMessage);
     }
 
     public ChatResponseDTO stream(ChatRequestDTO request,
@@ -116,10 +126,12 @@ public class AiStreamProcessor {
                 aiCallMonitor.recordFailure(aiCtxHolder[0], e.getClass().getSimpleName(), e.getMessage());
                 try {
                     String errorContent = "Request failed. Please try again later.";
+                    // 从异常中提取真实根因（如 HTTP 429 + 上游错误体），写入 error_message
+                    String rootCause = ErrorRootCauseExtractor.extract(e);
                     sink.writeContent(errorContent);
                     sink.writeCompletion(false, false, null);
                     if (request.getSessionId() != null && request.getUserId() != null) {
-                        errorPersister.saveError(request.getSessionId(), request.getUserId(), model.getId(), errorContent);
+                        errorPersister.saveError(request.getSessionId(), request.getUserId(), model.getId(), errorContent, rootCause);
                     }
                     return ChatResponseDTO.errorWithContent(errorContent);
                 } catch (Exception ioException) {
@@ -236,10 +248,12 @@ public class AiStreamProcessor {
             aiCallMonitor.recordFailure(aiCtxHolder[0], e.getClass().getSimpleName(), e.getMessage());
             try {
                 String errorContent = "Request failed. Please try again later.";
+                // 从异常中提取真实根因（如 HTTP 429 + 上游错误体），写入 error_message
+                String rootCause = ErrorRootCauseExtractor.extract(e);
                 sink.writeContent(errorContent);
                 sink.writeCompletion(false, false, null);
                 if (request.getSessionId() != null && request.getUserId() != null) {
-                    errorPersister.saveError(request.getSessionId(), request.getUserId(), model.getId(), errorContent);
+                    errorPersister.saveError(request.getSessionId(), request.getUserId(), model.getId(), errorContent, rootCause);
                 }
             } catch (Exception ioException) {
                 log.error("异步启动失败写出错误", ioException);
@@ -385,11 +399,13 @@ public class AiStreamProcessor {
                     log.error("AI API流式响应处理失败", error);
                     try {
                         String errorContent = "Request failed. Please try again later.";
+                        // 从异常中提取真实根因（如 HTTP 429 + 上游错误体），写入 error_message
+                        String rootCause = ErrorRootCauseExtractor.extract(error);
                         sink.writeContent(errorContent);
                         sink.writeCompletion(false, false, null);
                         streamState.markContentSent();
                         if (request.getSessionId() != null && request.getUserId() != null) {
-                            errorPersister.saveError(request.getSessionId(), request.getUserId(), model.getId(), errorContent);
+                            errorPersister.saveError(request.getSessionId(), request.getUserId(), model.getId(), errorContent, rootCause);
                         }
                     } catch (Exception e) {
                         log.error("发送错误消息失败", e);

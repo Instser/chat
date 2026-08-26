@@ -13,6 +13,7 @@ import com.instser.chat.service.ChatSessionService;
 import com.instser.chat.service.FileUploadService;
 import com.instser.chat.service.completion.AiResponseCompletionHandler;
 import com.instser.chat.service.stream.ChatStreamSink;
+import com.instser.chat.util.ErrorRootCauseExtractor;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -163,11 +164,25 @@ public class ChatPersistenceService {
     }
 
     public void saveErrorResponse(String sessionId, Long userId, Long modelId, String errorContent) {
+        // 兼容旧路径：errorContent 同时写入 content 与 error_message
+        saveErrorResponse(sessionId, userId, modelId, errorContent, errorContent);
+    }
+
+    /**
+     * 保存错误响应到数据库，并写入真正的错误根因到 error_message 字段。
+     *
+     * @param sessionId     会话ID
+     * @param userId        用户ID
+     * @param modelId       模型ID
+     * @param errorContent  错误响应内容（写入 content，面向用户的通用文案）
+     * @param errorMessage   错误根因（写入 error_message，真实的报错信息）
+     */
+    public void saveErrorResponse(String sessionId, Long userId, Long modelId, String errorContent, String errorMessage) {
         try {
             if (sessionId != null && userId != null && modelId != null) {
-                chatMessageService.sendErrorResponseMessage(sessionId, userId, modelId, errorContent);
-                log.info("错误响应已保存到数据库，会话ID：{}，用户ID：{}，模型ID：{}，状态：3，内容：{}",
-                        sessionId, userId, modelId, errorContent);
+                chatMessageService.sendErrorResponseMessage(sessionId, userId, modelId, errorContent, errorMessage);
+                log.info("错误响应已保存到数据库，会话ID：{}，用户ID：{}，模型ID：{}，状态：3，内容：{}，错误根因：{}",
+                        sessionId, userId, modelId, errorContent, errorMessage);
             } else {
                 log.warn("无法保存错误响应到数据库，缺少必要参数：sessionId={}, userId={}, modelId={}",
                         sessionId, userId, modelId);
@@ -222,26 +237,59 @@ public class ChatPersistenceService {
 
     public ChatResponseDTO saveErrorResponseAndReturn(ChatStreamSink sink, String errorMessage,
                                                       ChatRequestDTO request, AiModel model) {
+        // 兼容旧路径：errorMessage 同时作为 content 与 error_message
+        return saveErrorResponseAndReturn(sink, errorMessage, errorMessage, request, model);
+    }
+
+    /**
+     * 写错误流 + 落 status=3，并将真实根因写入 error_message。
+     *
+     * @param sink           流写出端口
+     * @param displayMessage 面向用户的展示文案（写入 content + SSE error 帧）
+     * @param errorMessage   真实错误根因（写入 error_message）
+     * @param request        请求 DTO
+     * @param model          AI 模型
+     * @return 失败响应 DTO
+     */
+    public ChatResponseDTO saveErrorResponseAndReturn(ChatStreamSink sink, String displayMessage, String errorMessage,
+                                                      ChatRequestDTO request, AiModel model) {
         try {
-            sink.writeError(errorMessage);
-            saveErrorResponse(request.getSessionId(), request.getUserId(), model.getId(), errorMessage);
-            return ChatResponseDTO.failure(errorMessage);
+            sink.writeError(displayMessage);
+            saveErrorResponse(request.getSessionId(), request.getUserId(), model.getId(), displayMessage, errorMessage);
+            return ChatResponseDTO.failure(displayMessage);
         } catch (IOException e) {
             log.error("发送错误响应失败，用户ID：{}，会话ID：{}", request.getUserId(), request.getSessionId(), e);
-            saveErrorResponse(request.getSessionId(), request.getUserId(), model.getId(), errorMessage);
+            saveErrorResponse(request.getSessionId(), request.getUserId(), model.getId(), displayMessage, errorMessage);
             return ChatResponseDTO.failure("System error");
         }
     }
 
     public ChatResponseDTO handleErrorResponse(ChatStreamSink sink, String errorMessage,
                                                String sessionId, Long userId, Long modelId) {
+        // 兼容旧路径：errorMessage 同时作为 content 与 error_message
+        return handleErrorResponse(sink, errorMessage, errorMessage, sessionId, userId, modelId);
+    }
+
+    /**
+     * 写错误流 + 落 status=3，并将真实根因写入 error_message。
+     *
+     * @param sink           流写出端口
+     * @param displayMessage 面向用户的展示文案（写入 content + SSE error 帧）
+     * @param errorMessage   真实错误根因（写入 error_message）
+     * @param sessionId      会话ID
+     * @param userId         用户ID
+     * @param modelId        模型ID
+     * @return 失败响应 DTO
+     */
+    public ChatResponseDTO handleErrorResponse(ChatStreamSink sink, String displayMessage, String errorMessage,
+                                               String sessionId, Long userId, Long modelId) {
         try {
-            sink.writeError(errorMessage);
+            sink.writeError(displayMessage);
             if (sessionId != null && userId != null && modelId != null) {
-                saveErrorResponse(sessionId, userId, modelId, errorMessage);
-                log.info("错误响应已保存到数据库，会话ID：{}，用户ID：{}，错误：{}", sessionId, userId, errorMessage);
+                saveErrorResponse(sessionId, userId, modelId, displayMessage, errorMessage);
+                log.info("错误响应已保存到数据库，会话ID：{}，用户ID：{}，错误：{}，根因：{}", sessionId, userId, displayMessage, errorMessage);
             }
-            return ChatResponseDTO.errorWithContent(errorMessage);
+            return ChatResponseDTO.errorWithContent(displayMessage);
         } catch (IOException e) {
             log.error("发送错误响应失败", e);
             return ChatResponseDTO.failure("System error");
@@ -253,11 +301,13 @@ public class ChatPersistenceService {
         log.error("处理流式聊天请求异常", e);
         try {
             String errorContent = "Request failed. Please try again later.";
+            // 从异常中提取真实根因（如 HTTP 429 + 上游错误体），写入 error_message
+            String rootCause = ErrorRootCauseExtractor.extract(e);
             sink.writeError(errorContent);
             if (request.getSessionId() != null && request.getUserId() != null && request.getModelId() != null) {
                 AiModel model = modelLookup.getById(request.getModelId());
                 if (model != null) {
-                    saveErrorResponse(request.getSessionId(), request.getUserId(), model.getId(), errorContent);
+                    saveErrorResponse(request.getSessionId(), request.getUserId(), model.getId(), errorContent, rootCause);
                 }
             }
             return ChatResponseDTO.errorWithContent(errorContent);

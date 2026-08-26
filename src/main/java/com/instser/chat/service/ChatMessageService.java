@@ -63,6 +63,8 @@ public interface ChatMessageService extends IService<ChatMessage> {
     /**
      * 发送错误响应消息（状态为3）
      *
+     * <p>兼容旧路径：不区分 content 与根因，error_message 留空。</p>
+     *
      * @param sessionId 会话ID
      * @param userId    用户ID
      * @param modelId   模型ID
@@ -70,6 +72,18 @@ public interface ChatMessageService extends IService<ChatMessage> {
      * @return 消息ID
      */
     Long sendErrorResponseMessage(String sessionId, Long userId, Long modelId, String errorContent);
+
+    /**
+     * 发送错误响应消息（状态为3），并写入真正的错误根因到 error_message 字段。
+     *
+     * @param sessionId 会话ID
+     * @param userId    用户ID
+     * @param modelId   模型ID
+     * @param errorContent 错误响应内容（写入 content 字段，面向用户的通用文案）
+     * @param errorMessage 错误根因（写入 error_message 字段，真实的报错信息）
+     * @return 消息ID
+     */
+    Long sendErrorResponseMessage(String sessionId, Long userId, Long modelId, String errorContent, String errorMessage);
 
     /**
      * 发送消息并返回Token信息（优化版本，避免额外数据库查询）

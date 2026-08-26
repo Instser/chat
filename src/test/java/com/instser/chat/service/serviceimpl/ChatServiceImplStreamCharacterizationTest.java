@@ -91,7 +91,9 @@ class ChatServiceImplStreamCharacterizationTest {
 
         service.saveErrorResponse("s", 1L, 2L, "Request failed. Please try again later.");
 
-        verify(chatMessageService).sendErrorResponseMessage("s", 1L, 2L, "Request failed. Please try again later.");
+        // 4参数版本委托到5参数版本，errorContent 同时写入 content 与 error_message
+        verify(chatMessageService).sendErrorResponseMessage(
+                "s", 1L, 2L, "Request failed. Please try again later.", "Request failed. Please try again later.");
         verify(chatLimitService, never()).recordModelChatUsage(anyLong(), anyString());
         verify(chatLimitService, never()).recordTokenUsage(anyLong(), anyInt());
     }

@@ -88,7 +88,13 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
 
     @Override
     public Long sendErrorResponseMessage(String sessionId, Long userId, Long modelId, String errorContent) {
-        LogUtils.logUserSessionDebug(log, userId, sessionId, "错误响应入库", "开始保存错误响应消息，模型ID：{}", modelId);
+        // 兼容旧路径：errorContent 同时写入 content 与 error_message
+        return sendErrorResponseMessage(sessionId, userId, modelId, errorContent, errorContent);
+    }
+
+    @Override
+    public Long sendErrorResponseMessage(String sessionId, Long userId, Long modelId, String errorContent, String errorMessage) {
+        LogUtils.logUserSessionDebug(log, userId, sessionId, "错误响应入库", "开始保存错误响应消息，模型ID：{}，错误根因：{}", modelId, errorMessage);
 
         ChatMessage message = new ChatMessage();
         message.setMessageId(java.util.UUID.randomUUID().toString().replace("-", ""));
@@ -102,6 +108,8 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
         message.setModelId(modelId != null ? modelId : 1L);
         message.setTokenCount(calculateTokenCount(errorContent));
         message.setStatus(3); // 错误响应状态设置为3
+        // 记录真正的错误根因到 error_message 字段
+        message.setErrorMessage(errorMessage);
         message.setCreatedTime(LocalDateTime.now());
         message.setUpdateTime(LocalDateTime.now());
 
@@ -110,8 +118,8 @@ public class ChatMessageServiceImpl extends ServiceImpl<ChatMessageDao, ChatMess
         if (saved) {
             LogUtils.logUserSessionOperation(log, userId, sessionId, "错误响应入库", "错误响应消息保存成功，消息ID：{}，内容长度：{}",
                     message.getMessageId(), errorContent != null ? errorContent.length() : 0);
-            LogUtils.logUserSessionDebug(log, userId, sessionId, "错误响应入库", "详细信息 - 数据库ID：{}，模型ID：{}，状态：3，Token数：{}",
-                    message.getId(), modelId, message.getTokenCount());
+            LogUtils.logUserSessionDebug(log, userId, sessionId, "错误响应入库", "详细信息 - 数据库ID：{}，模型ID：{}，状态：3，Token数：{}，错误根因：{}",
+                    message.getId(), modelId, message.getTokenCount(), errorMessage);
             return message.getId();
         } else {
             LogUtils.logUserSessionError(log, userId, sessionId, "错误响应入库", "错误响应消息保存失败，消息ID：{}", null,
