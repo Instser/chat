@@ -26,6 +26,7 @@ import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.Timer;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.SpringBootVersion;
 import org.springframework.boot.info.BuildProperties;
 import org.springframework.context.ApplicationContext;
@@ -99,6 +100,7 @@ public class AdminOpsService {
     private final PaymentAnalyticsService paymentAnalyticsService;
     private final ChatLimitCacheManager chatLimitCacheManager;
     private final LogLevelManager logLevelManager;
+    @Qualifier("aiRestTemplate")
     private final RestTemplate restTemplate;
     private final AdminAuditPublisher adminAuditPublisher;
     private final MeterRegistry meterRegistry;

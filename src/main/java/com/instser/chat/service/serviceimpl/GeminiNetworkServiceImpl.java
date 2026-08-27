@@ -5,8 +5,8 @@ import com.instser.chat.entity.GeminiGroundingResponse;
 import com.instser.chat.service.AiModelService;
 import com.instser.chat.service.GeminiNetworkService;
 import com.instser.chat.service.GeminiResponseParser;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -24,13 +24,20 @@ import java.util.Map;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class GeminiNetworkServiceImpl implements GeminiNetworkService {
 
     private final RestTemplate restTemplate;
 
     private final AiModelService aiModelService;
     private final GeminiResponseParser responseParser;
+
+    public GeminiNetworkServiceImpl(AiModelService aiModelService,
+                                    GeminiResponseParser responseParser,
+                                    @Qualifier("aiRestTemplate") RestTemplate restTemplate) {
+        this.aiModelService = aiModelService;
+        this.responseParser = responseParser;
+        this.restTemplate = restTemplate;
+    }
 
     private static final Long WEB_SEARCH_MODEL_ID = 6L;
 

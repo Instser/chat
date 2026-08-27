@@ -9,8 +9,8 @@ import com.instser.chat.entity.AiModel;
 import com.instser.chat.service.AiModelService;
 import com.instser.chat.service.ChatSessionService;
 import com.instser.chat.service.ChatTitleService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -25,12 +25,19 @@ import java.util.Map;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class ChatTitleServiceImpl implements ChatTitleService {
 
     private final AiModelService aiModelService;
     private final ChatSessionService chatSessionService;
     private final RestTemplate restTemplate;
+
+    public ChatTitleServiceImpl(AiModelService aiModelService,
+                                ChatSessionService chatSessionService,
+                                @Qualifier("aiRestTemplate") RestTemplate restTemplate) {
+        this.aiModelService = aiModelService;
+        this.chatSessionService = chatSessionService;
+        this.restTemplate = restTemplate;
+    }
 
     @Override
     public List<Map<String, String>> buildTitleMessages(ChatRequestDTO request, String aiResponse) {

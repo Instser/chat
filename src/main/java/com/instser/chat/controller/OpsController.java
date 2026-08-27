@@ -15,6 +15,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.SpringBootVersion;
 import org.springframework.boot.info.BuildProperties;
 import org.springframework.context.ApplicationContext;
@@ -62,6 +63,7 @@ public class OpsController {
     private final RedisConnectionFactory redisConnectionFactory;
     private final GeminiNetworkService geminiNetworkService;
     private final AiModelService aiModelService;
+    @Qualifier("aiRestTemplate")
     private final RestTemplate restTemplate;
 
     // ==================== /ops/version ====================
