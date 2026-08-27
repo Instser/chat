@@ -2,6 +2,16 @@
 
 ## 1. 部署说明
 
+### 一键部署脚本（推荐）
+
+日常部署与回滚优先使用项目内脚本，详见 `docs/26-08-27_13-51_一键全量部署脚本v1.0.md`：
+
+```bash
+./scripts/deploy.sh backend     # 后端：构建→上传校验→备份替换→supervisor 重启→健康检查
+./scripts/deploy.sh admin       # 管理员前端：构建→打包上传→备份替换
+./scripts/deploy.sh preflight   # 只读预检；list-backups / rollback backend 同理
+```
+
 ### 环境要求
 
 | 组件 | 版本 |

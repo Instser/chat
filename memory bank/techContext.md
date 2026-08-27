@@ -11,7 +11,7 @@
 - **安全**: Spring Security Crypto (密码加密)、Spring Security OAuth2 Client (第三方登录)
 - **构建工具**: Maven
 - **文档解析**: Apache POI 4.1.2 (Office文档)、Apache PDFBox 2.0.29 (PDF文档)
-- **图片处理**: Base64编码、AI图片解析服务集成
+- **图片处理**: Base64编码、AI图片解析服务集成（`ImageDocumentParser` 调用视觉模型把图片转文字描述存入 `t_file_upload.content`；模型由 `image-parser.*` 配置，当前 `Qwen/Qwen3-VL-8B-Instruct` @ 硅基流动）
 - **汇率服务**: 完整的实时汇率API系统 (exchangerate-api.com)
 - **缓存系统**: Redis 本地实例（家用服务器 `127.0.0.1:6379`，`redis-server 6.0.16`；可用环境变量覆盖）
 - **分布式锁**: Redisson 3.24.3 (基于Redis实现)
@@ -27,6 +27,8 @@
 - **Maven编译**: JDK 17
 - **数据库字符集**: utf8mb4_unicode_ci
 - **时区**: 系统默认时区
+- **用户前端**: Next.js 15.5.9 standalone（独立仓库 `~/Sync/Instser-code/git/tousechat/frontend`，nvm Node v22.14.0 构建，部署 `/opt/tousechat-frontend`，systemd `tousechat-frontend-pub` :3001，日志 `/var/log/tousechat-frontend.log`）
+- **一键部署**: `scripts/deploy.sh` v1.1（backend/admin/frontend + all/all-with-frontend + preflight/list-backups/rollback；JDK17 路径、supervisor 全路径、scp 大写 `-P`、备份保留 3 份等已内置，详见 `docs/26-08-27_13-51_一键全量部署脚本v1.0.md`）
 
 ## 生产服务器环境（2026-08-26 更新）
 - **架构变更**: 原公网服务器 `203.0.113.14` 已到期，现三机架构（CDN + frps 公网机 + 家用机）

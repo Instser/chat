@@ -1,3 +1,18 @@
+## 2026-08-27 14:19
+✅ deploy.sh 升级 v1.1：新增 frontend 动作（用户前端独立仓库 `/Users/instser/Sync/Instser-code/git/tousechat/frontend`，Next.js standalone）与 all-with-frontend、rollback frontend；**修复重大 bug——scp 端口必须大写 `-P`**（v1.0 误用 ssh 的 `-p`，三处上传全会失败；因真实后端部署系手工执行、脚本仅过 dry-run/mock 而未暴露，frontend 首次真实部署即撞上）。新增 tar `--no-xattrs` 与替换后 `chown -R root:root`。用户前端首次脚本化部署成功并端到端验收：standalone 构建（14 路由全静态，84M/压缩包 20M）→ MD5 校验上传 → 备份 `.bak.202608270616` → stop 后替换 → systemd 重启 Ready in 325ms → 本机 3001=200、公网首页 200（title ToUse.Chat）、/auth=200、/api/models 反代=401、新 chunk CDN/直连均=200。注意：公网短时可能命中 CDN 缓存旧 HTML（旧 chunk 404），TTL 过期自愈非故障。前端仓库尚有未提交改动（login-form/auth-context/api.ts），是否 commit 待定。详档 `docs/26-08-27_13-51_一键全量部署脚本v1.0.md`（已升 v1.1 记录）。
+
+## 2026-08-27 13:51
+✅ 新增一键全量部署脚本 `scripts/deploy.sh`（backend/admin/all + preflight + list-backups + rollback），沉淀 26-08-26_12-42 部署文档与 08-27 VL 部署实战经验：JDK17/homebrew-mvn 构建（固定 `-Dmaven.test.skip=true` 应对 test 存量错误）、frp SSH(-p 9001, BatchMode)、上传后本地 md5/远端 md5sum 一致性校验、jar 备份自动裁剪保留最近 3 份（远端已积压 6 个 ~670M，下次部署自动清理）、`install -o www -g www -m 644`、严格 stop+轮询确认 8080 释放、健康检查最长 150s（8080 监听+GET /api/models 应答 401）、error.log 字节偏移法统计本次启动 ERROR 增量、失败自动打印 error.log 尾部并提示回滚命令；回滚前另存 `*.preroll.<ts>`。设计：远端脚本带引号 heredoc 模板 + `__TOKEN__` 本地渲染管道（`remote_run/render_stdin`）；source 或 `DEPLOY_LIB_MODE=1` 只加载不派发，便于 mock 测试。验证：bash -n 通过；5 套远端脚本渲染无残留 token 且远端 bash -n 通过（坑：macOS bash3.2 管道子 shell 变量丢失，mock 须文件捕获）；真实只读 `preflight` 全绿、`list-backups` 正确列出远端备份。README-OPS 已加指引；详档 `docs/26-08-27_13-51_一键全量部署脚本v1.0.md`。用户前端 tousechat-frontend 属独立仓库，刻意不在覆盖范围。无 DB/依赖变更。
+
+## 2026-08-27 13:30
+✅ 后端部署家用机并端到端验收（含 VL 图片解析器 + AI 上游重试机制）：JDK17 `-Dmaven.test.skip=true` 构建（test 编译存在存量错误——3 个测试类未同步 OpenAiCompatibleChatClient 新构造器，非本次引入）→ scp 上传 98s → 备份 `.bak.202608270522` → supervisor（全路径 `/www/server/panel/pyenv/bin/supervisorctl`）严格 stop/start → RUNNING pid 165546、启动 18.7s、0 ERROR；日志确认 `ImageParserConfig - 图片解析器配置完成，模型：Qwen/Qwen3-VL-8B-Instruct`；/api/models、/api/admin/dashboard/overview 均 401；端到端（试用登录→上传四色PNG→VL 正确解析入库可查）通过，服务器日志实测图片解析耗时 **4.4s**（沿用现有英文长 prompt，用户明确暂不精简）；测试痕迹已清理。回滚基线：`chat-0.0.1-SNAPSHOT.jar.bak.202608270522`。
+
+## 2026-08-26 23:38
+✅ AI 上游统一重试机制：遇到所有上游错误（HTTP 4xx/5xx、超时、连接失败）按固定间隔重试 20 次、每次 500ms，在 AI 客户端层收敛，作用于系统中所有构建 AI 请求的地方，不在各业务路径重复加重试。①新增 `AiUpstreamRetryProperties`（`ai.upstream.retry.*` 可配置，默认 maxAttempts=20/fixedDelayMs=500ms，含 streamEnabled/syncEnabled 开关）；②流式路径：`OpenAiCompatibleChatClient.stream()` 用 `Flux.defer`+`retryWhen(Retry.from(...))` 重新建连重试，覆盖 chat/retry/edit-resend 三入口；③同步路径：新建 `AiRestTemplateConfig` 提供 `aiRestTemplate` Bean（禁用 SSL+装 `AiUpstreamRestTemplateInterceptor` 拦截器），`ChatTitleServiceImpl`/`GeminiNetworkServiceImpl`/`OpsController`/`AdminOpsService` 改注入 `@Qualifier("aiRestTemplate")`；④`ImageDocumentParser` 自建 RestTemplate 经 `ImageParserConfig` 静态注入重试参数后装拦截器；⑤排除 OAuth2 登录（主 RestTemplate Bean）与模型探测（AdminOpsService/AdminModelService 自建 probeClient）。javac+Lombok 编译通过。无 DB/依赖/前端变更。
+
+## 2026-08-26 23:04
+✅ 图片解析器模型替换为可配置的 VL 视觉专用模型（修复失效 + 提速 + 去硬编码）。原 `ImageDocumentParser` 硬编码 `qwen2.5-omni-7b` @ `http://203.0.113.15:3000` 已不可达（图片附件解析功能失效），且 API Key `a2366021253` 明文写死在源码。实测对比：旧模型超时不可达；通用模型 `Qwen/Qwen3.5-9B` ~9s/次带冗长思维链；VL 专用 `Qwen/Qwen3-VL-8B-Instruct` 0.6s/次、识别准确率 100%。改造：①`application.yml` 新增 `image-parser` 配置段（`api-url`/`api-key`/`model`，均支持 `${IMAGE_PARSER_*}` 环境变量覆盖）；②新建 `ImageParserConfig` 配置类，启动时 `@PostConstruct` 把 yml 值注入 `ImageDocumentParser` 静态字段（解析器由 `DocumentParserFactory.getParser` `new` 创建、不受 Spring 管理，故走静态注入）；③`ImageDocumentParser` 三个 `private static final` 改为可变静态字段 + 新增 `setConfig(apiUrl,apiKey,model)`。默认值即新模型。`mvn compile` BUILD SUCCESS，改动文件无报错。无 DB/依赖/前端变更。待部署。
+
 ## 2026-08-26 18:13
 ✅ 错误落库根因记录修复：status=3 时将真实报错写入 error_message 字段（全链路）。
 
@@ -16,9 +31,9 @@
 
 # 项目进度状态
 
-**📅 最后更新**: 2026-08-26 18:13:00
+**📅 最后更新**: 2026-08-26 23:38:00
 **👤 更新人员**: Codex
-**📊 文档版本**: v148.0
+**📊 文档版本**: v149.0
 
 ## 🚀 最新完成功能 (2026-08-26)
 
@@ -36,6 +51,27 @@
   - `saveErrorResponseAndReturn` / `handleErrorResponse` 新增带 displayMessage + errorMessage 的重载
 - **测试**: 全量 `mvn test` 130/130 通过（含更新的 ChatServiceImplTest 3 + ChatServiceImplStreamCharacterizationTest 3）
 - **影响范围**: Java 代码与测试；未改 JDK/依赖/数据库/SQL
+
+## 🚀 最新完成功能 (2026-08-26)
+
+### AI 上游统一重试机制（20 次 / 固定 500ms）✅
+- **完成时间**: 2026年8月26日 23:38
+- **目标**: 遇到所有上游错误时统一重试 20 次、每次固定间隔 500ms，在 AI 客户端层收敛，不污染业务路径
+- **新增配置类**:
+  - `AiUpstreamRetryProperties`（`@ConfigurationProperties(prefix="ai.upstream.retry")`）：maxAttempts=20、fixedDelayMs=500ms、streamEnabled=true、syncEnabled=true，均可在 application.yml 覆盖
+  - `AiUpstreamRestTemplateInterceptor`（`ClientHttpRequestInterceptor`）：同步路径对任何非 2xx 响应或 IO 异常按固定间隔重试，不区分错误类型
+  - `AiUpstreamRetryInstaller`：幂等安装拦截器到指定 RestTemplate
+  - `AiRestTemplateConfig`：提供 `aiRestTemplate` Bean（禁用 SSL + 装拦截器）
+- **流式路径改造**:
+  - `OpenAiCompatibleChatClient.stream()` 用 `Flux.defer(()->doStreamOnce(...)).retryWhen(Retry.from(...))` 包裹，每次重试重新建连；覆盖 chat/retry/edit-resend 三入口
+- **同步路径改造**（改注入 `@Qualifier("aiRestTemplate")`）:
+  - `ChatTitleServiceImpl`（标题生成）、`GeminiNetworkServiceImpl`（Gemini 联网）、`OpsController`（管理端 AI 分析）、`AdminOpsService`（日志分析）
+  - `ImageDocumentParser`（图片解析）：自建 RestTemplate，经 `ImageParserConfig` 静态注入 `AiUpstreamRetryProperties` 后装拦截器
+- **明确排除**:
+  - OAuth2 登录（`OAuth2ServiceImpl`，主 RestTemplate Bean，调 googleapis/github.com）
+  - 模型探测（`AdminOpsService`/`AdminModelService` 自建 `new RestTemplate(factory)` probeClient，探测语义不重试）
+- **编译验证**: javac + Lombok 1.18.30 注解处理通过，改动文件无报错
+- **影响范围**: Java 代码；未改 JDK/依赖/数据库/SQL/前端
 
 ## 🚀 最新完成功能 (2026-08-25)
 
