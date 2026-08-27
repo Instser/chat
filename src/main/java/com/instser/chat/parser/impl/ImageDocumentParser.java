@@ -2,6 +2,8 @@ package com.instser.chat.parser.impl;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.instser.chat.config.AiUpstreamRetryProperties;
+import com.instser.chat.config.AiUpstreamRestTemplateInterceptor;
 import com.instser.chat.parser.DocumentParser;
 import com.instser.chat.util.Base64Util;
 import lombok.extern.slf4j.Slf4j;
@@ -9,6 +11,7 @@ import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.ClientHttpRequestInterceptor;
 import org.springframework.web.client.RestTemplate;
 
 import javax.net.ssl.SSLContext;
@@ -31,12 +34,32 @@ import java.util.Map;
 public class ImageDocumentParser implements DocumentParser {
 
     /**
-     * AI服务配置 - 从test_file.txt获取
+     * AI服务配置 - 由 ImageParserConfig 在启动时从 application.yml 注入
      */
-    private static final String AI_API_URL = "http://203.0.113.15:3000/v1/chat/completions";
-    private static final String AI_API_KEY = "a2366021253";
-    private static final String AI_MODEL = "qwen2.5-omni-7b";
+    private static String AI_API_URL = "https://api.siliconflow.cn/v1/chat/completions";
+    private static String AI_API_KEY = "your-siliconflow-api-key";
+    private static String AI_MODEL = "Qwen/Qwen3-VL-8B-Instruct";
     private static final String AI_PROMPT = "Repeat the picture in detail, I don't want the main content, but a complete repetition , tell me everything you see.";
+
+    /**
+     * 由 ImageParserConfig 在启动期注入配置
+     */
+    public static void setConfig(String apiUrl, String apiKey, String model) {
+        AI_API_URL = apiUrl;
+        AI_API_KEY = apiKey;
+        AI_MODEL = model;
+    }
+
+    /** AI 上游重试参数，由 ImageParserConfig 在启动期注入（可为 null 表示不重试） */
+    private static volatile AiUpstreamRetryProperties retryProperties;
+
+    /**
+     * 由 ImageParserConfig 在启动期注入 AI 上游重试参数，
+     * 使 ImageDocumentParser 自建的 RestTemplate 也能获得统一的 AI 上游重试能力。
+     */
+    public static void setRetryProperties(AiUpstreamRetryProperties props) {
+        retryProperties = props;
+    }
 
     @Override
     public String parseDocument(byte[] fileBytes, String fileName, String fileType) throws Exception {
@@ -288,12 +311,41 @@ public class ImageDocumentParser implements DocumentParser {
             // 创建RestTemplate
             RestTemplate restTemplate = new RestTemplate();
 
+            // 安装 AI 上游重试拦截器（与系统其他 AI 调用行为一致）
+            installRetryInterceptor(restTemplate);
+
             log.debug("ImageDocumentParser RestTemplate已配置为禁用SSL验证");
             return restTemplate;
         } catch (Exception e) {
             log.error("配置RestTemplate SSL时发生错误，使用默认配置", e);
-            return new RestTemplate();
+            RestTemplate fallback = new RestTemplate();
+            installRetryInterceptor(fallback);
+            return fallback;
         }
+    }
+
+    /**
+     * 给自建 RestTemplate 安装 AI 上游重试拦截器（幂等）。
+     * retryProperties 为 null 时（启动期尚未注入）跳过，不重试。
+     */
+    private void installRetryInterceptor(RestTemplate restTemplate) {
+        AiUpstreamRetryProperties props = retryProperties;
+        if (props == null) {
+            return;
+        }
+        List<ClientHttpRequestInterceptor> interceptors = restTemplate.getInterceptors();
+        if (interceptors == null) {
+            interceptors = new ArrayList<>();
+        } else {
+            for (ClientHttpRequestInterceptor it : interceptors) {
+                if (it instanceof AiUpstreamRestTemplateInterceptor) {
+                    return;
+                }
+            }
+            interceptors = new ArrayList<>(interceptors);
+        }
+        interceptors.add(new AiUpstreamRestTemplateInterceptor(props));
+        restTemplate.setInterceptors(interceptors);
     }
 
     @Override

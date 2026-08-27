@@ -391,6 +391,12 @@ file:
     path: ${FILE_UPLOAD_PATH:src/main/resources/file}
     max-size: ${FILE_UPLOAD_MAX_SIZE:10485760}  # 5MB 5242880
 
+# 图片解析配置（ImageDocumentParser 调用视觉模型把图片转文字描述）
+image-parser:
+  api-url: ${IMAGE_PARSER_API_URL:https://api.siliconflow.cn/v1/chat/completions}
+  api-key: ${IMAGE_PARSER_API_KEY:your-siliconflow-api-key}
+  model: ${IMAGE_PARSER_MODEL:Qwen/Qwen3-VL-8B-Instruct}
+
 # Swagger/OpenAPI 配置
 springdoc:
   api-docs:
