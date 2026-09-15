@@ -242,18 +242,22 @@ public class ApiController {
             return Result.success(response, "获取消息列表成功");
         }
 
-        // 有分页参数时，返回分页结果
+        // 有分页参数时，从尾部取最新一页（聊天 UI 语义：offset=0 为最新一页，
+        // offset 递增取更早的消息；页内仍按时间正序返回，便于直接渲染）。
+        // 注意：不能从头部切（ASC 最旧一页），否则长会话的最新消息永远不在响应中。
         int actualLimit = limit != null ? limit : 50;
         int actualOffset = offset != null ? offset : 0;
 
-        int start = Math.min(actualOffset, allMessageVOs.size());
-        int end = Math.min(actualOffset + actualLimit, allMessageVOs.size());
+        int total = allMessageVOs.size();
+        int end = Math.max(0, total - actualOffset);
+        int start = Math.max(0, end - actualLimit);
         List<ChatMessageVO> pagedMessages = allMessageVOs.subList(start, end);
 
         Map<String, Object> response = new HashMap<>();
         response.put("messages", pagedMessages);
-        response.put("total", allMessageVOs.size());
-        response.put("hasMore", end < allMessageVOs.size());
+        response.put("total", total);
+        // hasMore 表示「还有更早的消息可加载」
+        response.put("hasMore", start > 0);
 
         return Result.success(response, "获取消息成功");
     }

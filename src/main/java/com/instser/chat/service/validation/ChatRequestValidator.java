@@ -44,6 +44,9 @@ public class ChatRequestValidator {
     @Autowired(required = false)
     private RequestValidationCache requestValidationCache;
 
+    @Autowired(required = false)
+    private com.instser.chat.config.TrialProperties trialProperties;
+
     public Long getCurrentUserId(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated()) {
             log.warn("认证信息为空或未认证");
@@ -239,6 +242,11 @@ public class ChatRequestValidator {
         }
         if ("MODEL_LIMIT_EXCEEDED".equals(chatPermissionError)) {
             return "Your daily usage limit for this model has been reached. Please try another model or wait until tomorrow.";
+        }
+        if ("TRIAL_LIMIT_EXCEEDED".equals(chatPermissionError)) {
+            // 游客试用额度耗尽：提示注册转化（次数取试用配置，默认 10）
+            int limit = trialProperties != null ? trialProperties.getChatLimit() : 10;
+            return "游客试用额度已用完（共" + limit + "次），注册账号即可继续畅聊";
         }
         return "Request failed. Please try again later.";
     }

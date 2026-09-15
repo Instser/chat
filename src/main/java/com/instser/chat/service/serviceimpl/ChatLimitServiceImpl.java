@@ -176,7 +176,8 @@ public class ChatLimitServiceImpl implements ChatLimitService {
         if (remaining <= 0) {
             LogUtils.logUserOperation(log, userId, "游客试用额度", "游客试用额度已用完，已用：{}/{}",
                     trialChatQuotaManager.getUsedCount(userId), trialChatQuotaManager.getLimit());
-            return ChatLimitVO.failed("游客试用额度已用完（共" + trialChatQuotaManager.getLimit() + "次），注册账号即可继续畅聊");
+            // 返回错误码，由 ChatRequestValidator.mapPermissionError 映射为用户可见文案
+            return ChatLimitVO.failed("TRIAL_LIMIT_EXCEEDED");
         }
 
         ChatLimitVO result = new ChatLimitVO();

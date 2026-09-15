@@ -1,3 +1,6 @@
+## 2026-09-15 21:42
+✅ 游客超限提示文案修复 + 长会话消息分页最新页修复（本仓库 3 文件，未 commit、待部署）：**问题1**——超限提示显示通用英文而非预期中文：根因 `mapPermissionError` 只映射 PACKAGE_EXPIRED/MODEL_LIMIT_EXCEEDED 两个码；修复为 `validateGuestTrialQuota` 返回 `TRIAL_LIMIT_EXCEEDED` 码 + `mapPermissionError` 新增映射到「游客试用额度已用完（共X次），注册账号即可继续畅聊」（X 取 trial.chat-limit，TrialProperties 按 `@Autowired(required=false)` 注入不改构造器，chat/retry/edit-resend 三路径同生效）。**问题2**——会话 bab4441f 超限后发消息"无报错未落库+聊天框刷新滚动"：实为**分页语义颠倒的假象**——后端其实全部落库（日志证实），但 `GET /chats/{id}/messages?offset=0&limit=50` 从 ASC 头部切最旧 50 条，70 条会话的最新 20 条永不在响应中，而前端 `setCurrentMessages` 整体替换造成"刷新+滚动"与新消息"消失"；小会话不足一页故正常。修复：分页改为从尾部切最新页（offset 递增取更早），`hasMore` 语义修正为「还有更早消息」；前端零改动（不消费 messages.hasMore、不传 offset），≤50 条会话行为与旧版完全一致。详档 `docs/26-09-15_21-42_游客超限提示与消息分页最新页修复_v1.0.md`。编译通过。
+
 ## 2026-09-15 21:07
 ✅ 密钥轮询 SQL 执行 + 部署上线 + 生产端到端验证全通过：`d2d774f` Flyway V2 幂等迁移（information_schema 预检+PREPARE，生产 Flyway 仍禁用 FLYWAY_ENABLED=false，列由 SSH mysql 手动执行——8 列就位、存量行 weight=100；将来授权启用 Flyway 后 V2 幂等空转）→ `deploy.sh all` 全绿（后端 Started 17.8s、0 ERROR、admin 200）。**生产实测**：游客 trial → 建 deepseek-v4-flash 会话 → 发消息收到回复「好」→ 数据库显示该 modelCode 第 3 行 success_count=1/fail_count=1/consecutive_fails=0（last_used/success_time 已写，该行被选中且失败/成功上报均生效、成功后连续失败正确清零——库中该代码本就有 3 行，轮询即刻生效）；Redis `trial:chat:used:{guestId}`=1 TTL 7 天（游客额度扣减同步生效）。
 
