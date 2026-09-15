@@ -368,6 +368,8 @@ trial:
   retention-hours: ${TRIAL_RETENTION_HOURS:48}
   # 同一 IP 每天最多激活试用次数
   per-ip-daily-limit: ${TRIAL_PER_IP_DAILY_LIMIT:10}
+  # 每个游客账号的对话额度（AI 成功回复计 1 次，续登不重置，用完引导注册）
+  chat-limit: ${TRIAL_CHAT_LIMIT:10}
   # 体验用户用户名前缀
   username-prefix: ${TRIAL_USERNAME_PREFIX:guest_}
   # 体验用户邮箱域名

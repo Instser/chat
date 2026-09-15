@@ -51,6 +51,9 @@ public class ChatLimitServiceImpl implements ChatLimitService {
     @Autowired
     private CachedUsageService cachedUsageService;
 
+    @Autowired
+    private TrialChatQuotaManager trialChatQuotaManager;
+
     private static final String PACKAGE_CONFIG_CACHE_PREFIX = "package:config:";
     private static final String MODEL_PERMISSION_CACHE_PREFIX = "model:permission:";
     private static final String DAILY_USAGE_CACHE_PREFIX = "daily:usage:";
@@ -68,6 +71,11 @@ public class ChatLimitServiceImpl implements ChatLimitService {
     @Override
     public ChatLimitVO validateChatPermission(Long userId) {
         try {
+            // 游客试用额度优先于套餐体系：游客只受固定对话额度约束
+            if (trialChatQuotaManager.isGuest(userId)) {
+                return validateGuestTrialQuota(userId);
+            }
+
             // 使用预加载上下文，减少重复查询
             UserChatContext context = preloadUserContext(userId);
             if (context == null) {
@@ -119,6 +127,12 @@ public class ChatLimitServiceImpl implements ChatLimitService {
     @Override
     public boolean recordChatUsage(Long userId) {
         try {
+            // 游客只扣试用额度，不消耗套餐次数
+            if (trialChatQuotaManager.isGuest(userId)) {
+                trialChatQuotaManager.recordUsage(userId);
+                return true;
+            }
+
             UserAccount userAccount = userAccountService.getUserAccount(userId);
             if (userAccount == null || userAccount.getPackageId() == null) {
                 LogUtils.logUserWarning(log, userId, "记录聊天使用", "没有有效套餐，无法记录使用");
@@ -151,6 +165,26 @@ public class ChatLimitServiceImpl implements ChatLimitService {
     @Override
     public ChatLimitVO getChatLimitInfo(Long userId) {
         return validateChatPermission(userId);
+    }
+
+    /**
+     * 验证游客试用额度（独立于套餐体系）
+     * 每个游客账号固定额度（trial.chat-limit），AI 成功回复计 1 次，续登不重置
+     */
+    private ChatLimitVO validateGuestTrialQuota(Long userId) {
+        int remaining = trialChatQuotaManager.getRemaining(userId);
+        if (remaining <= 0) {
+            LogUtils.logUserOperation(log, userId, "游客试用额度", "游客试用额度已用完，已用：{}/{}",
+                    trialChatQuotaManager.getUsedCount(userId), trialChatQuotaManager.getLimit());
+            return ChatLimitVO.failed("游客试用额度已用完（共" + trialChatQuotaManager.getLimit() + "次），注册账号即可继续畅聊");
+        }
+
+        ChatLimitVO result = new ChatLimitVO();
+        result.setCanChat(true);
+        result.setPackageName("游客试用");
+        result.setLimitType("total");
+        result.setTotalRemaining(remaining);
+        return result;
     }
 
     /**
@@ -224,6 +258,13 @@ public class ChatLimitServiceImpl implements ChatLimitService {
     @Override
     public ChatLimitVO validateModelChatPermission(Long userId, String modelId) {
         try {
+            // 游客试用额度优先于套餐体系：游客不区分模型，统一受固定对话额度约束
+            if (trialChatQuotaManager.isGuest(userId)) {
+                ChatLimitVO guestResult = validateGuestTrialQuota(userId);
+                guestResult.setModelName(modelId);
+                return guestResult;
+            }
+
             // 1. 一次性获取用户账户信息（避免重复调用）
             UserAccount userAccount = userAccountService.getUserAccount(userId);
             if (userAccount == null) {
@@ -293,6 +334,12 @@ public class ChatLimitServiceImpl implements ChatLimitService {
     @Override
     public boolean recordModelChatUsage(Long userId, String modelId) {
         try {
+            // 游客只扣试用额度，不消耗套餐次数
+            if (trialChatQuotaManager.isGuest(userId)) {
+                trialChatQuotaManager.recordUsage(userId);
+                return true;
+            }
+
             // 1. 获取用户账户信息
             UserAccount userAccount = userAccountService.getUserAccount(userId);
             if (userAccount == null || userAccount.getPackageId() == null) {

@@ -4,6 +4,7 @@ import com.instser.chat.entity.Package;
 import com.instser.chat.entity.UserAccount;
 import com.instser.chat.service.ChatRateLimitService;
 import com.instser.chat.service.PackageService;
+import com.instser.chat.service.TrialChatQuotaManager;
 import com.instser.chat.service.UserAccountService;
 import com.instser.chat.service.UserDailyUsageService;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +32,7 @@ public class ChatRateLimitServiceImpl implements ChatRateLimitService {
     private final UserAccountService userAccountService;
     private final PackageService packageService;
     private final UserDailyUsageService userDailyUsageService;
+    private final TrialChatQuotaManager trialChatQuotaManager;
 
     // 频率限制缓存：key -> 时间戳列表
     private final ConcurrentHashMap<String, ConcurrentHashMap<Long, Boolean>> rateLimitCache = new ConcurrentHashMap<>();
@@ -81,6 +83,12 @@ public class ChatRateLimitServiceImpl implements ChatRateLimitService {
         }
 
         try {
+            // 游客不受套餐每日/总次数限制约束（由 ChatLimitService 的游客试用额度统一管控，
+            // 避免在此处以套餐语义提前拦截，保证游客看到试用额度提示）
+            if (trialChatQuotaManager.isGuest(userId)) {
+                return true;
+            }
+
             // 获取用户账户信息
             UserAccount userAccount = userAccountService.getUserAccount(userId);
             if (userAccount == null || userAccount.getPackageId() == null) {

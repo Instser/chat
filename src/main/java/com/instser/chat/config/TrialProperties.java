@@ -36,6 +36,11 @@ public class TrialProperties {
     private int perIpDailyLimit = 10;
 
     /**
+     * 每个游客账号的对话额度（AI 成功回复计 1 次，续登不重置，用完引导注册）
+     */
+    private int chatLimit = 10;
+
+    /**
      * 体验用户用户名前缀（用于识别与清理，与普通用户无其他区别）
      */
     private String usernamePrefix = "guest_";
