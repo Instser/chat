@@ -53,6 +53,14 @@ public class AiUpstreamRestTemplateInterceptor implements ClientHttpRequestInter
                     return response;
                 }
                 // 非 2xx：视为上游错误，准备重试
+                // 关闭上一次的错误响应，避免重试期间连接不释放（仅保留最后一次供耗尽时返回）
+                if (lastResponse != null) {
+                    try {
+                        lastResponse.close();
+                    } catch (Exception ignore) {
+                        // 关闭失败不影响重试流程
+                    }
+                }
                 lastResponse = response;
                 log.warn("AI上游同步调用非2xx响应，准备重试，attempt={}/{}，status={}，url={}",
                         attempt, maxAttempts, statusCode, request.getURI());

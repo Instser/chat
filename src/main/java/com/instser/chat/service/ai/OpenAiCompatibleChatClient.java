@@ -16,6 +16,7 @@ import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 
 /**
@@ -77,19 +78,31 @@ public class OpenAiCompatibleChatClient implements AiChatClient {
         long maxAttempts = retryProperties.getMaxAttempts();
         long delayMs = retryProperties.getFixedDelayMs();
         AtomicLong attempt = new AtomicLong(0);
-        return Flux.defer(() -> doStreamOnce(model, requestBody, timeoutSeconds))
+        // 是否已有数据流出：一旦上游开始输出 token，中途失败不能再重试，
+        // 否则会在已输出内容后重新生成整段回复造成内容重复。
+        // 429/503 等错误发生在响应状态阶段（尚未输出任何内容），不受此限制，可安全重试。
+        AtomicBoolean emitted = new AtomicBoolean(false);
+        return Flux.defer(() -> doStreamOnce(model, requestBody, timeoutSeconds)
+                        .doOnNext(buffer -> emitted.set(true)))
                 .retryWhen(Retry
                         .from(companion -> companion
-                                .map(rs -> {
+                                .flatMap(rs -> {
                                     long n = attempt.incrementAndGet();
+                                    if (emitted.get()) {
+                                        // 流式已开始输出首个 token 后中断：透传原始错误，不重试
+                                        log.warn("AI上游流式调用中途失败（已输出部分内容），不再重试，错误：{}",
+                                                rs.failure() != null ? rs.failure().getMessage() : "unknown");
+                                        return Mono.error(rs.failure() != null ? rs.failure()
+                                                : new RuntimeException("AI上游流式调用中途失败"));
+                                    }
                                     log.warn("AI上游流式调用失败，第{}次重试（最大{}次），错误：{}",
                                             n, maxAttempts, rs.failure() != null ? rs.failure().getMessage() : "unknown");
-                                    return n;
-                                })
-                                .flatMap(n -> n > maxAttempts
-                                        ? Mono.error(new RuntimeException(
-                                                "AI上游流式调用重试耗尽，attempts=" + maxAttempts))
-                                        : Mono.delay(Duration.ofMillis(delayMs)))));
+                                    if (n > maxAttempts) {
+                                        return Mono.error(new RuntimeException(
+                                                "AI上游流式调用重试耗尽，attempts=" + maxAttempts, rs.failure()));
+                                    }
+                                    return Mono.delay(Duration.ofMillis(delayMs));
+                                })));
     }
 
     private Flux<DataBuffer> doStreamOnce(AiModel model, Map<String, Object> requestBody, int timeoutSeconds) {
