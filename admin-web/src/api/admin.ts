@@ -53,12 +53,28 @@ export function listModels() {
   return apiGet<AdminModel[]>('/admin/models')
 }
 
-export function createModel(data: Record<string, unknown>) {
+/** 新建/编辑模型请求体（weight = 行级轮询权重，1-100，默认 100） */
+export interface AdminModelPayload {
+  modelCode?: string
+  modelName?: string
+  provider?: string
+  description?: string
+  baseUrl?: string
+  reason?: string
+  weight?: number
+}
+
+export function createModel(data: AdminModelPayload) {
   return apiPost<AdminModel>('/admin/models', data)
 }
 
-export function updateModel(id: string, data: Record<string, unknown>) {
+export function updateModel(id: string, data: AdminModelPayload) {
   return apiPut<AdminModel>(`/admin/models/${id}`, data)
+}
+
+/** 清零该行模型的调用统计（成功/失败次数、连续失败数、最近错误） */
+export function resetModelStats(modelId: string) {
+  return apiPost<AdminModel>(`/admin/models/${modelId}/reset-stats`)
 }
 
 export function updateModelAvailability(id: string, status: number, reason: string) {

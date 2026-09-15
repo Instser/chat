@@ -94,6 +94,55 @@ public class AiModel implements Serializable {
     private String apiKey;
 
     /**
+     * 基础权重（1-100，密钥轮询用）
+     * 有效权重 = max(1, weight − failPenalty × consecutiveFails)
+     */
+    @TableField("weight")
+    private Integer weight;
+
+    /**
+     * 累计成功次数
+     */
+    @TableField("success_count")
+    private Long successCount;
+
+    /**
+     * 累计失败次数
+     */
+    @TableField("fail_count")
+    private Long failCount;
+
+    /**
+     * 连续失败次数（成功即清零，用于动态降权）
+     */
+    @TableField("consecutive_fails")
+    private Integer consecutiveFails;
+
+    /**
+     * 最近一次失败错误摘要（截断255）
+     */
+    @TableField("last_error")
+    private String lastError;
+
+    /**
+     * 最近一次使用时间
+     */
+    @TableField("last_used_time")
+    private LocalDateTime lastUsedTime;
+
+    /**
+     * 最近一次成功时间
+     */
+    @TableField("last_success_time")
+    private LocalDateTime lastSuccessTime;
+
+    /**
+     * 最近一次失败时间
+     */
+    @TableField("last_fail_time")
+    private LocalDateTime lastFailTime;
+
+    /**
      * 创建时间
      */
     @TableField(value = "create_time", fill = FieldFill.INSERT)

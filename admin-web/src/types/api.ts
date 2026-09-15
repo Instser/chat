@@ -66,6 +66,15 @@ export interface AdminModel {
   baseUrl?: string
   apiKeyConfigured: boolean
   apiKeyMasked?: string
+  /** 行级轮询权重（1-100，默认 100） */
+  weight: number
+  /** 有效权重 = max(1, 权重 − 20 × 连续失败数) */
+  effectiveWeight: number
+  successCount: number
+  failCount: number
+  consecutiveFails: number
+  lastError?: string | null
+  lastUsedTime?: string | null
 }
 
 export interface AdminOrder {

@@ -10,6 +10,8 @@ import com.instser.chat.service.validation.ChatRequestValidator;
 
 import com.instser.chat.dto.MessageSaveResult;
 import com.instser.chat.monitor.AiCallMonitor;
+import com.instser.chat.config.AiUpstreamRetryProperties;
+import com.instser.chat.service.AiModelRotationService;
 import com.instser.chat.service.AiModelService;
 import com.instser.chat.service.ChatInterruptService;
 import com.instser.chat.service.ChatLimitService;
@@ -114,7 +116,7 @@ class ChatServiceImplStreamCharacterizationTest {
                 new EditResendPrepareHandler(chatMessageService, fileUploadService, contextBuilder),
                 new ChatRequestValidator(mock(AiModelService.class), chatLimitService, mock(ChatRateLimitService.class), mock(ChatInterruptService.class), mock(ChatSessionService.class), chatMessageService, new ChatPersistenceService(chatMessageService, mock(ChatSessionService.class), fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), mock(WebSearchContentService.class)))),
                 new ChatPersistenceService(chatMessageService, mock(ChatSessionService.class), fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), mock(WebSearchContentService.class))),
-                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new com.instser.chat.service.stream.UpstreamDeltaParser(new ContentPolicy(), new com.instser.chat.service.content.PromptLeakGuard()), mock(ChatInterruptService.class), mock(AiCallMonitor.class), new com.instser.chat.service.stream.StreamSubscriptionRegistry(), com.instser.chat.service.prompt.PromptSkillTestSupport.createService()),
+                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder(), new AiUpstreamRetryProperties(), mock(AiModelRotationService.class)), new com.instser.chat.service.stream.UpstreamDeltaParser(new ContentPolicy(), new com.instser.chat.service.content.PromptLeakGuard()), mock(ChatInterruptService.class), mock(AiCallMonitor.class), new com.instser.chat.service.stream.StreamSubscriptionRegistry(), com.instser.chat.service.prompt.PromptSkillTestSupport.createService()),
                 new StreamCompletionCoordinator(new AiResponseCompletionHandler(chatMessageService, chatLimitService, mock(ChatTitleService.class), mock(WebSearchContentService.class))),
                 new AiRequestLogger()
         );

@@ -1,6 +1,8 @@
 package com.instser.chat.service.ai;
 
+import com.instser.chat.config.AiUpstreamRetryProperties;
 import com.instser.chat.entity.AiModel;
+import com.instser.chat.service.AiModelRotationService;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.reactive.function.client.WebClient;
 
@@ -8,13 +10,14 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.mockito.Mockito.mock;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class OpenAiCompatibleChatClientThinkingTest {
 
     private final OpenAiCompatibleChatClient client =
-            new OpenAiCompatibleChatClient(WebClient.builder());
+            new OpenAiCompatibleChatClient(WebClient.builder(), new AiUpstreamRetryProperties(), mock(AiModelRotationService.class));
 
     @Test
     void thinkingTrueSetsExplicitEnabledAndNoGeminiNone() {

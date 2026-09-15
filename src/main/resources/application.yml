@@ -427,6 +427,16 @@ ai:
       stream-enabled: ${AI_UPSTREAM_RETRY_STREAM_ENABLED:true}
       # 同步路径开关
       sync-enabled: ${AI_UPSTREAM_RETRY_SYNC_ENABLED:true}
+  # 模型密钥轮询（同 model_code 多行 t_ai_model 加权轮询；关闭时使用传入模型行本身）
+  model-rotation:
+    # 轮询总开关
+    enabled: ${AI_MODEL_ROTATION_ENABLED:true}
+    # 每次连续失败扣减的权重值（有效权重 = max(1, weight - failPenalty × consecutiveFails)）
+    fail-penalty: ${AI_MODEL_ROTATION_FAIL_PENALTY:20}
+    # 连续失败次数上限（达到上限不再累加，权重最低降到 1，即自动降权该行）
+    max-consecutive-fails: ${AI_MODEL_ROTATION_MAX_CONSECUTIVE_FAILS:5}
+    # 本地缓存过期秒数（管理端改动同 model_code 任一行会立即失效缓存）
+    cache-ttl-seconds: ${AI_MODEL_ROTATION_CACHE_TTL_SECONDS:60}
 
 # 图片解析配置（ImageDocumentParser 调用视觉模型把图片转文字描述）
 image-parser:

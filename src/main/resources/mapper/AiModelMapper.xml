@@ -16,6 +16,14 @@
         <result column="is_visible" property="isVisible" />
         <result column="base_url" property="baseUrl" />
         <result column="api_key" property="apiKey" />
+        <result column="weight" property="weight" />
+        <result column="success_count" property="successCount" />
+        <result column="fail_count" property="failCount" />
+        <result column="consecutive_fails" property="consecutiveFails" />
+        <result column="last_error" property="lastError" />
+        <result column="last_used_time" property="lastUsedTime" />
+        <result column="last_success_time" property="lastSuccessTime" />
+        <result column="last_fail_time" property="lastFailTime" />
         <result column="create_time" property="createdTime" />
         <result column="update_time" property="updateTime" />
         <result column="deleted" property="deleted" />
@@ -23,7 +31,7 @@
 
     <!-- 通用查询结果列 -->
     <sql id="Base_Column_List">
-        id, model_code, model_name, description, provider, version, token_limit, price_per_1k_tokens, is_available, is_visible, base_url, api_key, create_time, update_time, deleted
+        id, model_code, model_name, description, provider, version, token_limit, price_per_1k_tokens, is_available, is_visible, base_url, api_key, weight, success_count, fail_count, consecutive_fails, last_error, last_used_time, last_success_time, last_fail_time, create_time, update_time, deleted
     </sql>
 
     <!-- 根据模型代码查询模型 -->

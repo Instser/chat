@@ -71,6 +71,12 @@ public class AdminModelController {
         return adminModelService.updateVisibility(modelId, request);
     }
 
+    @PostMapping("/{modelId}/reset-stats")
+    @Operation(summary = "清零该行的轮询统计（累计成功/失败、连续失败、最近错误）")
+    public Result<AdminModelVO> resetStats(@PathVariable Long modelId) {
+        return adminModelService.resetStats(modelId);
+    }
+
     @PostMapping("/{modelId}/test")
     @Operation(summary = "轻量连通性测试")
     public Result<Map<String, Object>> test(@PathVariable Long modelId) {

@@ -18,6 +18,8 @@ import com.instser.chat.entity.SearchResponse;
 import com.instser.chat.entity.WebSearchResult;
 import com.instser.chat.dto.ChatRequestDTO;
 import com.instser.chat.monitor.AiCallMonitor;
+import com.instser.chat.config.AiUpstreamRetryProperties;
+import com.instser.chat.service.AiModelRotationService;
 import com.instser.chat.service.AiModelService;
 import com.instser.chat.service.ChatInterruptService;
 import com.instser.chat.service.ChatLimitService;
@@ -299,7 +301,7 @@ class ChatServiceImplStageOneCharacterizationTest {
                 new EditResendPrepareHandler(chatMessageService, fileUploadService, new ChatContextBuilder(chatMessageService, fileUploadService, networkSearchOrchestrator)),
                 new ChatRequestValidator(aiModelService, chatLimitService, chatRateLimitService, chatInterruptService, chatSessionService, chatMessageService, new ChatPersistenceService(chatMessageService, chatSessionService, fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, chatTitleService, webSearchContentService))),
                 new ChatPersistenceService(chatMessageService, chatSessionService, fileUploadService, chatLimitService, new AiResponseCompletionHandler(chatMessageService, chatLimitService, chatTitleService, webSearchContentService)),
-                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder()), new com.instser.chat.service.stream.UpstreamDeltaParser(new ContentPolicy(), new com.instser.chat.service.content.PromptLeakGuard()), chatInterruptService, aiCallMonitor, new com.instser.chat.service.stream.StreamSubscriptionRegistry(), com.instser.chat.service.prompt.PromptSkillTestSupport.createService()),
+                new AiStreamProcessor(new OpenAiCompatibleChatClient(WebClient.builder(), new AiUpstreamRetryProperties(), mock(AiModelRotationService.class)), new com.instser.chat.service.stream.UpstreamDeltaParser(new ContentPolicy(), new com.instser.chat.service.content.PromptLeakGuard()), chatInterruptService, aiCallMonitor, new com.instser.chat.service.stream.StreamSubscriptionRegistry(), com.instser.chat.service.prompt.PromptSkillTestSupport.createService()),
                 new StreamCompletionCoordinator(new AiResponseCompletionHandler(chatMessageService, chatLimitService, chatTitleService, webSearchContentService)),
                 new AiRequestLogger()
         );

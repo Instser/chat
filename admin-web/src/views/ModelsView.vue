@@ -8,6 +8,14 @@
       </div>
     </div>
 
+    <el-alert
+      class="model-tip"
+      type="info"
+      show-icon
+      :closable="true"
+      title="相同模型代码可配置多行（多套 Key/端点），聊天时按有效权重轮询使用；某行连续失败会自动降权，成功即恢复。"
+    />
+
     <el-table :data="rows" v-loading="loading" border stripe size="small">
       <el-table-column prop="modelCode" label="代码" min-width="140" />
       <el-table-column prop="modelName" label="名称" min-width="140" />
@@ -31,12 +39,52 @@
           <span class="mono">{{ row.apiKeyConfigured ? row.apiKeyMasked || '已配置' : '未配置' }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="280" fixed="right">
+      <el-table-column label="权重" width="150">
+        <template #default="{ row }">
+          <span>{{ row.weight }}</span>
+          <el-tag
+            v-if="isDegraded(row)"
+            class="weight-tag"
+            type="warning"
+            size="small"
+            title="失败自动降权，成功恢复"
+          >
+            有效 {{ row.effectiveWeight }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="成功/失败" width="100">
+        <template #default="{ row }">{{ row.successCount }}/{{ row.failCount }}</template>
+      </el-table-column>
+      <el-table-column label="连续失败" width="90">
+        <template #default="{ row }">
+          <span v-if="Number(row.consecutiveFails) > 0" class="warn-text">{{ row.consecutiveFails }}</span>
+          <span v-else>{{ row.consecutiveFails }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="最近错误" width="200">
+        <template #default="{ row }">
+          <span v-if="row.lastError" class="err-cell" :title="row.lastError">{{ row.lastError }}</span>
+          <span v-else>-</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="360" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
           <el-button link type="primary" @click="openCredential(row)">凭据</el-button>
           <el-button link type="primary" @click="toggleAvailability(row)">启停</el-button>
           <el-button link @click="runTest(row)">测试</el-button>
+          <el-popconfirm
+            title="确认重置该行模型的调用统计？"
+            confirm-button-text="确定"
+            cancel-button-text="取消"
+            width="240"
+            @confirm="resetStats(row)"
+          >
+            <template #reference>
+              <el-button link type="warning">重置统计</el-button>
+            </template>
+          </el-popconfirm>
         </template>
       </el-table-column>
     </el-table>
@@ -46,6 +94,7 @@
         <el-form-item label="代码"><el-input v-model="form.modelCode" /></el-form-item>
         <el-form-item label="名称"><el-input v-model="form.modelName" /></el-form-item>
         <el-form-item label="提供商"><el-input v-model="form.provider" /></el-form-item>
+        <el-form-item label="权重"><el-input-number v-model="form.weight" :min="1" :max="100" /></el-form-item>
         <el-form-item label="描述"><el-input v-model="form.description" type="textarea" /></el-form-item>
         <el-form-item label="baseUrl"><el-input v-model="form.baseUrl" /></el-form-item>
         <el-form-item label="原因"><el-input v-model="form.reason" /></el-form-item>
@@ -76,6 +125,7 @@ import type { AdminModel } from '@/types/api'
 import {
   createModel,
   listModels,
+  resetModelStats,
   testModel,
   updateModel,
   updateModelAvailability,
@@ -95,6 +145,7 @@ const form = reactive({
   modelCode: '',
   modelName: '',
   provider: '',
+  weight: 100,
   description: '',
   baseUrl: '',
   reason: '',
@@ -112,9 +163,22 @@ async function load() {
   }
 }
 
+/** 有效权重低于配置权重即为降权中 */
+function isDegraded(row: AdminModel) {
+  return Number(row.effectiveWeight) < Number(row.weight)
+}
+
 function openCreate() {
   editingId.value = null
-  Object.assign(form, { modelCode: '', modelName: '', provider: '', description: '', baseUrl: '', reason: '' })
+  Object.assign(form, {
+    modelCode: '',
+    modelName: '',
+    provider: '',
+    weight: 100,
+    description: '',
+    baseUrl: '',
+    reason: '',
+  })
   dialogVisible.value = true
 }
 
@@ -124,6 +188,7 @@ function openEdit(row: AdminModel) {
     modelCode: row.modelCode,
     modelName: row.modelName,
     provider: row.provider || '',
+    weight: Number(row.weight ?? 100),
     description: row.description || '',
     baseUrl: row.baseUrl || '',
     reason: '',
@@ -183,6 +248,17 @@ async function toggleAvailability(row: AdminModel) {
   }
 }
 
+/** 清零该行模型的调用统计（el-popconfirm 二次确认后触发） */
+async function resetStats(row: AdminModel) {
+  try {
+    await resetModelStats(row.id)
+    ElMessage.success('统计已重置')
+    load()
+  } catch (e) {
+    showApiError(e)
+  }
+}
+
 async function runTest(row: AdminModel) {
   try {
     const result = await testModel(row.id)
@@ -207,3 +283,27 @@ async function runTest(row: AdminModel) {
 
 onMounted(load)
 </script>
+
+<style scoped>
+.model-tip {
+  margin-bottom: 12px;
+}
+
+.weight-tag {
+  margin-left: 6px;
+}
+
+.warn-text {
+  color: #e6a23c;
+  font-weight: 600;
+}
+
+.err-cell {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+</style>

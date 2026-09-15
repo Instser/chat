@@ -1,6 +1,7 @@
 package com.instser.chat.admin.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.instser.chat.admin.audit.AdminAuditPublisher;
 import com.instser.chat.admin.common.SensitiveMasker;
 import com.instser.chat.admin.dto.AdminModelCredentialRequest;
@@ -9,6 +10,7 @@ import com.instser.chat.admin.dto.AdminStatusRequest;
 import com.instser.chat.admin.vo.AdminModelVO;
 import com.instser.chat.common.result.Result;
 import com.instser.chat.entity.AiModel;
+import com.instser.chat.service.AiModelRotationService;
 import com.instser.chat.service.AiModelService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpEntity;
@@ -35,9 +37,13 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class AdminModelService {
 
+    /** 密钥轮询基础权重默认值 */
+    private static final int DEFAULT_WEIGHT = 100;
+
     private final AiModelService aiModelService;
     private final AdminAuditPublisher adminAuditPublisher;
     private final RestTemplate restTemplate;
+    private final AiModelRotationService aiModelRotationService;
 
     public List<AdminModelVO> listAll() {
         return aiModelService.list(new LambdaQueryWrapper<AiModel>()
@@ -59,6 +65,8 @@ public class AdminModelService {
         model.setCreatedTime(LocalDateTime.now());
         model.setUpdateTime(LocalDateTime.now());
         aiModelService.save(model);
+        // 新增行可能是同 model_code 密钥池的新成员：立即失效该代码的本地缓存
+        aiModelRotationService.evictCache(model.getModelCode());
         String createReason = StringUtils.hasText(request.getReason()) ? request.getReason() : "N/A";
         adminAuditPublisher.success("MODEL_CREATE", String.valueOf(model.getId()),
                 "code=" + model.getModelCode() + ",reason=" + createReason);
@@ -69,9 +77,13 @@ public class AdminModelService {
     public Result<AdminModelVO> update(Long modelId, AdminModelUpsertRequest request) {
         AiModel model = requireModel(modelId);
         // 允许模型代码重复，更新时不再校验代码冲突。
+        String oldModelCode = model.getModelCode();
         apply(model, request);
         model.setUpdateTime(LocalDateTime.now());
         aiModelService.updateById(model);
+        // 权重/代码可能变更：新旧 model_code 的密钥池缓存都失效
+        aiModelRotationService.evictCache(oldModelCode);
+        aiModelRotationService.evictCache(model.getModelCode());
         String updateReason = StringUtils.hasText(request.getReason()) ? request.getReason() : "N/A";
         adminAuditPublisher.success("MODEL_UPDATE", String.valueOf(modelId),
                 "code=" + model.getModelCode() + ",reason=" + updateReason);
@@ -87,6 +99,8 @@ public class AdminModelService {
         model.setApiKey(request.getApiKey().trim());
         model.setUpdateTime(LocalDateTime.now());
         aiModelService.updateById(model);
+        // 凭据变更：该 model_code 的密钥池缓存立即失效
+        aiModelRotationService.evictCache(model.getModelCode());
         // reason 现为可选字段，留空时记录占位，便于审计链路保持统一格式。
         String reason = StringUtils.hasText(request.getReason()) ? request.getReason() : "N/A";
         adminAuditPublisher.success("MODEL_CREDENTIAL_UPDATE", String.valueOf(modelId),
@@ -101,6 +115,8 @@ public class AdminModelService {
         model.setIsAvailable(request.getStatus());
         model.setUpdateTime(LocalDateTime.now());
         aiModelService.updateById(model);
+        // 可用性决定该行是否参与轮询：缓存立即失效
+        aiModelRotationService.evictCache(model.getModelCode());
         adminAuditPublisher.success("MODEL_AVAILABILITY", String.valueOf(modelId),
                 "old=" + old + ",new=" + request.getStatus() + ",reason=" + request.getReason());
         return Result.success(toVo(model), "模型可用状态已更新");
@@ -113,9 +129,40 @@ public class AdminModelService {
         model.setIsVisible(request.getStatus());
         model.setUpdateTime(LocalDateTime.now());
         aiModelService.updateById(model);
+        // 可见性不影响轮询候选，但为保证管理端展示与缓存一致，一并失效
+        aiModelRotationService.evictCache(model.getModelCode());
         adminAuditPublisher.success("MODEL_VISIBILITY", String.valueOf(modelId),
                 "old=" + old + ",new=" + request.getStatus() + ",reason=" + request.getReason());
         return Result.success(toVo(model), "模型可见状态已更新");
+    }
+
+    /**
+     * 清零某模型行的轮询统计（累计成功/失败、连续失败、最近错误），使有效权重回到基础权重。
+     * 仅影响该行自身的统计列，不改动凭据与可用性。
+     */
+    @Transactional
+    public Result<AdminModelVO> resetStats(Long modelId) {
+        AiModel model = requireModel(modelId);
+        LocalDateTime now = LocalDateTime.now();
+        LambdaUpdateWrapper<AiModel> wrapper = new LambdaUpdateWrapper<>();
+        wrapper.eq(AiModel::getId, modelId)
+                .set(AiModel::getSuccessCount, 0L)
+                .set(AiModel::getFailCount, 0L)
+                .set(AiModel::getConsecutiveFails, 0)
+                // 显式置 NULL，避免 null 值绑定歧义
+                .setSql("last_error = NULL")
+                .set(AiModel::getUpdateTime, now);
+        aiModelService.update(wrapper);
+        // 本地缓存中的连续失败数立即归零（权重恢复）
+        aiModelRotationService.evictCache(model.getModelCode());
+        AiModel refreshed = aiModelService.getById(modelId);
+        AiModel result = refreshed != null ? refreshed : model;
+        // 审计只记录脱敏 key 与变更摘要，绝不落完整密钥
+        adminAuditPublisher.success("MODEL_RESET_STATS", String.valueOf(modelId),
+                "code=" + result.getModelCode()
+                        + ",apiKey=" + SensitiveMasker.maskSecret(result.getApiKey())
+                        + ",reset=success_count,fail_count,consecutive_fails,last_error");
+        return Result.success(toVo(result), "轮询统计已清零");
     }
 
     /**
@@ -241,6 +288,12 @@ public class AdminModelService {
         if (StringUtils.hasText(request.getBaseUrl())) {
             model.setBaseUrl(request.getBaseUrl().trim());
         }
+        // 密钥轮询基础权重：留空默认 100，范围由 DTO 校验约束
+        if (request.getWeight() != null) {
+            model.setWeight(request.getWeight());
+        } else if (model.getWeight() == null) {
+            model.setWeight(DEFAULT_WEIGHT);
+        }
     }
 
     private AiModel requireModel(Long modelId) {
@@ -266,6 +319,14 @@ public class AdminModelService {
                 .baseUrl(model.getBaseUrl())
                 .apiKeyConfigured(SensitiveMasker.hasSecret(model.getApiKey()))
                 .apiKeyMasked(SensitiveMasker.maskSecret(model.getApiKey()))
+                .weight(model.getWeight())
+                // 有效权重按当前连续失败数实时计算，供前端展示降权效果
+                .effectiveWeight(aiModelRotationService.effectiveWeight(model))
+                .successCount(model.getSuccessCount())
+                .failCount(model.getFailCount())
+                .consecutiveFails(model.getConsecutiveFails())
+                .lastError(model.getLastError())
+                .lastUsedTime(model.getLastUsedTime())
                 .createdTime(model.getCreatedTime())
                 .updateTime(model.getUpdateTime())
                 .build();

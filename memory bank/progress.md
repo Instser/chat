@@ -1,3 +1,6 @@
+## 2026-09-15 20:36
+✅ 模型 API 密钥轮询（行级权重，本仓库，改动未 commit、**待执行 SQL+部署**）：用户决策不新建表——「密钥池」= 同 model_code 的多行 t_ai_model（2026-08-20 已放开 modelCode 重复）。t_ai_model 仅 ALTER 加 8 列（weight 默认 100 + 成功/失败/连续失败统计 + last_error 脱敏摘要 + 三个时间列），无数据迁移。新增 `AiModelRotationService`：按会话 modelId 定位 modelCode → 可用行（is_available=1+未删除+api_key 非空）按有效权重加权随机选整行（baseUrl+apiKey 生效），`有效权重 = max(1, weight − 20×consecutiveFails)`，失败降权成功清零恢复；本地缓存 TTL 60s、上报即改缓存立即生效、管理端写操作按 modelCode 失效缓存；池空/异常回退原模型行（单密钥逻辑）。`OpenAiCompatibleChatClient` 每次订阅（含每次重试）defer 内重新选行——429 上报降权后下次重试大概率换 key，形成「重试+换密钥」闭环；emitted 门控保持（已输出断流不重试不上报）。管理端：模型列表加权重（降权标「有效 xx」）/成败/连续失败/最近错误列 + 「重置统计」（POST /admin/models/{id}/reset-stats + 审计 MODEL_RESET_STATS）+ 新建/编辑加权重输入；「加 key」= 加一行同 modelCode 配置。配置 `ai.model-rotation.*`（enabled/fail-penalty/max-consecutive-fails/cache-ttl-seconds 均可 env 覆盖）。验证：编译/构建全过、test-compile 新增错误 0（顺带修复 6 个构造器存量错误）、子代理离线行为探针覆盖加权分布/降权/恢复/429 切换/emitted 门控。**⚠️ 部署硬约束：必须先执行 `sql/09-15 20_17_模型密钥轮询列.sql` 再部署后端（实体已含新列，否则 MP 查询报 Unknown column）。** 详档 `docs/26-09-15_20-36_模型API密钥轮询行级权重_v1.0.md`（含验收清单）。未覆盖：标题/联网/probe 路径保持单 key。
+
 ## 2026-09-15 19:57
 ✅ AI 上游重试间隔默认 500ms → 1000ms（应用户要求，本仓库）：`AiUpstreamRetryProperties.fixedDelayMs` 代码默认值与 `application.yml` 的 `AI_UPSTREAM_RETRY_FIXED_DELAY_MS` 默认值同步改为 1000，类注释/README-OPS/详档（追加节）同步；20 次上限、emitted 门控、连接泄漏修复不变。编译通过，随本次提交重新部署后端生效。
 
