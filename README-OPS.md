@@ -46,7 +46,7 @@ java -jar chat.jar --spring.profiles.active=prod
 | `TRIAL_PER_IP_DAILY_LIMIT` | 同一 IP 每天最多激活试用次数（默认 10） |
 | `TRIAL_CHAT_LIMIT` | 每个游客账号的对话额度（默认 10 次，AI 成功回复计 1 次，续登不重置，用完引导注册） |
 | `AI_UPSTREAM_RETRY_MAX_ATTEMPTS` | AI 上游调用最大重试次数（默认 20，不含首次；429/503 等任意上游错误均重试） |
-| `AI_UPSTREAM_RETRY_FIXED_DELAY_MS` | AI 上游重试固定间隔毫秒（默认 500） |
+| `AI_UPSTREAM_RETRY_FIXED_DELAY_MS` | AI 上游重试固定间隔毫秒（默认 1000，即 1 秒） |
 | `TRIAL_USERNAME_PREFIX` | 体验用户用户名前缀（默认 `guest_`） |
 | `TRIAL_EMAIL_DOMAIN` | 体验用户邮箱域名（默认 `guest.local`） |
 | `JWT_ADMIN_SECRET` | 管理员 JWT 签名密钥（**必须与前台 `JWT_SECRET` 不同**；不设置时使用内置默认串，生产务必显式配置） |

@@ -1,3 +1,6 @@
+## 2026-09-15 19:57
+✅ AI 上游重试间隔默认 500ms → 1000ms（应用户要求，本仓库）：`AiUpstreamRetryProperties.fixedDelayMs` 代码默认值与 `application.yml` 的 `AI_UPSTREAM_RETRY_FIXED_DELAY_MS` 默认值同步改为 1000，类注释/README-OPS/详档（追加节）同步；20 次上限、emitted 门控、连接泄漏修复不变。编译通过，随本次提交重新部署后端生效。
+
 ## 2026-09-15 19:44
 ✅ 三提交部署上线（backend+admin，`./scripts/deploy.sh all --yes` 全绿）：`2c4cdef` 前后台会话隔离 + `680dc7b` 游客试用额度 + `4cf3355` 流式断流防重复。后端：构建 112M → MD5 校验 → 备份 `.bak.202609151140` → supervisor 重启 Started 21.8s → 0 ERROR 增量 → /api/models 与 /api/admin/dashboard/overview 均 401；admin：构建 2.6M → 备份 `/opt/tousechat-admin.bak.202609151141` → /admin/ 200。线上验收：`POST /api/admin/auth/login` 错误密码返回顶层 6005（admin-web 可识别）✓、`/api/admin/auth/me` 未登录 401 ✓、前台 `/api/auth/login` 嵌套错误结构不变（用户前端无回归）✓、`/api/auth/trial` 正常发放游客 ✓。**⚠️ CDN 再次缓存旧 /admin/ HTML（引用上一版 hash index-BlBXGAKG.js，源站已替换为 index-BDw3WnqD.js，旧 hash 走 SPA fallback 返回 text/html → 缓存期内后台白屏），需用户在阿里云 CDN 控制台刷新 /admin/ 路径缓存（同今日早些时候的处理）；根治建议：CDN 不缓存 .html 或调短 TTL + Nginx 对 /admin/assets/ 缺失文件返回 404 不兜底。** 游客额度对话级扣减与重试行为待真实流量观察（验收清单见各详档）。
 

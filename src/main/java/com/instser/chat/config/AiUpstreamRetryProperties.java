@@ -32,8 +32,8 @@ public class AiUpstreamRetryProperties {
     /** 最大重试次数（不含首次请求）。默认 20 次。 */
     private int maxAttempts = 20;
 
-    /** 每次重试固定间隔（毫秒）。默认 500ms。 */
-    private long fixedDelayMs = 500L;
+    /** 每次重试固定间隔（毫秒）。默认 1000ms（1 秒）。 */
+    private long fixedDelayMs = 1000L;
 
     /**
      * 流式路径是否启用重试。

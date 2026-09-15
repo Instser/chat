@@ -23,7 +23,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * OpenAI-compatible + Gemini 特例 的 AI Client 实现。
  *
  * <p><b>上游重试</b>：{@link #stream} 对任何上游错误（HTTP 4xx/5xx、超时、连接失败）
- * 按 {@link AiUpstreamRetryProperties} 配置固定间隔重试，默认 20 次 / 500ms，
+ * 按 {@link AiUpstreamRetryProperties} 配置固定间隔重试，默认 20 次 / 1s，
  * 统一作用于所有走流式对话链路的业务入口（chat / retry / edit-resend）。</p>
  */
 @Slf4j

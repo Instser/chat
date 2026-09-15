@@ -422,7 +422,7 @@ ai:
       # 最大重试次数（不含首次请求）
       max-attempts: ${AI_UPSTREAM_RETRY_MAX_ATTEMPTS:20}
       # 每次重试固定间隔（毫秒）
-      fixed-delay-ms: ${AI_UPSTREAM_RETRY_FIXED_DELAY_MS:500}
+      fixed-delay-ms: ${AI_UPSTREAM_RETRY_FIXED_DELAY_MS:1000}
       # 流式路径开关（仅对尚未输出任何内容的失败重试；中途断流不重试，避免重复内容）
       stream-enabled: ${AI_UPSTREAM_RETRY_STREAM_ENABLED:true}
       # 同步路径开关
