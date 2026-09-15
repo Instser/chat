@@ -1,28 +1,24 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import type { UserVO } from '@/types/api'
+import type { AdminUserVO } from '@/types/api'
 import * as authApi from '@/api/auth'
 
 export const useAuthStore = defineStore('auth', () => {
-  const user = ref<UserVO | null>(null)
+  const user = ref<AdminUserVO | null>(null)
   const loaded = ref(false)
   const loading = ref(false)
 
   const isAuthenticated = computed(() => !!user.value)
-  const isAdmin = computed(() => (user.value?.role || '').toLowerCase() === 'admin')
-  const displayName = computed(() => user.value?.username || '未登录')
+  // 管理员会话由服务端签发，能登录即管理员，故与 isAuthenticated 等价
+  const isAdmin = computed(() => !!user.value)
+  const displayName = computed(() => user.value?.nickname || user.value?.username || '未登录')
 
-  async function login(usernameOrEmail: string, password: string) {
+  async function login(username: string, password: string) {
     loading.value = true
     try {
-      const data = await authApi.login(usernameOrEmail, password)
+      const data = await authApi.login(username, password)
       user.value = data
       loaded.value = true
-      if ((data.role || '').toLowerCase() !== 'admin') {
-        await authApi.logout().catch(() => undefined)
-        user.value = null
-        throw new Error('当前账号不是管理员')
-      }
       return data
     } finally {
       loading.value = false
@@ -34,11 +30,7 @@ export const useAuthStore = defineStore('auth', () => {
     loading.value = true
     try {
       const data = await authApi.fetchMe()
-      if ((data.role || '').toLowerCase() !== 'admin') {
-        user.value = null
-      } else {
-        user.value = data
-      }
+      user.value = data || null
       loaded.value = true
       return user.value
     } catch {

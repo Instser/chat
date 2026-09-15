@@ -14,17 +14,12 @@ export interface PageResult<T> {
   pages: number
 }
 
-export interface UserVO {
-  id: string
+/** 管理员账号（能登录管理后台即管理员，无 role 字段） */
+export interface AdminUserVO {
+  id: number
   username: string
-  email?: string
-  avatar?: string
-  role: string
-  status: number
-  lastLoginTime?: string
-  createdTime?: string
-  packageName?: string
-  packageId?: string
+  nickname?: string | null
+  lastLoginTime?: string | null
 }
 
 export interface AdminUserSummary {

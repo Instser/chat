@@ -337,6 +337,27 @@ jwt:
   # 请求头名称
   header-name: ${JWT_HEADER_NAME:Authorization}
 
+  # 管理员JWT（后台会话隔离：独立密钥、独立Cookie，与前台 auth-token 并存互不顶号）
+  admin:
+    # 管理员JWT密钥（必须与前台 jwt.secret 不同，生产环境请使用环境变量）
+    secret: ${JWT_ADMIN_SECRET:change-me-admin-jwt-secret-key}
+    # 管理员Token过期时间（秒）- 12小时
+    expiration: ${JWT_ADMIN_EXPIRATION:43200}
+    # 管理员Cookie名称
+    cookie-name: ${JWT_ADMIN_COOKIE_NAME:admin-token}
+    # 管理员Cookie是否HttpOnly
+    http-only: ${JWT_ADMIN_HTTP_ONLY:true}
+    # 管理员Cookie是否Secure（HTTPS）
+    secure: ${JWT_ADMIN_SECURE:false}
+    # 管理员Cookie SameSite策略
+    same-site: ${JWT_ADMIN_SAME_SITE:Lax}
+    # 管理员Cookie路径
+    path: ${JWT_ADMIN_PATH:/api}
+    # Token前缀
+    token-prefix: ${JWT_ADMIN_TOKEN_PREFIX:Bearer }
+    # 请求头名称
+    header-name: ${JWT_ADMIN_HEADER_NAME:Authorization}
+
 # 一键试用配置
 trial:
   # 功能开关（生产默认关闭，demo 环境打开）

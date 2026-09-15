@@ -1,5 +1,6 @@
 package com.instser.chat.config;
 
+import com.instser.chat.security.AdminJwtAuthenticationFilter;
 import com.instser.chat.security.JwtAuthenticationEntryPoint;
 import com.instser.chat.security.JwtAuthenticationFilter;
 import jakarta.servlet.http.HttpServletResponse;
@@ -41,6 +42,7 @@ import java.util.Arrays;
 public class SecurityConfig {
 
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final AdminJwtAuthenticationFilter adminJwtAuthenticationFilter;
     private final JwtAuthenticationEntryPoint jwtAuthenticationEntryPoint;
     private final UserDetailsService userDetailsService;
 
@@ -187,6 +189,9 @@ public class SecurityConfig {
                 // 支付回调接口 - 允许第三方支付平台回调（无需JWT认证）
                 .requestMatchers("/payment/alipay/notify", "/payment/yipay/notify", "/payment/stripe/webhook", "/payment/paypal/webhook").permitAll()
 
+                // 管理员登录接口（后台独立会话入口，无需认证）
+                .requestMatchers("/admin/auth/login").permitAll()
+
                 // Gemini API密钥管理接口 - 仅允许localhost访问（在Controller中验证）
                 .requestMatchers("/admin/gemini/**").permitAll()
 
@@ -214,7 +219,10 @@ public class SecurityConfig {
             )
 
             // 添加JWT过滤器
+            // 注意：管理员过滤器注册在用户前台过滤器之后，使其排在更靠前的位置
+            // （/admin/** 使用独立 admin-token 与独立密钥，前台 Token 一律不生效）
             .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+            .addFilterBefore(adminJwtAuthenticationFilter, JwtAuthenticationFilter.class)
 
             // 设置认证提供者
             .authenticationProvider(authenticationProvider());

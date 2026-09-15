@@ -1,10 +1,14 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-08-26 18:13:00
-**👤 更新人员**: Codex
-**📊 文档版本**: v164.0
+**📅 最后更新**: 2026-09-15 17:33:00
+**👤 更新人员**: DSH Agent
+**📊 文档版本**: v167.0
 
 ## 当前任务
+- **前后台登录会话隔离完成（2026-09-15 17:33，未 commit、待部署）** — 解决同浏览器前后台共用 `auth-token` 互相顶号问题。账号体系不变（管理员仍 `t_user` role='admin'，角色管理保留），会话层隔离：后台独立入口 `POST /api/admin/auth/login` + 独立 `admin-token` Cookie（HttpOnly/12h）+ 独立密钥 `jwt.admin.secret`（`authType=admin` 校验）；新增 `AdminJwtAuthenticationFilter` 只处理 `/admin/**`，用户过滤器对 `/admin/**` 跳过（顺带修正 context-path 剥离）；登出各清各 Cookie。后端 7 新增 + 4 修改，admin-web 6 文件（含 AdminLayout 新增修改密码对话框）；登录错误改顶层错误码（6005/6008/6001）。编译/构建/残留扫描全通过。**部署后后台旧会话全部失效，管理员需重新登录一次**；验收清单见详档 `docs/26-09-15_17-33_前后台登录会话隔离_v1.0.md`。附带：补建 `.mvn/wrapper/maven-wrapper.properties`。
+- **⚠️ 部署暂缓：前端两个改动已就绪待部署** — 用户明确"先别部署，还有其他人在修改后端"。待部署改动（前端仓库 tousechat/frontend 工作区，均未 commit）：①`tailwind.config.ts` 恢复 `darkMode: ["class"]`（修文字变浅）；②`components/chat-view.tsx` 联网搜索按钮恢复 disabled 置灰（`isNetworkEnabled` 恒 false，联网逻辑完整保留，恢复仅需移除 disabled）。待后端修改就绪后前后端一起部署，frontend 走 `scripts/deploy.sh frontend`。
+- **联网按钮"被重新打开"根因查明（2026-09-15 17:17）** — 非任何代码提交：git 全史中该按钮自 21b77c9（2025-06-26）起就是可用 toggle，无禁用提交、无 stash/悬空提交；当时的禁用只存在于旧生产手工构建（未入 git），**2026-08-27 首次 deploy.sh 脚本化部署从 git 干净源码重建**，按钮回到仓库默认的可用状态。详档 `docs/2026-09-15_17-17_联网搜索按钮恢复不可用状态_v1.0.md`。
+- **前端"文字变浅"根因修复完成（2026-09-15 16:48，待 commit/部署）** — 用户反馈聊天正文对比度骤降。像素取证：变浅文字=#e5e7eb（`dark:text-gray-200`）、正常文字=#2c2521（--foreground）。根因：提交 `3553565` 注释掉 `tailwind.config.ts` 的 `darkMode: ["class"]`，Tailwind 回退默认 `media` 策略 → 组件残留 `dark:` 变体响应 **OS 深色模式**，而背景强制亮色（globals.css 已删暗色变量、next-themes `forcedTheme="light"` 只控 class 对 media 无效）→ macOS 深色下正文白底隐形。修复：恢复 `darkMode: ["class"]`（惰性化 dark: 变体，未删规则）。验证：修复前产物含 1 处 `prefers-color-scheme: dark` 媒体查询、修复后 0。详档 `docs/2026-09-15_16-48_前端暗色变体导致正文文字变浅修复_v1.0.md`。**待 commit + deploy.sh frontend 部署并复验**。
 - **deploy.sh v1.1 + 用户前端首次脚本化部署完成（2026-08-27 14:19）** — 脚本现覆盖三大部署单元：`backend`/`admin`/`frontend`（独立仓库 tousechat/frontend，Next standalone → /opt/tousechat-frontend，systemd tousechat-frontend-pub :3001）、组合 `all`/`all-with-frontend`、回滚三者统一支持。**修复 scp 端口 bug（须大写 `-P`，v1.0 三处上传全会失败）**——教训：mock 测试拦掉 scp 永远暴露不了参数错误，上传类改动必须真实跑一次。用户前端部署端到端全绿（3001=200、公网 200、API 反代 401、新 chunk 正常），备份 `.bak.202608270616`；公网短时 CDN 缓存旧 HTML 属自愈现象非故障。
 - **一键部署脚本已上线（`scripts/deploy.sh`，2026-08-27 13:51）** — 后续部署/回滚/预检统一走脚本：`./scripts/deploy.sh backend|admin|all`、只读 `preflight`/`list-backups`、`rollback backend|admin`；可选 `--skip-build/--dry-run/--yes`。内置：JDK17+homebrew mvn、`-Dmaven.test.skip=true`（test 存量错误）、frp SSH 9001、md5 上传校验、备份保留 3 份自动裁剪（远端现存 6 个 jar 备份 ~670M，下次 backend 部署自动清理）、www 属主、严格停机端口验证、150s 健康检查（8080+/api/models=401）、ERROR 增量统计、失败打 error.log 尾部。
 - **✅ 图片解析器已部署并端到端验收（2026-08-27 13:23）** — VL 模型改造已上线家用机。JDK17 构建（`-Dmaven.test.skip=true`，test 编译有存量错误：3 个测试类未同步 `OpenAiCompatibleChatClient` 新构造器，与本次无关）→ scp 上传 → 备份 `.bak.202608270522` → supervisor 严格重启 → RUNNING pid 165546/启动18.7s/0 ERROR → 日志确认注入 `Qwen/Qwen3-VL-8B-Instruct @ 硅基流动` → API 401 验收通过 → **端到端真实验证：试用登录→上传四色PNG→VL 正确解析入库，耗时 4.4s**（沿用现有英文长 prompt；精简 prompt 可降至 1~2s，用户决定暂不改）。supervisorctl 全路径 `/www/server/panel/pyenv/bin/supervisorctl`。
@@ -14,6 +18,10 @@
 - **待部署验证：一键试用功能**（`/auth/trial` 2h 会话）— 代码与测试已完成，尚未部署到家用机；上线后验证登录页试用按钮、2h 过期 401、IP 日限流。
 - **待部署验证：错误落库根因记录修复** — 代码与测试已完成（130/130 通过），尚未部署到家用机；部署后验证 AI API 429 等场景 error_message 字段是否记录真实根因。
 - 待观察后清理：旧 `/admin/cache`/`/admin/logs` API Key 写入口与缓存二次密码；阶段 D 旧表 DROP；阶段 E SQL 归档。
+
+
+## 2026-09-15 17:33 前后台登录会话隔离
+- 会话层隔离（账号体系不变）：`admin-token`（jwt.admin.secret，authType=admin，12h HttpOnly）与 `auth-token` 双 Cookie 并存；`AdminJwtAuthenticationFilter` 只处理 /admin/** 且主体必须 ROLE_ADMIN，`JwtAuthenticationFilter` 跳过 /admin/**（并修正 shouldNotFilter 先剥离 context-path，原跳过项此前因 URI 含 context-path 实际不生效）。新增 `/admin/auth/login|me|logout|change-password`；登录失败顶层错误码 6005/6008/6001。admin-web 改走 /admin/auth/*，AdminLayout 新增修改密码对话框；角色管理（列/筛选/改角色）完整保留。详见 progress.md 与 `docs/26-09-15_17-33_前后台登录会话隔离_v1.0.md`。
 
 
 ## 2026-08-26 18:13 错误落库根因记录修复

@@ -112,7 +112,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
     
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) throws ServletException {
-        String path = request.getRequestURI();
+        // 先剥离 context-path（/api），再按业务路径判断
+        String path = request.getRequestURI().substring(request.getContextPath().length());
         String method = request.getMethod();
 
         // 跳过OPTIONS预检请求
@@ -120,7 +121,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return true;
         }
 
-        // 跳过不需要认证的路径 (注意：context-path是/api，所以这里的路径是相对于/api的)
+        // 后台路径一律跳过：管理员身份由 AdminJwtAuthenticationFilter 独立处理，
+        // 前台用户 Token 在 /admin/** 下不生效（避免普通用户身份进入后台）
+        if (path.startsWith("/admin/")) {
+            return true;
+        }
+
+        // 跳过不需要认证的路径
         return path.startsWith("/auth/login") ||
                path.startsWith("/auth/register") ||
                path.startsWith("/oauth2/login") ||

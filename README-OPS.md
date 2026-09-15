@@ -46,6 +46,9 @@ java -jar chat.jar --spring.profiles.active=prod
 | `TRIAL_PER_IP_DAILY_LIMIT` | 同一 IP 每天最多激活试用次数（默认 10） |
 | `TRIAL_USERNAME_PREFIX` | 体验用户用户名前缀（默认 `guest_`） |
 | `TRIAL_EMAIL_DOMAIN` | 体验用户邮箱域名（默认 `guest.local`） |
+| `JWT_ADMIN_SECRET` | 管理员 JWT 签名密钥（**必须与前台 `JWT_SECRET` 不同**；不设置时使用内置默认串，生产务必显式配置） |
+| `JWT_ADMIN_EXPIRATION` | 管理员 Token 有效期（秒，默认 43200，即 12 小时） |
+| `JWT_ADMIN_COOKIE_NAME` | 管理员登录 Cookie 名（默认 `admin-token`，与前台 `auth-token` 完全独立，同一浏览器可同时在线互不顶号） |
 
 ### 端口说明
 

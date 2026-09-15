@@ -51,9 +51,9 @@
 - **业务指标**: ApiMetrics（api_requests_total / api_exceptions_total）+ SlowRequestInterceptor（slow_requests_total），Counter 使用 ConcurrentHashMap 缓存，路径模板化（BEST_MATCHING_PATTERN_ATTRIBUTE）防高基数
 - **监控端点**: `/actuator/prometheus`，通过 management 端口 `127.0.0.1:8081` 暴露 Prometheus 指标
 - **管理缓存接口**: 交互式请用 JWT 管理员 `POST /admin/ops/cache/user-package/evict-all`（需 reason）。兼容期保留 `/admin/cache/user-package/refresh-all`（API Key + 二次账号密码）。
-- **管理员 API**: `/admin/users|packages|models|orders|audits|dashboard|ops/**`，JWT + ROLE_ADMIN。
+- **管理员 API**: `/admin/users|packages|models|orders|audits|dashboard|ops/**`，JWT + ROLE_ADMIN。**会话隔离（2026-09-15）**：后台独立 `admin-token` Cookie（`jwt.admin.*` 独立密钥、`authType=admin` 校验、默认 12h、HttpOnly），`/admin/**` 只由 `AdminJwtAuthenticationFilter` 处理（用户 JWT 过滤器对该前缀跳过，前台 token 在后台不生效）；登录/登出/当前管理员/改密走 `/admin/auth/*`，与前台 `auth-token` 并存、同浏览器双身份互不顶号；登录失败返回顶层错误码 6005/6008/6001。
 - **运维诊断**: `/ops/**` 仅 `X-API-Key` Header；Actuator 仍在 `127.0.0.1:8081`。
-- **管理员前端** (2026-08-03): 仓库内 `admin-web/`（Vue3+TS+Vite+Element Plus），生产路径 `/admin/`，开发代理 `/api -> 127.0.0.1:8080`，Cookie 鉴权，不使用管理 API Key。
+- **管理员前端** (2026-08-03): 仓库内 `admin-web/`（Vue3+TS+Vite+Element Plus），生产路径 `/admin/`，开发代理 `/api -> 127.0.0.1:8080`，Cookie 鉴权（2026-09-15 起为独立 `admin-token`，经 `/admin/auth/*` 端点），不使用管理 API Key。
 
 
 - **CORS 配置驱动** (2026-08-03 00:45): `SecurityConfig` / `WebConfig` 从 `app.cors.*` 读取允许源/方法/头/凭据/maxAge；默认允许源含 localhost、局域网 IP、`chat.instser.cn`；可用 `CORS_ALLOWED_ORIGINS` 环境变量覆盖。Controller 层硬编码 CORS 已同步为 `chat.instser.cn`。
