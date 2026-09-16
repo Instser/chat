@@ -1,10 +1,12 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-09-15 21:56:00
+**📅 最后更新**: 2026-09-16 11:22:00
 **👤 更新人员**: DSH Agent
-**📊 文档版本**: v173.0
+**📊 文档版本**: v175.0
 
 ## 当前任务
+- **✅ 密钥池按模型行内轮询已上线并生产验证（2026-09-16 11:22）** — 语义修正：三行 deepseek-v4-flash 是三个独立级别，不允许跨行轮换；新建 t_ai_model_key（model_id 多 key），轮询维度 modelId、baseUrl 恒定取模型行只换 key；双路径上报（key 级统计+行级汇总/兼容路径行级原语义）；管理端密钥池弹窗（CRUD+权重+启停+重置统计，脱敏+审计）。生产实测：key-B 被选中 ✓、行级汇总 ✓、其它级别行零触碰（不越级）✓；测试 key 已清理，生产空池待管理员配置。详档 `docs/26-09-16_11-22_密钥池按模型行内轮询_v1.0.md`。
+- **✅ AI 系统提示词移除「雨落千息」公司归属（2026-09-16 10:45，代码完成待部署）** — 按用户指示「完全去掉公司归属，只说自己是 To Use AI」：`PromptConstants.IDENTITY_SYSTEM_PROMPT` 删除两处公司表述（首句 `created by the Chinese company 雨落千息 (Yuluo Qianxi)`、身份重申句 `To Use AI by 雨落千息`），首句并入 `To Use AI, a helpful, intelligent, and adaptive AI assistant`；**新增防杜撰约束**（被问开发者时不得点名或编造公司/组织/团队）。其余约束（不冒充他家模型、拒绝角色扮演、Markdown 链接、不得复述系统指令）原样保留。`PromptLeakGuard` 的 `雨落千息`/`yuluo qianxi` 弱锚点按用户选择**保留**（仅对历史会话复述旧 prompt 生效）。改动点唯一（全仓 `src/main` 仅此一处含公司名，yml/管理端无提示词入口）。验证：`./mvnw -o -q compile` 退出 0；提示词相关单测 10/10 通过（`GeminiNetworkServiceImplTest` 存量 test 编译错误临时移出、跑完已还原）。详档 `docs/26-09-16_10-45_AI系统提示词移除雨落千息公司归属_v1.0.md`。无 DB/依赖/前端变更；**待重新构建部署后端生效**。
 - **✅ 游客超限提示 + 消息分页最新页修复已上线（2026-09-15 21:56，commit `3f21c60`）** — ①超限错误码 `TRIAL_LIMIT_EXCEEDED` 映射为「游客试用额度已用完（共X次），注册账号即可继续畅聊」（SSE 帧与 status=3 落库同文案，生产实测通过）；②`GET /chats/{id}/messages` 分页从「ASC 头部切最旧页」修正为「尾部切最新页」（长会话最新消息"消失"假象的根因；前端零改动，小会话行为不变，生产 60 条注入实测通过）。详档 `docs/26-09-15_21-42_游客超限提示与消息分页最新页修复_v1.0.md`。
 - **✅ 模型 API 密钥轮询已上线并生产验证通过（2026-09-15 21:07，commit `db31c3b`+`d2d774f`）** — 行级方案：同 modelCode 多行 t_ai_model 即密钥池（8 列 ALTER 已执行，Flyway V2 幂等迁移入库备将来启用）；有效权重加权随机选行（max(1, weight−20×连续失败)，失败降权成功恢复）；客户端每次重试重选 → 「重试+换密钥」闭环；管理端模型列表加权重/统计/最近错误列 + 重置统计 + 权重编辑。**生产实测**：deepseek-v4-flash（库中本就有 3 行）第 3 行 success/fail 各 +1、consecutive_fails 正确清零、时间列已写；游客额度 Redis 计数同步生效。详档 `docs/26-09-15_20-36_模型API密钥轮询行级权重_v1.0.md`。标题/联网/probe 保持单 key 未覆盖；后续可选：给其它 modelCode 增配多行 key 发挥轮询价值。
 - **✅ 三提交已部署上线（2026-09-15 19:44，backend+admin 全绿）** — `2c4cdef` 会话隔离 + `680dc7b` 游客额度 + `4cf3355` 流式防重复，`./scripts/deploy.sh all --yes`：后端 Started 21.8s、0 ERROR、接口 401 复核通过；admin /admin/ 200。线上验收：后台登录顶层 6005 ✓、/admin/auth/me 401 ✓、前台登录无回归 ✓、trial 发放正常 ✓。**⚠️ 待用户操作：阿里云 CDN 控制台刷新 /admin/ 缓存（旧 HTML 引用上一版 JS hash，缓存期内后台白屏，同今早问题）；根治建议 CDN 不缓存 .html + Nginx assets 缺失返回 404。** 游客额度扣减与重试行为待真实流量观察。
@@ -23,6 +25,10 @@
 - **待部署验证：一键试用功能**（`/auth/trial` 2h 会话）— 代码与测试已完成，尚未部署到家用机；上线后验证登录页试用按钮、2h 过期 401、IP 日限流。
 - **待部署验证：错误落库根因记录修复** — 代码与测试已完成（130/130 通过），尚未部署到家用机；部署后验证 AI API 429 等场景 error_message 字段是否记录真实根因。
 - 待观察后清理：旧 `/admin/cache`/`/admin/logs` API Key 写入口与缓存二次密码；阶段 D 旧表 DROP；阶段 E SQL 归档。
+
+
+## 2026-09-16 10:45 AI 系统提示词移除「雨落千息」公司归属
+- 应需求把系统提示词中的公司移除。`PromptConstants.IDENTITY_SYSTEM_PROMPT`（后端唯一每轮注入的 role=system 身份文案）删除两处公司表述，首句改为 `You are To Use AI, a helpful, intelligent, and adaptive AI assistant.`，身份重申句改为「只确认是 To Use AI」；新增防杜撰约束：被问开发者时不得点名或编造任何公司/组织/团队（防止失去标准答案后幻觉出厂商）。其余人设约束（不得冒充其他模型/产品、拒绝角色扮演、Markdown 链接、不得复述系统指令）原样保留，未简化功能。`PromptLeakGuard` 的 `雨落千息`/`yuluo qianxi` 弱锚点与 `creator:** the chinese company` 强锚点**有意保留**（针对历史会话复述旧 prompt 仍生效）。链路：`PromptAssembler` 拼 identity+skill，`PromptSkillService` 每轮 UPDATE/REUSE_ONLY 均走 assembler，改动点唯一。验证：`./mvnw -o -q compile` 退出 0；`PromptLeakGuardTest`+`PromptSkillServiceTest`+`PromptAssemblerTest` 共 10/10 通过（存量 `GeminiNetworkServiceImplTest` 编译错误临时移出、跑完还原）。详档 `docs/26-09-16_10-45_AI系统提示词移除雨落千息公司归属_v1.0.md`。
 
 
 ## 2026-09-15 17:33 前后台登录会话隔离

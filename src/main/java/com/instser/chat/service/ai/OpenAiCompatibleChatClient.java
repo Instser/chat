@@ -3,6 +3,7 @@ package com.instser.chat.service.ai;
 import com.instser.chat.config.AiUpstreamRetryProperties;
 import com.instser.chat.entity.AiModel;
 import com.instser.chat.service.AiModelRotationService;
+import com.instser.chat.service.dto.SelectedCredential;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.buffer.DataBuffer;
@@ -30,13 +31,17 @@ import java.util.concurrent.atomic.AtomicLong;
  * 统一作用于所有走流式对话链路的业务入口（chat / retry / edit-resend）。</p>
  *
  * <p><b>密钥轮询协同</b>：每次订阅（首次 + 每次重试）都在 {@code defer} 内重新执行
- * {@link AiModelRotationService#selectForChat(Long)}——同一 model_code 的多行凭据按有效权重
- * 加权随机选取，本次使用的行可能是与入参 {@code model} 不同的另一行（其 baseUrl/apiKey 生效）。
- * 首个 DataBuffer 到达时对该行 {@code reportSuccess}（连续失败清零、权重恢复）；
- * 在「尚未输出任何内容」（emitted==false）时失败，则对该行 {@code reportFailure}
- * （连续失败+1 → 有效权重下降）。因此下一次重试重选时，失败行大概率让位给其它行，
- * 形成"重试 + 换密钥"的自然协同；一旦已开始输出（emitted==true），中途断流既不重试
- * 也不上报失败（该行已成功服务过，属连接问题）。</p>
+ * {@link AiModelRotationService#selectForChat(Long)}——轮询发生在单个模型行（model_id）内部的
+ * 密钥池（{@code t_ai_model_key}），按有效权重加权随机选取一个 key；同 model_code 的多行
+ * 属不同模型级别（BEST/PERFORMANCE/STANDARD），不跨行轮换，故端点恒定取自入参 {@code model}
+ * 的 baseUrl，只有 apiKey 随选中结果变化。首个 DataBuffer 到达时 {@code reportSuccess}
+ * （连续失败清零、权重恢复）；在「尚未输出任何内容」（emitted==false）时失败，则
+ * {@code reportFailure}（连续失败+1 → 有效权重下降）。因此下一次重试重选时，失败的 key
+ * 大概率让位给其它 key，形成"重试 + 换密钥"的自然协同；一旦已开始输出（emitted==true），
+ * 中途断流既不重试也不上报失败（该 key 已成功服务过，属连接问题）。</p>
+ *
+ * <p>密钥池为空/未配置/查询异常时 {@code selectForChat} 返回 null，回退入参 {@code model}
+ * 自带的 {@code apiKey}（原单密钥逻辑），此时上报走行级兼容路径。</p>
  */
 @Slf4j
 @Component
@@ -123,36 +128,38 @@ public class OpenAiCompatibleChatClient implements AiChatClient {
     }
 
     /**
-     * 单次订阅：选密钥行 → 发起请求 → 按 {@code emitted} 门控上报成功/失败。
+     * 单次订阅：选密钥（模型行内密钥池）→ 发起请求 → 按 {@code emitted} 门控上报成功/失败。
      *
-     * <p>选取的整行（baseUrl + apiKey + modelCode）生效；未选中（池中无可用行/查询异常）
-     * 时回退入参 {@code model}，保持原单密钥逻辑。</p>
+     * <p>选中时用「模型行 baseUrl + 选中 key」发请求；未选中（池为空/查询异常）时
+     * 回退入参 {@code model} 的 apiKey，保持原单密钥逻辑。</p>
      *
      * @param emitted 是否已输出首个 token 的门控标志（重试路径跨订阅共享）
      */
     private Flux<DataBuffer> streamOnceWithRotation(AiModel model, Map<String, Object> requestBody,
                                                    int timeoutSeconds, AtomicBoolean emitted) {
-        AiModel rotated = selectRotationRow(model);
-        AiModel used = rotated != null ? rotated : model;
-        return doStreamOnce(used, requestBody, timeoutSeconds)
+        SelectedCredential selected = selectRotationCredential(model);
+        Flux<DataBuffer> upstream = selected != null
+                ? doStreamOnce(model, selected, requestBody, timeoutSeconds)
+                : doStreamOnce(model, requestBody, timeoutSeconds);
+        return upstream
                 .doOnNext(buffer -> {
                     // 仅首个 buffer 上报一次成功
                     if (emitted.compareAndSet(false, true)) {
-                        reportSuccessQuietly(rotated);
+                        reportSuccessQuietly(model.getId(), selected);
                     }
                 })
                 .doOnError(ex -> {
-                    // 尚未输出任何内容即失败：对该行记一次失败（降权），已输出后断流不上报
+                    // 尚未输出任何内容即失败：对选中 key 记一次失败（降权），已输出后断流不上报
                     if (!emitted.get()) {
-                        reportFailureQuietly(rotated, ex);
+                        reportFailureQuietly(model.getId(), selected, ex);
                     }
                 });
     }
 
     /**
-     * 选取本次使用的密钥行；任何异常都只记日志并回退（返回 null）。
+     * 选取本次使用的密钥；任何异常都只记日志并回退（返回 null）。
      */
-    private AiModel selectRotationRow(AiModel model) {
+    private SelectedCredential selectRotationCredential(AiModel model) {
         try {
             return aiModelRotationService.selectForChat(model.getId());
         } catch (Exception ex) {
@@ -163,30 +170,27 @@ public class OpenAiCompatibleChatClient implements AiChatClient {
     }
 
     /**
-     * 上报成功（仅轮询选中的行；回退场景无行可报）。
+     * 上报成功：选中 key 走池路径（keyId 非空），回退场景走行级兼容路径。
      */
-    private void reportSuccessQuietly(AiModel rotated) {
-        if (rotated == null) {
-            return;
-        }
+    private void reportSuccessQuietly(Long modelRowId, SelectedCredential selected) {
         try {
-            aiModelRotationService.reportSuccess(rotated.getId());
+            aiModelRotationService.reportSuccess(modelRowId, selected != null ? selected.keyId() : null);
         } catch (Exception ex) {
-            log.warn("密钥轮询上报成功异常（忽略），modelRowId={}，错误：{}", rotated.getId(), ex.getMessage());
+            log.warn("密钥轮询上报成功异常（忽略），modelRowId={}，keyId={}，错误：{}",
+                    modelRowId, selected != null ? selected.keyId() : null, ex.getMessage());
         }
     }
 
     /**
-     * 上报失败（仅轮询选中的行；回退场景无行可报），错误摘要含 HTTP 状态并截断。
+     * 上报失败：选中 key 走池路径（keyId 非空），回退场景走行级兼容路径；错误摘要含 HTTP 状态并截断。
      */
-    private void reportFailureQuietly(AiModel rotated, Throwable ex) {
-        if (rotated == null) {
-            return;
-        }
+    private void reportFailureQuietly(Long modelRowId, SelectedCredential selected, Throwable ex) {
         try {
-            aiModelRotationService.reportFailure(rotated.getId(), summarizeError(ex));
+            aiModelRotationService.reportFailure(modelRowId, selected != null ? selected.keyId() : null,
+                    summarizeError(ex));
         } catch (Exception e) {
-            log.warn("密钥轮询上报失败异常（忽略），modelRowId={}，错误：{}", rotated.getId(), e.getMessage());
+            log.warn("密钥轮询上报失败异常（忽略），modelRowId={}，keyId={}，错误：{}",
+                    modelRowId, selected != null ? selected.keyId() : null, e.getMessage());
         }
     }
 
@@ -236,13 +240,41 @@ public class OpenAiCompatibleChatClient implements AiChatClient {
     }
 
     private Flux<DataBuffer> doStreamOnce(AiModel model, Map<String, Object> requestBody, int timeoutSeconds) {
-        WebClient webClient = createWebClient(model);
+        return doStream(createWebClient(model), model.getBaseUrl(), requestBody, timeoutSeconds);
+    }
+
+    /**
+     * 按轮询选中的凭据发请求：端点取模型行 baseUrl，鉴权头取选中密钥的明文。
+     *
+     * <p>端点恒定来自模型行（不跨行轮换），极端情况下模型行未配置 baseUrl 时
+     * 回退入参 {@code model} 的端点，避免请求 URL 为空。</p>
+     */
+    private Flux<DataBuffer> doStreamOnce(AiModel model, SelectedCredential selected,
+                                          Map<String, Object> requestBody, int timeoutSeconds) {
+        String url = StringUtils.hasText(selected.baseUrl()) ? selected.baseUrl() : model.getBaseUrl();
+        return doStream(createWebClient(selected.apiKey()), url, requestBody, timeoutSeconds);
+    }
+
+    private Flux<DataBuffer> doStream(WebClient webClient, String url, Map<String, Object> requestBody,
+                                      int timeoutSeconds) {
         return webClient.post()
-                .uri(model.getBaseUrl())
+                .uri(url)
                 .contentType(MediaType.APPLICATION_JSON)
                 .bodyValue(requestBody)
                 .retrieve()
                 .bodyToFlux(DataBuffer.class)
                 .timeout(Duration.ofSeconds(timeoutSeconds));
+    }
+
+    /**
+     * 按明文密钥构建 WebClient（与 {@link #createWebClient(AiModel)} 保持一致的头信息）。
+     */
+    private WebClient createWebClient(String apiKey) {
+        return webClientBuilder
+                .defaultHeader("Authorization", "Bearer " + apiKey)
+                .defaultHeader("Content-Type", "application/json; charset=UTF-8")
+                .defaultHeader("Accept-Charset", "UTF-8")
+                .defaultHeader("User-Agent", "OpenAI/PowerShell")
+                .build();
     }
 }

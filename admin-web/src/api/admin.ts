@@ -1,6 +1,7 @@
 import { apiDelete, apiGet, apiPatch, apiPost, apiPut } from '@/utils/request'
 import type {
   AdminModel,
+  AdminModelKey,
   AdminOrder,
   AdminPackage,
   AdminUserSummary,
@@ -91,6 +92,41 @@ export function updateModelCredential(id: string, data: { baseUrl?: string; apiK
 
 export function testModel(id: string) {
   return apiPost<Record<string, unknown>>(`/admin/models/${id}/test`)
+}
+
+// ===== 模型密钥池（某行模型下的多个 API Key） =====
+
+/** 新增密钥请求体（weight = 轮询权重，1-100，默认 100） */
+export interface AdminModelKeyPayload {
+  apiKey?: string
+  weight?: number
+  remark?: string
+  status?: number
+}
+
+/** 列出该行模型下的全部密钥 */
+export function listModelKeys(modelId: string) {
+  return apiGet<AdminModelKey[]>(`/admin/models/${modelId}/keys`)
+}
+
+/** 为该行模型新增一个密钥 */
+export function addModelKey(modelId: string, data: AdminModelKeyPayload) {
+  return apiPost<AdminModelKey>(`/admin/models/${modelId}/keys`, data)
+}
+
+/** 修改密钥（权重/状态/备注） */
+export function updateModelKey(keyId: string, data: AdminModelKeyPayload) {
+  return apiPut<AdminModelKey>(`/admin/models/keys/${keyId}`, data)
+}
+
+/** 删除密钥 */
+export function deleteModelKey(keyId: string) {
+  return apiDelete<null>(`/admin/models/keys/${keyId}`)
+}
+
+/** 清零某个密钥的调用统计（成功/失败次数、连续失败数、最近错误） */
+export function resetModelKeyStats(keyId: string) {
+  return apiPost<AdminModelKey>(`/admin/models/keys/${keyId}/reset-stats`)
 }
 
 export function listOrders(params: Record<string, unknown>) {

@@ -77,6 +77,28 @@ export interface AdminModel {
   lastUsedTime?: string | null
 }
 
+/** 模型行内密钥池条目（一个 model_id 下可配多个 API Key） */
+export interface AdminModelKey {
+  id: string
+  modelId: string
+  apiKeyMasked: string
+  remark?: string | null
+  /** 配置权重（1-100，默认 100） */
+  weight: number
+  /** 有效权重 = max(1, 权重 − 20 × 连续失败数) */
+  effectiveWeight: number
+  /** 1=启用，0=停用 */
+  status: number
+  successCount: number
+  failCount: number
+  consecutiveFails: number
+  lastError?: string | null
+  lastUsedTime?: string | null
+  lastSuccessTime?: string | null
+  lastFailTime?: string | null
+  createTime?: string | null
+}
+
 export interface AdminOrder {
   id: string
   orderNo: string

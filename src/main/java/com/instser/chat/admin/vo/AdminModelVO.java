@@ -27,9 +27,13 @@ public class AdminModelVO {
     private String baseUrl;
     private boolean apiKeyConfigured;
     private String apiKeyMasked;
-    /** 基础权重（1-100，同 model_code 多行密钥轮询用） */
+    /**
+     * 基础权重（1-100）。
+     * 说明：轮询维度已改为「单个模型行内的多个密钥」，行级连续失败不再参与选 key；
+     * 该列保留为兼容字段（未配置密钥池时的行级统计仍在使用）。
+     */
     private Integer weight;
-    /** 有效权重 = max(1, weight − failPenalty × consecutiveFails) */
+    /** 有效权重 = max(1, weight − failPenalty × consecutiveFails)（行级兼容路径下的展示值） */
     private int effectiveWeight;
     private Long successCount;
     private Long failCount;

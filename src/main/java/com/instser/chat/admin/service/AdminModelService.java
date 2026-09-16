@@ -65,8 +65,8 @@ public class AdminModelService {
         model.setCreatedTime(LocalDateTime.now());
         model.setUpdateTime(LocalDateTime.now());
         aiModelService.save(model);
-        // 新增行可能是同 model_code 密钥池的新成员：立即失效该代码的本地缓存
-        aiModelRotationService.evictCache(model.getModelCode());
+        // 新增模型行：失效其密钥池本地缓存（轮询维度已按 model_id 分组）
+        aiModelRotationService.evictCache(model.getId());
         String createReason = StringUtils.hasText(request.getReason()) ? request.getReason() : "N/A";
         adminAuditPublisher.success("MODEL_CREATE", String.valueOf(model.getId()),
                 "code=" + model.getModelCode() + ",reason=" + createReason);
@@ -77,13 +77,11 @@ public class AdminModelService {
     public Result<AdminModelVO> update(Long modelId, AdminModelUpsertRequest request) {
         AiModel model = requireModel(modelId);
         // 允许模型代码重复，更新时不再校验代码冲突。
-        String oldModelCode = model.getModelCode();
         apply(model, request);
         model.setUpdateTime(LocalDateTime.now());
         aiModelService.updateById(model);
-        // 权重/代码可能变更：新旧 model_code 的密钥池缓存都失效
-        aiModelRotationService.evictCache(oldModelCode);
-        aiModelRotationService.evictCache(model.getModelCode());
+        // 权重/凭据可能变更：该模型行的密钥池缓存立即失效
+        aiModelRotationService.evictCache(modelId);
         String updateReason = StringUtils.hasText(request.getReason()) ? request.getReason() : "N/A";
         adminAuditPublisher.success("MODEL_UPDATE", String.valueOf(modelId),
                 "code=" + model.getModelCode() + ",reason=" + updateReason);
@@ -99,8 +97,8 @@ public class AdminModelService {
         model.setApiKey(request.getApiKey().trim());
         model.setUpdateTime(LocalDateTime.now());
         aiModelService.updateById(model);
-        // 凭据变更：该 model_code 的密钥池缓存立即失效
-        aiModelRotationService.evictCache(model.getModelCode());
+        // 凭据变更：该模型行的密钥池缓存立即失效
+        aiModelRotationService.evictCache(model.getId());
         // reason 现为可选字段，留空时记录占位，便于审计链路保持统一格式。
         String reason = StringUtils.hasText(request.getReason()) ? request.getReason() : "N/A";
         adminAuditPublisher.success("MODEL_CREDENTIAL_UPDATE", String.valueOf(modelId),
@@ -116,7 +114,7 @@ public class AdminModelService {
         model.setUpdateTime(LocalDateTime.now());
         aiModelService.updateById(model);
         // 可用性决定该行是否参与轮询：缓存立即失效
-        aiModelRotationService.evictCache(model.getModelCode());
+        aiModelRotationService.evictCache(model.getId());
         adminAuditPublisher.success("MODEL_AVAILABILITY", String.valueOf(modelId),
                 "old=" + old + ",new=" + request.getStatus() + ",reason=" + request.getReason());
         return Result.success(toVo(model), "模型可用状态已更新");
@@ -130,7 +128,7 @@ public class AdminModelService {
         model.setUpdateTime(LocalDateTime.now());
         aiModelService.updateById(model);
         // 可见性不影响轮询候选，但为保证管理端展示与缓存一致，一并失效
-        aiModelRotationService.evictCache(model.getModelCode());
+        aiModelRotationService.evictCache(model.getId());
         adminAuditPublisher.success("MODEL_VISIBILITY", String.valueOf(modelId),
                 "old=" + old + ",new=" + request.getStatus() + ",reason=" + request.getReason());
         return Result.success(toVo(model), "模型可见状态已更新");
@@ -154,7 +152,7 @@ public class AdminModelService {
                 .set(AiModel::getUpdateTime, now);
         aiModelService.update(wrapper);
         // 本地缓存中的连续失败数立即归零（权重恢复）
-        aiModelRotationService.evictCache(model.getModelCode());
+        aiModelRotationService.evictCache(model.getId());
         AiModel refreshed = aiModelService.getById(modelId);
         AiModel result = refreshed != null ? refreshed : model;
         // 审计只记录脱敏 key 与变更摘要，绝不落完整密钥
