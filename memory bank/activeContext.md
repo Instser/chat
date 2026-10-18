@@ -1,10 +1,12 @@
 # 当前工作内容
 
-**📅 最后更新**: 2026-09-16 11:22:00
+**📅 最后更新**: 2026-09-16 13:14:00
 **👤 更新人员**: DSH Agent
-**📊 文档版本**: v175.0
+**📊 文档版本**: v177.0
 
 ## 当前任务
+- **✅ 防护边界实测定档 + 两处缺口修复（2026-09-16 13:14，代码完成待部署）** — 为回答「这套限制到底防住了什么泄漏」做了定量复测：①逐字片段边界——身份 prompt 连续 **≥8 词**命中（6~7 词不命中）、skill prompt 连续 **≥13 词**命中（12 词不命中），边界已写成断言用例；②skill **短**词片规则刻意不启用（实测：正常后端回答命中 4，逐字复述 12 词命中 7，阈值只能取 6、余量 1~2，误杀风险大于收益），并删除「计算但不参与判定」的死字段 `skillGramShort`；③修掉英文转述漏网（`I was instructed to ... never claim to be another model.`）——补 `another model`/`claim to be`/`impersonate`/`roleplay` 等概念锚点，组合规则仍受品牌锚点准入约束、无误杀回归。验证 43/43 通过（PromptLeakGuardTest 20）。防护的**目标边界**：防「提示词资产被整套复述 + 为精准越狱提供答案键 + 白标抄袭」，**不防**数据泄露（提示词内本就不放密钥/内部策略）、不防跨用户传播（只回给同一会话用户）、不防越狱本身。详档 `docs/26-09-16_11-55_提示词泄露防护增强_锚点自派生与正文累计扫描_v1.0.md` §五。
+- **✅ 提示词泄露防护增强：锚点自派生 + 正文累计扫描（2026-09-16 11:55，代码完成待部署）** — 起因是复核简历条目「防 system prompt 被诱导整段复述」是否仍成立，**实测发现防护已在 2026-08-03 精简提示词时静默失效**：强锚点全部指向旧长 prompt（当前提示词命中 0）；旧 prompt 的检出靠 `to use ai`+`雨落千息`+`yuluo qianxi` 恰好凑满阈值 3，删公司名后逐字复述直接不命中；正文路径只有单帧扫描无累计，分片泄露 100% 穿过。增强：**A 锚点自派生**（启动时从身份 prompt + 两个 skill prompt 抽 6/12 元词片，提示词改动自动跟随，根除静默失效）；**B 正文累计扫描**（新增 `admitContentDelta`，命中截断 + `suppressContentLeak` 把落库正文整体替换为 `LEAK_FALLBACK_REPLY` 兜底文案，不出现空白消息）；**C 中英双语元话语+概念锚点**（抓翻译式复述，品牌锚点作准入前提防误杀）；**E 指标** `prompt_leak_detections_total{channel,rule}` + 启动打印锚点规模。实测：命中 9/9（含旧漏网的身份 prompt 逐字、翻译复述、skill 逐字、双路径分片）、误杀检查 6/6 放行（正常自我介绍/正常拒答/skill 术语正常回答等）、性能 0.35ms/次。验证 41/41 通过（含新增链路级用例 JSON 帧→防护→落库兜底）。详档 `docs/26-09-16_11-55_提示词泄露防护增强_锚点自派生与正文累计扫描_v1.0.md`（含已知边界与验收清单）。无 DB/依赖/前端变更；**待部署生效**。
 - **✅ 密钥池按模型行内轮询已上线并生产验证（2026-09-16 11:22）** — 语义修正：三行 deepseek-v4-flash 是三个独立级别，不允许跨行轮换；新建 t_ai_model_key（model_id 多 key），轮询维度 modelId、baseUrl 恒定取模型行只换 key；双路径上报（key 级统计+行级汇总/兼容路径行级原语义）；管理端密钥池弹窗（CRUD+权重+启停+重置统计，脱敏+审计）。生产实测：key-B 被选中 ✓、行级汇总 ✓、其它级别行零触碰（不越级）✓；测试 key 已清理，生产空池待管理员配置。详档 `docs/26-09-16_11-22_密钥池按模型行内轮询_v1.0.md`。
 - **✅ AI 系统提示词移除「雨落千息」公司归属（2026-09-16 10:45，代码完成待部署）** — 按用户指示「完全去掉公司归属，只说自己是 To Use AI」：`PromptConstants.IDENTITY_SYSTEM_PROMPT` 删除两处公司表述（首句 `created by the Chinese company 雨落千息 (Yuluo Qianxi)`、身份重申句 `To Use AI by 雨落千息`），首句并入 `To Use AI, a helpful, intelligent, and adaptive AI assistant`；**新增防杜撰约束**（被问开发者时不得点名或编造公司/组织/团队）。其余约束（不冒充他家模型、拒绝角色扮演、Markdown 链接、不得复述系统指令）原样保留。`PromptLeakGuard` 的 `雨落千息`/`yuluo qianxi` 弱锚点按用户选择**保留**（仅对历史会话复述旧 prompt 生效）。改动点唯一（全仓 `src/main` 仅此一处含公司名，yml/管理端无提示词入口）。验证：`./mvnw -o -q compile` 退出 0；提示词相关单测 10/10 通过（`GeminiNetworkServiceImplTest` 存量 test 编译错误临时移出、跑完已还原）。详档 `docs/26-09-16_10-45_AI系统提示词移除雨落千息公司归属_v1.0.md`。无 DB/依赖/前端变更；**待重新构建部署后端生效**。
 - **✅ 游客超限提示 + 消息分页最新页修复已上线（2026-09-15 21:56，commit `3f21c60`）** — ①超限错误码 `TRIAL_LIMIT_EXCEEDED` 映射为「游客试用额度已用完（共X次），注册账号即可继续畅聊」（SSE 帧与 status=3 落库同文案，生产实测通过）；②`GET /chats/{id}/messages` 分页从「ASC 头部切最旧页」修正为「尾部切最新页」（长会话最新消息"消失"假象的根因；前端零改动，小会话行为不变，生产 60 条注入实测通过）。详档 `docs/26-09-15_21-42_游客超限提示与消息分页最新页修复_v1.0.md`。
@@ -25,6 +27,13 @@
 - **待部署验证：一键试用功能**（`/auth/trial` 2h 会话）— 代码与测试已完成，尚未部署到家用机；上线后验证登录页试用按钮、2h 过期 401、IP 日限流。
 - **待部署验证：错误落库根因记录修复** — 代码与测试已完成（130/130 通过），尚未部署到家用机；部署后验证 AI API 429 等场景 error_message 字段是否记录真实根因。
 - 待观察后清理：旧 `/admin/cache`/`/admin/logs` API Key 写入口与缓存二次密码；阶段 D 旧表 DROP；阶段 E SQL 归档。
+
+
+## 2026-09-16 11:55 提示词泄露防护增强（锚点自派生 + 正文累计扫描）
+- 背景：移除公司名后复核简历条目，发现 `PromptLeakGuard` 的检出能力**早已失效且不止一半链路**。三条实测证据：①10 个强锚点全部是旧长 prompt（2026-08-03 前）特征，当前提示词命中 0；②旧 prompt 能命中是靠 `to use ai`+`雨落千息`+`yuluo qianxi` 凑满弱阈值 3，删公司名后当前身份 prompt 逐字复述 `containsLeakSignal=false`；③`sanitizePublicText` 只扫单帧、无累计，三片分片泄露每片都放行。思维链路径的累计+增量双扫 + 命中清空落库缓冲是真实有效的（分片实测第 3 片抑制）。
+- 增强实现：`PromptLeakGuard` 内核重写 —— 自派生 6/12 元词片锚点（identity 与 skill 分开计数，skill 长词片需 ≥2 防术语误杀）、历史强/弱锚点保留、中英双语元话语（25）+ 概念（20）锚点 + 品牌锚点准入、7 条判定规则、Micrometer 计数器、`anchorSummary()`；`StreamResponseState` 新增 `contentSuppressed` + `suppressContentLeak(fallback)`（丢弃累计正文、写兜底、保持 realAiResponse 使兜底正常落库）；`UpstreamDeltaParser` 正文路径（主链路+续写）改走 `admitContentDelta`；`PromptConstants` 新增 `LEAK_FALLBACK_REPLY`。**调用方契约**：admit 返回非 null 后必须 append 回 state，否则累计扫描静默退化为单帧（已写入 javadoc + 固化为测试辅助方法）。
+- 已知边界（有意不覆盖）：skill 提示词的中文语义复述（正常回答本就复用其词汇，拦截必误杀）、无品牌锚点的纯语义改写（需 embedding 相似度，成本不适合热路径）。`sanitizePublicText` 保留为公开 API 但生产已无调用点。
+- 验证：`./mvnw -o -q compile` 退出 0；`PromptLeakGuardTest`(18)+`UpstreamDeltaParserTest`(6)+`PromptSkillServiceTest`(3)+`PromptAssemblerTest`(3)+`StreamResponseStateTest`(6)+`AiResponseCompletionHandlerTest`(5) = 41/41 通过；性能 0.35ms/次（1.8k 文本）。详档 `docs/26-09-16_11-55_提示词泄露防护增强_锚点自派生与正文累计扫描_v1.0.md`，README-OPS §2/§2.1 已同步。
 
 
 ## 2026-09-16 10:45 AI 系统提示词移除「雨落千息」公司归属

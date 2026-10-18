@@ -1,3 +1,15 @@
+## 2026-10-12 01:27
+✅ SSE 压测补强：mock 上游零成本方案 + 两个真实发现（详档 v1.1）：应用户"不打上游 LLM 压长连接"的要求，新增 `scripts/mock_upstream.py`（OpenAI 兼容无限流 mock，chunked 编码，backlog 2048）+ `scripts/sse_stress_mock_test.py`（带 sessionId、持有 45s 后主动断开），服务器上起第二实例（生产同款 JVM/Tomcat 参数、端口 28080）+ 隐形 mock 模型行（已软删）实现**零真实上游调用**压测。**发现并修正重要口径**：生产实际运行参数由 supervisor -D 覆盖（threads.max=40 / max-connections=200+50 / Xmx600m / Druid 20），application.yml 的 8C8G 优化值（400/2000/80）未生效。**实测**：生产同款配置下 250 并发 100% 保持 45s（块间隙 p95 0.21s），500 并发降至 85%（Tomcat 队列封顶 ~245，load 仅 5.7 属配置封顶）；放开配置（conn=2000/threads=400）后 500 并发 99.6% 保持、1000 并发 TCP 全建立但仅 ~500 条流得到服务——**第二拐点是 reactor-netty 上游连接池默认值 500/主机**（`HttpClient.create()` 未定制）。**附带实证**：客户端中止时带 sessionId 的请求 ≤2s 完成上游 dispose 回收 ✓；不带 sessionId 的裸 API 中止后上游连接泄漏（cancel 钩子以 request.sessionId 为键，null 跳过）——前端正常流程不受影响。全部测试产物已清理（mock 模型行软删、游客软删、实例与 mock 停止），生产复查正常。
+
+## 2026-10-11 23:37
+✅ 四项简历指标生产实测（纯实测，新增 3 测试脚本 + 语料 + 详档，无业务代码变更）：经 SSH（home.example.com:9001）对家用机生产实例实测——①**流式防乱码回放对比**：git `241dab3` 前后四代解析器忠实移植为 `scripts/stream_garble_replay_test.py`，以 5 条生产真实回复语料（`scripts/stream_garble_corpus/`）× 4 种字节级分片模式 × 100 随机种子回放：修复前（V0 无缓冲）tcp 级分片综合损坏率 86.2%（79.5% 字符丢失+72% 帧丢弃），V0.5（仅 JSON 缓冲）乱码率（U+FFFD 流出）1.1%~1.7%，现行 V2（行缓冲+JSON 缓冲+清洗+isTextual）乱码率 0%、丢失率 0.45%~0.65%（残余=多字节字符恰被 TCP 边界切断被清洗剔除，极端 1-9B 分片下 14.9%）。②**SSE 单机并发**：`scripts/sse_stress_test.py` 梯度 10→400（每流独立游客账号+唯一伪 XFF）：400/400 建连 100%、峰值同时保持 250+、JVM 线程稳定 ~247（异步化生效，远低于 threads.max=400）、load<2.3，连接层未见拐点；≥30 并发错误帧全部经 DB error_message 核实为上游 sensenova `HTTP 429 rpm exhausted`（非本机瓶颈）。③**防超卖**：`scripts/oversell/OversellTest.java` 以线上 fat jar 内 mysql-connector 对生产库同一测试账户行并发扣减——原子扣减（`WHERE token_balance>=?`）N=50/100/200 均精确守恒零超卖（200 并发：成功 50/拒绝 150/期末 0）；乐观锁（version+余额守卫+3 次退避重试）N=50/100/200 均零超卖但极限并发下宁拒不错（100 并发仅 4 成功、期末 46，4+46=50 守恒）；入口层单活跃会话互斥实测生效（并发第二请求返回 "Currently chatting"）。④**限流 8 维度**：用户 20/min✅实测（第 21 请求被拒）、IP 30/min✅实测（第 31 被拒）、游客额度 10 次/账号✅实测（第 11 次提示用完）、试用激活 10 次/IP/天✅实测（第 11 次 429）、套餐日/总次数（DB+Redis）、支付用户 3/min+IP 10/min+同套餐 5/h、支付日限 10 次/天+1400USD/天、联网搜索修改 20/min（Redis+内存降级）；熔断器：连续失败 3 次熔断/30s 半开/连续 2 成功恢复/10s 健康检查。**测试数据已清理**（防超卖账户硬删、934 测试游客按保留期任务同语义软删），压测后服务器复查正常（load 0.88、连接归零、无新增 ERROR）。详档 `docs/26-10-11 23_37 四项实测数据报告_流式乱码_SSE并发_防超卖_限流_v1.0.md`。已知边界：聊天/支付频控为单机内存实现不跨实例；限流器信任 XFF 首值可伪造绕过 IP 维度（生产经 nginx 覆盖）。
+
+## 2026-09-16 13:14
+✅ 防护边界复测与两处缺口修复（承接 11:55 的增强，待部署）：为回答「这套限制到底防住了什么泄漏」，把防护边界做了定量复测，结果与修复——①**逐字片段长度边界实测**：身份 prompt 连续 ≥8 词命中（8 词=3 个不同 6 元词片）、6~7 词不命中；skill prompt 连续 ≥13 词命中（=2 个 12 元词片）、12 词不命中。边界即误杀余量取舍，已写成 `verbatimFragmentBoundaryIsEightWordsForIdentityAndThirteenForSkill` 断言用例。②**skill 短词片刻意不启用**（含实测依据）：正常后端回答（复用 skill 术语作答）已命中 4 个 skill 6 元词片，而逐字复述 12/20/30 词命中 7/15/25 个——阈值只能取 6、两侧余量仅 1~2，误杀正常技术回答风险高于收益；顺带删除「计算但不参与判定」的死字段 `skillGramShort`（构造函数与 `anchorSummary()` 同步）。③**修掉英文转述漏网**：`I was instructed to keep my To Use AI identity and never claim to be another model.` 原不命中（概念锚点过于字面，只认 `any other model`），补 `another model`/`other models`/`claim to be`/`impersonate`/`roleplay` 后命中；组合规则仍受品牌锚点准入约束，无误杀回归。验证：编译 0 ERROR；相关 6 个测试类 **43/43 通过**（PromptLeakGuardTest 20）。详档 `docs/26-09-16_11-55_提示词泄露防护增强_锚点自派生与正文累计扫描_v1.0.md` §五（含边界表与实测数据）。无 DB/依赖/前端变更。
+
+## 2026-09-16 11:55
+✅ 提示词泄露防护增强（本仓库 4 文件 + 2 测试 + README-OPS，待部署）：**发现**——复核简历条目时实测发现原有防护早已失效：强锚点全部是 2026-08-03 前的旧长 prompt 特征（当前提示词命中 0）；旧 prompt 靠 `to use ai`+`雨落千息`+`yuluo qianxi` 凑满弱阈值 3 才可检出，删公司名后当前身份 prompt 逐字复述不命中；正文路径 `sanitizePublicText` 只扫单帧无累计，三片分片泄露每片都放行（思维链路径的累计双扫是真实有效的）。**增强**：①锚点自派生——启动时从身份 prompt + 两个 skill prompt 抽 6/12 元连续词片（归一化折叠标点换行），提示词改动自动跟随，根除「改提示词 ⇒ 防护静默失效」；②正文累计扫描——新增 `admitContentDelta`（尾部 3000 字符窗口 + 本片双扫），命中即截断后续正文并把落库整体替换为 `PromptConstants.LEAK_FALLBACK_REPLY` 兜底文案（`suppressContentLeak`），用户刷新不再见空白；③中英双语元话语（25）+ 概念（20）锚点 + 品牌锚点准入，抓翻译式/改写式复述，品牌准入是关键防误杀设计；④指标 `prompt_leak_detections_total{channel,rule}` + 启动打印锚点规模 + `anchorSummary()`。**标定**：命中 9/9（旧长 prompt、身份 prompt 逐字/改标点/中文翻译、skill 逐字、含 system prompt 元话语、简略复述、双路径三片分片），误杀检查 6/6 放行（正常自我介绍、正常拒答提 system prompt、后端/前端 skill 术语正常回答、科普系统提示词、递归解释）；性能 0.35ms/次（1842 字符英文）相对 SSE 帧间隔可忽略。**边界（有意不覆盖）**：skill 中文语义复述（正常回答本就复用其词汇，拦截必误杀大量正常设计回答）、无品牌锚点的纯语义改写（需 embedding，成本不适合流式热路径）。调用方契约（admit 通过必须 append 回 state，否则累计扫描静默退化）已写入 javadoc 并固化为测试辅助方法。验证：编译 0 ERROR；`PromptLeakGuardTest`(18)+`UpstreamDeltaParserTest`(6,含新增链路级用例)+`PromptSkillServiceTest`(3)+`PromptAssemblerTest`(3)+`StreamResponseStateTest`(6)+`AiResponseCompletionHandlerTest`(5) = 41/41 通过。详档 `docs/26-09-16_11-55_提示词泄露防护增强_锚点自派生与正文累计扫描_v1.0.md`。无 DB/依赖/前端变更；待构建部署生效。
+
 ## 2026-09-16 11:22
 ✅ 密钥池按模型行内轮询（语义修正版，已上线+生产端到端验证通过）：用户澄清——三行 deepseek-v4-flash 是 BEST/PERFORMANCE/STANDARD 三个独立级别（恰好接同一上游），不允许跨行轮换；选定新建 t_ai_model_key 表（model_id 维度多 key）。改造：轮询服务缓存/选取维度从 modelCode 改为 **modelId**（查该行启用 key 列表，有效权重公式不变），返回 SelectedCredential（**baseUrl 恒定取模型行，轮询只换 key 不换端点/级别**）；双路径上报（池路径→key 行统计+异步给模型行 success/fail/last_used_time 汇总；兼容路径→行级统计原语义）；客户端按 keyId/modelRowId 分派上报；AdminModelService 5 处 evictCache 改按 modelId。新增管理端全套（AdminModelKeyController/Service/VO/DTO：/admin/models/{modelId}/keys CRUD + reset-stats，脱敏+审计 MODEL_KEY_*）；admin-web 恢复密钥池弹窗（行内语义文案）。SQL：`sql/09-16 10_48_模型密钥池表.sql` + Flyway `V3__ai_model_key_table.sql`（IF NOT EXISTS 幂等，生产已手动执行，16 列+索引就位）。部署 `deploy.sh all` 全绿（Started 18.1s、0 ERROR、admin 200）。**生产实测**：模型行 id=1 注入两条测试 key（60/40）→ 游客发消息 → key-B 被选中 success_count=1 ✓、模型行汇总 +1 ✓、**另外两个级别行统计与时间完全未动（不越级）✓**；测试 key 已清理（生产空池，待管理员配真实 key）。详档 `docs/26-09-16_11-22_密钥池按模型行内轮询_v1.0.md`。
 
@@ -59,6 +71,8 @@
 ✅ 错误落库根因记录修复：status=3 时将真实报错写入 error_message 字段（全链路）。
 
 # progress 更新
+
+- 2026-09-16 11:55: 提示词泄露防护增强（锚点自派生 + 正文累计扫描 + 元话语/概念锚点 + 拦截指标）。起因：复核简历条目时实测发现防护早已失效——强锚点全指向旧长 prompt（当前提示词命中 0）、旧 prompt 检出依赖公司名凑满弱阈值、正文路径无累计扫描（分片泄露全放行）。增强后命中 9/9、误杀检查 6/6 放行、41/41 测试通过。已知边界：skill 中文语义复述与纯语义改写不覆盖（前者拦截必误杀正常设计回答，后者需 embedding）。详档 `docs/26-09-16_11-55_提示词泄露防护增强_锚点自派生与正文累计扫描_v1.0.md`。
 
 - 2026-09-16 10:45: AI 系统提示词移除「雨落千息」公司归属。按用户选定方案「完全去掉公司归属，只说自己是 To Use AI」改 `PromptConstants.IDENTITY_SYSTEM_PROMPT`：删除首句 `created by the Chinese company 雨落千息 (Yuluo Qianxi)` 与重申句 `To Use AI by 雨落千息`，首句并入 `You are To Use AI, a helpful, intelligent, and adaptive AI assistant.`；新增防杜撰约束（问及开发者时不得点名或编造公司/组织/团队，只确认 To Use AI），其余人设约束原样保留未简化。`PromptLeakGuard` 公司名弱锚点按用户选择保留（仅对历史会话复述旧 prompt 生效）。链路核查确认改动点唯一（`src/main` 含 resources 仅此一处；`PromptAssembler`+`PromptSkillService` 全走该常量；yml/管理端无提示词入口）。验证：`./mvnw -o -q compile` 退出 0；提示词三个测试类 10/10 通过（存量的 `GeminiNetworkServiceImplTest` 编译错误临时移出、跑完还原）。详档 `docs/26-09-16_10-45_AI系统提示词移除雨落千息公司归属_v1.0.md`。无 DB/依赖/前端变更；待构建部署生效。
 
@@ -1336,3 +1350,15 @@
 - [x] 运维监控图表标签重叠与 TTFT [object Object] 修复（2026-08-06）
 - [x] 用户前端 Application error（static 路径错位）热修复 2026-08-06
 - [x] Chat history 同步 New Chat + 分页全量（2026-08-06）
+
+## 2026-10-19 00:19 仓库脱敏公开版发布
+- 目的：作为求职展示材料公开 GitHub 仓库（私有原版完整保留于本地）
+- 方案：git filter-repo 全历史重写（clone → replace-text/mailmap/invert-paths → force push）
+- 产物：本地副本 git/chat-public/ → 推送至 github.com/Instser/chat（master=脱敏版grok最新，旧远程grok分支已删）
+- 脱敏范围：30+ 真实密钥（Stripe live/PayPal/OAuth/Gemini/SiliconFlow/OpenRouter/JWT/DB/Redis）→ 占位符；4个含真实用户数据的SQL dump + 39个运行日志全历史删除；生产/家用IP→203.0.113.x；example.com/example.com/example.com/example.com/lempay/clawcloudrun→example.com；作者→Instser@users.noreply.github.com
+- 保留：250提交时间线、docs/544篇记录、memory bank、AGENTS.md（AI工程实践展示）
+- 本地原仓库 remote 已改指 Instser/chat-private.git（待GitHub网页创建后 push --all 做云端私有备份）
+- 待办：①GitHub 转 Public ②~~创建 chat-private 并推送备份~~ ✅已完成（双分支251提交，远程hash与本地一致）③轮换所有曾泄露密钥（Stripe live 最急）
+- 2026-10-19 追记：GitHub Push Protection 拦截脱敏版首推——补清 Stripe test 密钥对与 2 个 Google API key（AIza 格式，2186 处）后推送成功；公开版最终 hash 4a1cef8（250 提交）；私有版 chat-private 备份完成（含 75MB 历史日志触发 GitHub 大文件警告，未超 100MB 硬限制）
+- 2026-10-19 追记2：README 快速开始重写（Flyway 自动建表+配置分级+dev初始化指引，commit 44ed755）；补清内网IP残留（127.0.0.1/11/5、192.168.1.4、192.168.1.5）；公开版最终 8cfe8a4。事故复盘：曾因 shell 目录错位将私有版误推 chat-private master，已 force 修正双分支（master=5b6337b/grok=44ed755，与本地一致）——教训：跨仓库操作必须显式 cd/workdir
+- 已知残留（低风险不处理）：192.168.1.1/102/103/200/73 等 RFC1918 内网地址（历史日志示例，公网不可路由）
