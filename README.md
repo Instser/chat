@@ -140,22 +140,16 @@ git clone [项目地址]
 cd chat
 ```
 
-### 2. 数据库配置
-```bash
-# 创建数据库
-mysql -u root -p
-CREATE DATABASE chat_system CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-# 导入数据库结构
-mysql -u root -p chat_system < sql/chat_mysql8.0.sql
-```
+### 2. 准备依赖服务
+- **MySQL 8.0+**：创建空数据库 `chat`（utf8mb4）——**无需手动导表**，首次启动时 Flyway 自动执行 `src/main/resources/db/migration/` 下的迁移脚本完成建表
+- **Redis 6.0+**：本地实例即可
 
 ### 3. 配置文件
-编辑 `src/main/resources/application.yml`:
+编辑 `src/main/resources/application.yml`（所有敏感项均支持同名环境变量覆盖）：
 ```yaml
 spring:
   datasource:
-    url: jdbc:mysql://localhost:3306/chat_system
+    url: jdbc:mysql://localhost:3306/chat?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
     username: your_username
     password: your_password
 
@@ -165,6 +159,10 @@ spring:
       port: 6379
       password: your_redis_password
 ```
+
+**配置分级**：
+- **必需**：数据库、Redis——缺了无法启动
+- **可选**：AI 模型 Key、支付商户凭证（Stripe/PayPal/支付宝）、OAuth2 凭证（Google/GitHub）——保持占位符也能正常启动，仅对应功能不可用
 
 ### 4. 启动项目
 ```bash
@@ -180,6 +178,15 @@ java -jar target/chat-1.0.0.jar
 - **API文档**: http://localhost:8080/swagger-ui.html
 - **健康检查**: http://localhost:8080/actuator/health
 - **缓存管理**: http://localhost:8081/cache/management/overview
+
+### 6. 首次启动自动初始化（dev profile）
+以默认 dev profile 启动时，系统自动完成（幂等）：
+- 创建默认管理员：`admin@example.com` / `admin123`（**登录后请立即修改**）
+- 初始化 AI 模型元数据与套餐配置
+
+要开始真实对话：登录管理后台 `/admin` → 模型管理 → 为你的模型填入自己的 API Key（兼容 OpenAI 接口格式即可，如 DeepSeek/通义/Kimi 等国内厂商均可接入）。
+
+> 注：本仓库为后端 + 管理后台前端（admin-web）。用户聊天前端为独立仓库，未包含在此。
 
 ## 📡 核心API接口
 
