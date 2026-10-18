@@ -85,6 +85,21 @@ http://127.0.0.1:8081/api/actuator/prometheus
 | `api_requests_total` | Counter | API 请求总数（method/path/status） |
 | `api_exceptions_total` | Counter | API 异常总数（method/path/exception_type） |
 | `slow_requests_total` | Counter | 慢请求计数（threshold=warn/error） |
+| `prompt_leak_detections_total` | Counter | 系统提示词泄露拦截次数（channel=reasoning/content/nonstream，rule=命中规则；rule 取值见下方 §2.1） |
+
+### 2.1 提示词泄露防护
+
+`PromptLeakGuard` 对流式输出的可见思维链（reasoning）与正文（content）做双重扫描，命中即治理：
+
+| channel | 命中后行为 |
+| --- | --- |
+| `reasoning` | 抑制后续思考输出，清空落库思考缓冲（防历史回放二次泄露） |
+| `content` | 截断后续正文，落库正文整体替换为兜底文案（`PromptConstants.LEAK_FALLBACK_REPLY`） |
+| `nonstream` | 单发场景直接返回空串阻断 |
+
+`rule` 标签取值：`legacy_strong`（历史长 prompt / 伪注入痕迹）、`prompt_verbatim`（身份提示词逐字复述）、`skill_verbatim`（skill 提示词逐字复述）、`prompt_paraphrase`（身份提示词改写拼接）、`legacy_weak`（历史弱锚点组合）、`meta_restate`（元话语+品牌+概念组合，抓翻译式复述）、`concept_restate`（概念锚点足量）。
+
+锚点为**启动时自派生**：从 `PromptConstants` 的身份 prompt 与两个 skill prompt 抽取 6 元/12 元连续词片，提示词内容变更后自动跟随，无需人工维护锚点表。启动日志会打印各类锚点规模（`PROMPT_LEAK_GUARD 锚点初始化完成 …`），可用它确认防护是否生效。
 
 ---
 

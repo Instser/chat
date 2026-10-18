@@ -18,6 +18,8 @@ public final class StreamResponseState {
     private boolean networkResultsSent;
     /** 命中系统提示泄露特征后，抑制后续 reasoning 写出与落库。 */
     private boolean reasoningSuppressed;
+    /** 命中系统提示泄露特征后，抑制后续正文写出；落库整体作废并替换为兜底文案。 */
+    private boolean contentSuppressed;
     private final StreamCompletionGate completionGate = new StreamCompletionGate();
 
     private final StringBuilder contentBuffer = new StringBuilder();
@@ -71,6 +73,10 @@ public final class StreamResponseState {
         return reasoningSuppressed;
     }
 
+    public boolean isContentSuppressed() {
+        return contentSuppressed;
+    }
+
     public void markContentSent() {
         this.hasContentSent = true;
     }
@@ -120,6 +126,9 @@ public final class StreamResponseState {
     }
 
     public void appendContent(String text) {
+        if (contentSuppressed) {
+            return;
+        }
         if (text == null || text.isEmpty()) {
             return;
         }
@@ -148,6 +157,25 @@ public final class StreamResponseState {
         this.reasoningSuppressed = true;
         this.reasoningBuffer.setLength(0);
         this.hasReasoningSent = false;
+    }
+
+    /**
+     * 判定正文含系统提示泄露特征：标记抑制、丢弃已累计正文，改以兜底文案落库。
+     *
+     * <p>已发出的 SSE 分片无法撤回（用户已看到前半段），但后续分片不再写出，
+     * 且落库内容整体作废——避免历史回放二次泄露，同时避免用户刷新后看到空白消息。</p>
+     *
+     * @param fallbackContent 兜底写出的正文（为空则落库正文为空，仅保留思考）
+     */
+    public void suppressContentLeak(String fallbackContent) {
+        this.contentSuppressed = true;
+        this.contentBuffer.setLength(0);
+        // 上游确实产出过内容，只是被拦下：保持"真实响应"语义，使兜底文案正常落库
+        this.hasContentSent = true;
+        this.realAiResponse = true;
+        if (fallbackContent != null && !fallbackContent.isEmpty()) {
+            this.contentBuffer.append(fallbackContent);
+        }
     }
 
     public void clearReasoning() {

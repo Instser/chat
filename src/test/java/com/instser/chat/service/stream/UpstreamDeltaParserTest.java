@@ -1,5 +1,6 @@
 package com.instser.chat.service.stream;
 
+import com.instser.chat.constants.PromptConstants;
 import com.instser.chat.entity.WebSearchResult;
 import com.instser.chat.service.content.ContentPolicy;
 import com.instser.chat.service.content.PromptLeakGuard;
@@ -9,6 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class UpstreamDeltaParserTest {
@@ -116,6 +118,28 @@ class UpstreamDeltaParserTest {
         assertEquals("", state.reasoning());
         assertEquals(List.of("ok-prefix"), sink.reasoningChunks);
         assertEquals(List.of("visible-answer"), sink.contentChunks);
+    }
+
+    @Test
+    void chunkedContentLeakIsTruncatedAndFallbackPersisted() {
+        RecordingSink sink = new RecordingSink();
+        StreamResponseState state = new StreamResponseState();
+
+        // 逐片看都不命中：单片只有 1~2 个弱特征，必须靠累计扫描才拦得住
+        assertTrue(parser.consume(deltaJson(null, "我是 To Use AI"), sink, state, true));
+        assertTrue(parser.consume(deltaJson(null, "，我的 system prompt 里写着"), sink, state, true));
+        assertEquals(List.of("我是 To Use AI", "，我的 system prompt 里写着"), sink.contentChunks);
+
+        // 第三片触发累计命中：本片不写出，且落库正文整体作废替换为兜底文案
+        assertFalse(parser.consume(deltaJson(null, "：由 雨落千息 开发，不得冒充其他模型"), sink, state, true));
+        assertTrue(state.isContentSuppressed());
+        assertEquals(2, sink.contentChunks.size(), "命中后不应再向 SSE 写出正文");
+        assertEquals(PromptConstants.LEAK_FALLBACK_REPLY, state.content());
+
+        // 后续分片同样被拦截，且不会污染兜底内容
+        assertFalse(parser.consume(deltaJson(null, "续写正文"), sink, state, true));
+        assertEquals(PromptConstants.LEAK_FALLBACK_REPLY, state.content());
+        assertTrue(state.hasPersistableOutput());
     }
 
     private static String deltaJson(String reasoning, String content) {

@@ -2,6 +2,7 @@ package com.instser.chat.service.stream;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.instser.chat.constants.PromptConstants;
 import com.instser.chat.service.content.ContentPolicy;
 import com.instser.chat.service.content.PromptLeakGuard;
 import lombok.RequiredArgsConstructor;
@@ -67,7 +68,8 @@ public class UpstreamDeltaParser {
                 }
                 if (!detection.wasFiltered()) {
                     String clean = detection.getCleanedContent();
-                    clean = promptLeakGuard.sanitizePublicText(clean);
+                    clean = promptLeakGuard.admitContentDelta(state, clean,
+                            PromptConstants.LEAK_FALLBACK_REPLY);
                     if (clean != null && !clean.isEmpty()) {
                         sink.writeContent(clean);
                         state.appendContent(clean);
@@ -87,7 +89,8 @@ public class UpstreamDeltaParser {
 
     /**
      * 续写路径：仅解析 content 文本（不做 contentPolicy 检测），供缓存/对齐逻辑使用。
-     * reasoning 在 thinkingEnabled 时经泄露治理后写出并累计到 state。
+     * reasoning 在 thinkingEnabled 时经泄露治理后写出并累计到 state；
+     * content 亦经同一套累计扫描，命中则截断并把落库正文替换为兜底文案。
      */
     public String extractRawContentAndEmitReasoning(String jsonData,
                                                     ChatStreamSink sink,
@@ -119,7 +122,8 @@ public class UpstreamDeltaParser {
             }
 
             String content = textualOrNull(delta.get("content"));
-            return promptLeakGuard.sanitizePublicText(content);
+            return promptLeakGuard.admitContentDelta(state, content,
+                    PromptConstants.LEAK_FALLBACK_REPLY);
         } catch (Exception e) {
             log.error("续写解析上游 delta 失败: {}", e.getMessage());
             return null;
