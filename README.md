@@ -1,461 +1,97 @@
-# 🚀 智能聊天后端系统
+# Jinyu Chat
 
-> **最后更新**: 2025-07-31 08:13 (北京时间)
-> **版本**: v98.0
-> **状态**: 生产就绪 ✅
+一个我自己开发并长期运营的 AI 聊天服务后端。2025 年 6 月写下第一行代码，至今持续迭代，部署在真实环境、服务真实用户、接真实支付。这个仓库是后端与管理后台前端（admin-web），用户聊天前端在另一个仓库。
 
-一个功能完整的企业级智能聊天后端系统，基于Spring Boot 3.x构建，支持多AI模型对话、联网搜索、文档解析、支付系统、OAuth2登录等丰富功能。
+## 功能亮点
 
-## ✨ 核心特性
+### 对话核心
 
-### 🤖 智能对话系统
-- **多AI模型支持**: 支持多种AI模型，可动态切换
-- **流式响应**: 实时打字机效果，支持快速单字符响应
-- **联网搜索**: 基于Gemini联网AI模块，支持实时网络信息检索
-- **错误重试**: 自动检测错误消息并重试，最多3次递增等待
-- **聊天中断**: 支持用户主动中断对话，优雅处理流式响应
+- 多 AI 模型并存，按模型动态路由，支持任何 OpenAI 兼容接口的上游（DeepSeek、通义、Kimi 等）
+- SSE 流式输出，支持用户主动中断、编辑重发、失败重试（固定间隔多次，流式中途断流不再重试以避免重复内容）
+- 推理模型的思考过程（reasoning）与正文走并行通道分别落库，前端可展开查看
+- 会话内 skill 按需注入：关键词 + 状态机判定，只在相关对话时把对应 skill 提示词挂进 system，控制 token 开销
 
-### 📄 文档处理系统
-- **多格式支持**: Word、Excel、PowerPoint、PDF文档解析
-- **图片智能分析**: AI驱动的图片内容识别和描述
-- **安全检测**: 文件魔数检测，防止恶意文件上传
-- **同步处理**: 即时文档解析，立即反馈结果
+### API 密钥池
 
-### � 完整支付系统
-- **多支付方式**: 支持支付宝、微信支付（通过易支付）
-- **多货币支持**: USD/CNY双货币，实时汇率转换
-- **安全防护**: Redis分布式缓存，防重放攻击，频率限制
-- **订单管理**: 完整的订单生命周期管理，自动过期处理
-- **套餐系统**: 灵活的套餐配置，支持优惠价格和权限控制
+同一模型可配置多把 API key（t_ai_model_key 表），按权重行内轮询选取；调用失败自动降权、恢复后自动回权。上游单 key 限流或被封时服务不中断，也便于在多平台间分摊额度。
 
-### 🔐 安全认证系统
-- **JWT认证**: 完整的用户认证和授权体系
-- **一键试用**: 访客点击即用，免注册发放 2 小时临时会话，体验与普通用户完全一致（默认开启，可用 `TRIAL_ENABLED=false` 关闭）
-- **OAuth2登录**: 支持Google、GitHub第三方登录（架构完成）
-- **权限控制**: 基于套餐的AI模型使用权限管理
-- **安全审计**: 完整的操作日志和安全事件监控
+### 提示词泄露防护
 
-### � 高性能架构
-- **Redis缓存**: 多层缓存架构，支持L1+L2+L3三级缓存
-- **分布式锁**: 基于Redisson的分布式锁机制
-- **异步处理**: 异步标题生成、审计日志记录
-- **连接池优化**: Druid连接池，性能监控和自动调优
+防止用户诱导模型把系统提示词整段复述出来（PromptLeakGuard）：
 
-### 🛠️ 运维监控
-- **定时任务**: 8个完整的定时任务，自动化系统维护
-- **性能监控**: 实时系统性能监控和告警
-- **缓存管理**: 25个缓存实例统一管理，支持API密钥认证
-- **健康检查**: 全面的系统健康检查和故障恢复
+- 思维链与正文双通道扫描，累计缓冲 + 单帧增量双扫，分片泄露也拦得住
+- 锚点在启动时从当前提示词自动派生——改提示词后防护自动跟随，不会出现"改了提示词防护就静默失效"的坑（这个坑我踩过，后来专门重写了内核）
+- 命中后思维链清空落库缓冲、正文截断并整体替换为兜底文案，同时暴露 `prompt_leak_detections_total` 指标便于确认防护真实在生效
+- 核心判定逻辑有完整测试覆盖（41 个用例，含逐字边界实测定档）
 
-## 🏗️ 技术架构
+### 支付与套餐
 
-### 核心技术栈
-- **Java**: JDK 17 (固定版本，不可修改)
-- **框架**: Spring Boot 3.1.12
-- **数据库**: MySQL 8.0 (已从5.7升级)
-- **缓存**: Redis 分布式缓存 + Caffeine本地缓存
-- **ORM**: MyBatis-Plus 3.5.7
-- **连接池**: Druid 1.2.23
-- **构建工具**: Maven
+- 支付宝、易支付、Stripe、PayPal 四个渠道，策略模式接入，回调验签 + Redis 防重放
+- 订单完整生命周期：创建、支付回调、自动过期、幂等防超卖（分布式锁）
+- 套餐绑定模型权限与对话额度，支持优惠价；USD/CNY 双货币按实时汇率换算
 
-### 专业组件
-- **响应式编程**: Spring WebFlux (流式响应)
-- **安全框架**: Spring Security + OAuth2 Client
-- **分布式锁**: Redisson 3.24.3
-- **文档处理**: Apache POI 4.1.2 + Apache PDFBox 2.0.29
-- **汇率服务**: exchangerate-api.com 实时汇率API
-- **联网搜索**: Gemini 2.5-flash模型，智能内容获取
+### 账号与登录
 
-### 架构模式
-- **分层架构**: Controller → Service → DAO → Entity
-- **策略模式**: 支付方式、文档解析器、AI模型策略
-- **工厂模式**: 文档解析器工厂、支付策略工厂
-- **观察者模式**: 缓存事件监听、OAuth2事件处理
-- **熔断器模式**: Redis故障自动降级和恢复
+- 常规注册登录（JWT）之外，支持 Google / GitHub OAuth2 一键登录
+- 游客一键试用：免注册直接聊，每账号 10 次额度（AI 成功回复计 1 次）
+- 前后台会话隔离：管理员与普通用户使用两套独立 JWT 密钥和 Cookie，同一浏览器双身份并存互不顶号
 
-## 📊 系统性能
+### 管理后台与可观测
 
-### 响应性能
-- **API响应时间**: < 15ms (缓存命中)
-- **流式响应延迟**: < 100ms (首字符)
-- **文档解析速度**: < 2s (10MB文档)
-- **数据库查询**: 60-80% 性能提升 (索引优化)
+- admin-web 管理后台（本仓库内）：AI 调用监控（TTFT、token 消耗、按 1d/7d/30d 聚合）、日志在线查看、模型与密钥管理、缓存管理
+- traceId 全链路贯穿：一次请求从入口到上游调用的所有日志可串起来排查
+- 慢接口拦截器 + API 指标（请求数、异常数、慢请求计数），Prometheus 指标暴露
+- 8 个定时任务负责缓存清理、过期订单回收、健康巡检等日常维护
 
-### 并发能力
-- **支持并发用户**: 1000+ 用户同时在线
-- **数据库连接池**: 20个连接，支持高并发
-- **Redis连接池**: Lettuce连接池，支持分布式部署
-- **线程池配置**: 异步任务专用线程池
+### 文档解析
 
-### 稳定性指标
-- **系统可用性**: 99.9%+
-- **错误恢复**: 自动重试机制，90%+ 成功率
-- **内存管理**: 自动清理机制，防止内存泄漏
-- **故障恢复**: 分布式锁保护，数据一致性100%
+上传 Word / Excel / PPT / PDF 即解析入库随对话引用；图片走 VL 视觉模型生成内容描述。上传前做文件魔数校验，不轻信扩展名。
 
-## 📁 项目结构
+## 技术栈
 
-```
-chat/
-├── src/main/java/com/instser/chat/
-│   ├── controller/          # 🎮 控制器层
-│   │   ├── ApiController.java           # 聊天会话管理
-│   │   ├── ChatApiController.java       # 聊天对话接口
-│   │   ├── FileController.java          # 文件上传管理
-│   │   ├── PaymentController.java       # 支付系统接口
-│   │   └── OAuth2Controller.java        # OAuth2登录接口
-│   ├── service/             # 🔧 服务层
-│   │   ├── impl/
-│   │   │   ├── ChatServiceImpl.java     # 聊天业务逻辑
-│   │   │   ├── PaymentServiceImpl.java  # 支付业务逻辑
-│   │   │   └── UserServiceImpl.java     # 用户业务逻辑
-│   │   └── ChatService.java             # 聊天服务接口
-│   ├── dao/                 # 🗄️ 数据访问层
-│   ├── entity/              # 📋 实体类
-│   ├── vo/                  # 📤 视图对象
-│   ├── dto/                 # 📥 数据传输对象
-│   ├── config/              # ⚙️ 配置类
-│   └── util/                # 🛠️ 工具类
-├── src/main/resources/
-│   ├── application.yml      # 📝 主配置文件
-│   ├── logback-spring.xml   # 📊 日志配置
-│   └── mapper/              # 🗺️ MyBatis映射文件
-├── sql/                     # 🗃️ 数据库脚本
-├── docs/                    # 📚 项目文档
-├── memory bank/             # 🧠 项目记忆库
-└── README.md               # 📖 项目说明
-```
+- Java 17（固定）+ Spring Boot 3.1，分层架构，MyBatis-Plus + Druid
+- MySQL 8.0，Flyway 做 schema 版本控制（baseline 模式，空库启动自动建表）
+- Redis（缓存、分布式锁 Redisson、会话状态）+ Caffeine 本地缓存，构成 L1+L2+L3 三级缓存
+- 管理后台前端为独立 SPA（admin-web 目录）
 
-## 🚀 快速开始
+## 快速开始
 
-### 环境要求
-- **JDK**: 17+ (必须)
-- **Maven**: 3.6+
-- **MySQL**: 8.0+
-- **Redis**: 6.0+
+环境要求：JDK 17+、Maven 3.6+、MySQL 8.0+、Redis 6.0+。
 
-### 1. 克隆项目
 ```bash
-git clone [项目地址]
-cd chat
+git clone <repo> && cd chat
 ```
 
-### 2. 准备依赖服务
-- **MySQL 8.0+**：创建空数据库 `chat`（utf8mb4）——**无需手动导表**，首次启动时 Flyway 自动执行 `src/main/resources/db/migration/` 下的迁移脚本完成建表
-- **Redis 6.0+**：本地实例即可
+1. MySQL 建一个空库 `chat`（utf8mb4），不用导表——首次启动 Flyway 自动建全部表
+2. 准备一个本地 Redis
+3. 编辑 `src/main/resources/application.yml` 填数据库与 Redis 连接（所有敏感项支持同名环境变量覆盖）
 
-### 3. 配置文件
-编辑 `src/main/resources/application.yml`（所有敏感项均支持同名环境变量覆盖）：
-```yaml
-spring:
-  datasource:
-    url: jdbc:mysql://localhost:3306/chat?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
-    username: your_username
-    password: your_password
+配置分级：数据库和 Redis 是必需的，缺了起不来；AI 模型 Key、支付商户凭证、OAuth2 凭证都可以先空着，服务照常启动，只是对应功能不可用。
 
-  data:
-    redis:
-      host: localhost
-      port: 6379
-      password: your_redis_password
-```
-
-**配置分级**：
-- **必需**：数据库、Redis——缺了无法启动
-- **可选**：AI 模型 Key、支付商户凭证（Stripe/PayPal/支付宝）、OAuth2 凭证（Google/GitHub）——保持占位符也能正常启动，仅对应功能不可用
-
-### 4. 启动项目
 ```bash
-# 开发环境
 mvn spring-boot:run
-
-# 生产环境
-mvn clean package
-java -jar target/chat-1.0.0.jar
 ```
 
-### 5. 验证安装
-- **API文档**: http://localhost:8080/swagger-ui.html
-- **健康检查**: http://localhost:8080/actuator/health
-- **缓存管理**: http://localhost:8081/cache/management/overview
+以 dev profile 启动时（默认），系统会自动创建默认管理员 `admin@example.com / admin123`（登录后请立即改掉），并初始化模型元数据和套餐。
 
-### 6. 首次启动自动初始化（dev profile）
-以默认 dev profile 启动时，系统自动完成（幂等）：
-- 创建默认管理员：`admin@example.com` / `admin123`（**登录后请立即修改**）
-- 初始化 AI 模型元数据与套餐配置
+想真正聊起来：登录管理后台 `/admin`，在模型管理里给任一模型填入你自己的 API Key 即可。
 
-要开始真实对话：登录管理后台 `/admin` → 模型管理 → 为你的模型填入自己的 API Key（兼容 OpenAI 接口格式即可，如 DeepSeek/通义/Kimi 等国内厂商均可接入）。
+验证入口：
 
-> 注：本仓库为后端 + 管理后台前端（admin-web）。用户聊天前端为独立仓库，未包含在此。
+- 健康检查 `http://localhost:8080/actuator/health`
+- 管理后台 `http://localhost:8080/admin`
+- Prometheus 指标 `http://localhost:8081/api/actuator/prometheus`
 
-## 📡 核心API接口
+## 仓库导览
 
-### 🔐 用户认证
-- `POST /api/auth/login` - 用户登录
-- `POST /api/auth/register` - 用户注册
-- `POST /api/auth/trial` - 一键试用（访客免注册，发放 2 小时临时会话）
-- `GET /api/auth/me` - 获取当前用户信息
-- `POST /api/auth/logout` - 用户登出
+- `src/` — 后端源码（controller / service / dao / config 常规分层）
+- `admin-web/` — 管理后台前端
+- `src/main/resources/db/migration/` — Flyway 迁移脚本
+- `sql/` — 历次手工执行的增量 SQL（生产变更记录，新环境无需执行）
+- `docs/` — 540+ 篇开发过程文档：方案设计、问题排查、上线验证记录，按日期命名
+- `memory bank/` — 项目上下文记忆库（产品定位、架构决策、进度状态），AI 协作开发的工作底稿
+- `README-OPS.md` — 运维手册：部署架构、端口、监控指标、日志体系、定时任务明细
 
-### 🤖 聊天对话
-- `POST /api/chat` - AI流式对话接口
-- `POST /api/chat/interrupt` - 中断当前对话
-- `POST /api/chat/retry` - 重新生成AI回复
-- `POST /api/chat/edit-resend` - 编辑用户消息并重发
+## 边界说明
 
-### 💬 会话管理
-- `GET /api/sessions` - 获取聊天会话列表
-- `POST /api/sessions` - 创建新聊天会话
-- `GET /api/sessions/{sessionId}` - 获取会话详情
-- `PUT /api/sessions/{sessionId}` - 更新会话信息
-- `DELETE /api/sessions/{sessionId}` - 删除会话
-
-### 📝 消息管理
-- `GET /api/sessions/{sessionId}/messages` - 获取会话消息
-- `DELETE /api/messages/{messageId}` - 删除指定消息
-- `PUT /api/chat/messages/{messageId}/web-search-content` - 修改联网搜索内容
-
-### 📄 文件管理
-- `POST /api/upload` - 文件上传
-- `GET /api/files/{filename}` - 获取文件信息
-- `DELETE /api/files/{filename}` - 删除文件
-
-### 💳 支付系统
-- `GET /api/payment/packages` - 获取套餐列表
-- `POST /api/payment/create-order` - 创建支付订单
-- `GET /api/payment/orders/{orderId}` - 查询订单状态
-- `POST /api/payment/alipay/notify` - 支付宝回调
-- `POST /api/payment/yipay/notify` - 易支付回调
-
-### 🔧 系统管理
-- `GET /api/models` - 获取AI模型列表
-- `GET /actuator/health` - 系统健康检查
-- `GET /cache/management/overview` - 缓存管理概览
-
-## 🗄️ 数据库设计
-
-### 核心表结构
-
-#### 👤 用户系统
-- **t_user**: 用户基础信息，支持雪花ID和UUID双ID架构
-- **t_user_package**: 用户套餐关联，支持套餐激活和权限管理
-- **t_user_oauth**: OAuth2第三方登录绑定信息
-- **t_oauth2_state**: OAuth2状态令牌验证表
-- **t_oauth2_audit_log**: OAuth2安全审计日志
-
-#### 🤖 AI对话系统
-- **t_ai_model**: AI模型配置，支持多模型管理和可见性控制
-- **t_chat_session**: 聊天会话，支持标题生成和Token统计
-- **t_chat_message**: 聊天消息，支持流式响应和附件关联
-- **t_web_search_content**: 联网搜索结果存储
-
-#### 📄 文件系统
-- **t_file_upload**: 文件上传记录，支持多格式文档和图片解析
-- **t_document_parser**: 文档解析结果存储
-
-#### 💳 支付系统
-- **t_package**: 套餐配置，支持优惠价格和权限设置
-- **t_user_order**: 订单管理，支持多支付方式和状态流转
-- **t_payment_audit**: 支付审计日志，完整的支付安全记录
-
-### 数据库特性
-- **雪花ID策略**: 所有表统一使用雪花ID，支持分布式部署
-- **双ID架构**: 主键ID（性能）+ 业务ID（安全）
-- **逻辑删除**: 软删除机制，保证数据完整性
-- **自动时间戳**: create_time和update_time自动维护
-- **外键约束**: 完整的数据一致性保障
-- **索引优化**: 60-80%查询性能提升的复合索引设计
-
-## 🎯 核心功能
-
-### 1. 🤖 智能对话引擎
-- **多模型支持**: 动态切换AI模型，支持GPT、Claude等
-- **流式响应**: 实时打字机效果，WebFlux响应式编程
-- **联网搜索**: Gemini联网AI模块，实时信息检索
-- **错误重试**: 3次递增重试机制，提升成功率
-- **聊天中断**: 优雅的流式响应中断处理
-
-### 2. 📄 文档处理引擎
-- **多格式解析**: Word、Excel、PPT、PDF智能解析
-- **图片识别**: AI驱动的图片内容分析和描述
-- **安全检测**: 文件魔数检测，防恶意文件上传
-- **同步处理**: 即时解析反馈，无需等待
-
-### 3. 💳 企业级支付系统
-- **多支付渠道**: 支付宝、微信支付（易支付集成）
-- **多货币支持**: USD/CNY双货币，实时汇率转换
-- **安全防护**: Redis分布式缓存，防重放攻击
-- **订单管理**: 完整生命周期，自动过期处理
-- **套餐权限**: 基于套餐的AI模型使用权限控制
-
-### 4. 🔐 安全认证体系
-- **JWT认证**: 完整的用户认证和授权
-- **一键试用**: 访客免注册 2 小时临时会话，体验与普通用户完全一致
-- **OAuth2登录**: Google、GitHub第三方登录（架构完成）
-- **权限管理**: 细粒度的功能权限控制
-- **安全审计**: 完整的操作日志和事件监控
-
-### 5. 🚀 高性能架构
-- **多层缓存**: L1+L2+L3三级缓存架构
-- **分布式锁**: Redisson分布式锁机制
-- **异步处理**: 异步标题生成、日志记录
-- **连接池优化**: Druid连接池性能监控
-
-### 6. 🛠️ 运维监控系统
-- **定时任务**: 8个自动化维护任务
-- **性能监控**: 实时系统性能监控
-- **缓存管理**: 25个缓存实例统一管理
-- **健康检查**: 全面的系统健康监控
-
-## ⚙️ 配置说明
-
-### 核心配置文件
-```yaml
-# application.yml 主要配置
-spring:
-  datasource:
-    url: jdbc:mysql://localhost:3306/chat_system
-    username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:password}
-    druid:
-      initial-size: 5
-      min-idle: 5
-      max-active: 20
-      max-wait: 60000
-
-  data:
-    redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
-      lettuce:
-        pool:
-          max-active: 20
-          max-idle: 10
-          min-idle: 5
-
-server:
-  port: 8080
-
-management:
-  server:
-    port: 8081
-  endpoints:
-    web:
-      exposure:
-        include: health,info,metrics
-```
-
-### 环境变量配置
-- `DB_USERNAME`: 数据库用户名
-- `DB_PASSWORD`: 数据库密码
-- `REDIS_HOST`: Redis服务器地址
-- `REDIS_PASSWORD`: Redis密码
-- `AI_API_KEY`: AI服务API密钥
-- `PAYMENT_ALIPAY_APP_ID`: 支付宝应用ID
-
-## 🔍 技术亮点
-
-### 🚀 流式响应架构
-基于Spring WebFlux的响应式编程，实现真正的流式AI对话：
-- **WebClient**: 异步HTTP客户端，支持流式数据处理
-- **Flux<String>**: 响应式数据流，实时推送AI响应
-- **智能分块**: JSON数据缓冲重组，确保数据完整性
-- **优雅中断**: 用户可随时中断对话，资源及时释放
-
-### 🔐 双ID安全架构
-创新的双ID设计，兼顾性能和安全：
-- **雪花ID**: 主键ID，高性能数据库操作
-- **UUID**: 业务ID，对外API安全标识
-- **防枚举攻击**: UUID不可预测，保护用户隐私
-- **分布式友好**: 支持多实例部署，无ID冲突
-
-### 🎯 智能错误恢复
-多层次的错误处理和自动恢复机制：
-- **错误检测**: 自动识别AI服务错误消息
-- **递增重试**: 1s→2s→3s递增等待时间
-- **异常传播**: ChatRetryException专用异常类
-- **降级处理**: 重试失败后统一错误响应
-
-### 📊 性能优化设计
-全方位的性能优化策略：
-- **多层缓存**: L1(Caffeine)+L2(Redis)+L3(DB)
-- **连接池优化**: Druid连接池，实时监控
-- **异步处理**: 标题生成、审计日志异步执行
-- **索引优化**: 60-80%查询性能提升
-
-## 🚧 开发规范
-
-### 代码规范
-- **编码标准**: 遵循阿里巴巴Java开发规范
-- **API设计**: RESTful风格，统一Result响应格式
-- **异常处理**: 分层异常处理，业务异常使用专用异常类
-- **日志记录**: SLF4J结构化日志，分离式日志文件
-- **注释规范**: 完整的JavaDoc注释，中英文混合
-
-### 数据库规范
-- **命名规范**: 下划线命名法，表名t_前缀
-- **ID策略**: 雪花ID主键 + UUID业务ID
-- **删除策略**: 逻辑删除，deleted字段标记
-- **时间戳**: create_time和update_time自动维护
-- **索引设计**: 复合索引优化，查询性能提升60-80%
-
-### 架构规范
-- **分层架构**: Controller → Service → DAO → Entity
-- **设计模式**: 策略模式、工厂模式、观察者模式
-- **依赖注入**: Spring IoC容器管理，@Autowired注解
-- **事务管理**: @Transactional注解，合理的事务边界
-
-## 📈 监控和运维
-
-### 系统监控
-- **应用监控**: http://localhost:8080/actuator/health
-- **缓存管理**: http://localhost:8081/cache/management/overview
-- **数据库监控**: http://localhost:8080/druid/ (admin/123456)
-- **性能监控**: 实时JVM、内存、线程池监控
-
-### 日志管理
-- **普通日志**: logs/jinyu-chat-all.log (所有日志)
-- **错误日志**: logs/jinyu-chat-error.log (WARN/ERROR)
-- **日志配置**: logback-spring.xml，支持异步写入
-- **日志级别**: 可通过启动参数动态调整
-
-### 定时任务
-- **缓存清理**: 每日凌晨2点清理过期缓存
-- **订单处理**: 每30秒清理过期订单
-- **系统监控**: 每15分钟健康检查
-- **数据统计**: 每日凌晨3点用户行为统计
-
-## 🔧 故障排查
-
-### 常见问题
-1. **启动失败**: 检查JDK版本（必须17+）、数据库连接
-2. **Redis连接失败**: 检查Redis服务状态、认证信息
-3. **支付回调失败**: 检查回调URL配置、签名验证
-4. **文件上传失败**: 检查文件类型、大小限制、存储路径
-
-### 调试模式
-```bash
-# 开启SQL日志
-java -jar chat.jar --logging.level.com.instser.chat=DEBUG
-
-# 开启详细聊天日志
-java -jar chat.jar --logging.level.com.instser.chat.service.impl.ChatServiceImpl=DEBUG
-
-# 开启性能监控
-java -jar chat.jar --management.endpoints.web.exposure.include=*
-```
-
-## 🤝 贡献指南
-
-### 参与贡献
-1. **Fork项目**: 创建项目副本
-2. **创建分支**: `git checkout -b feature/your-feature`
-3. **提交代码**: 遵循代码规范，添加测试用例
-4. **创建PR**: 详细描述变更内容和测试结果
-
-### 问题反馈
-- **Bug报告**: 提供详细的错误信息和复现步骤
-- **功能建议**: 描述需求场景和预期效果
-- **文档改进**: 指出文档不准确或缺失的部分
-
+这是一个个人项目，不是框架或库。代码里的配置默认值都是占位符，支付、OAuth2 等能力需要你自己申请对应平台的商户/应用凭证才能跑通。如果你在评估这份代码，建议从 `docs/` 里的方案文档和 `memory bank/` 的决策记录看起——比起最终代码，那些东西更能说明问题是怎么被想清楚和解决的。
